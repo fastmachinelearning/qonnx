@@ -10,8 +10,7 @@ assignees: ''
 ## Prerequisites
 Please talk to either the FINN or hls4ml community before creating a new feature request. So that you can check that the idea is not already in active development.
 
-You can contact the hls4ml maintainers here: [hls4ml.help@gmail.com](mailto:hls4ml.help@gmail.com
-?subject=[GitHub]%20qonnx-frontend%20feature%20request)
+You can contact the hls4ml maintainers here: [hls4ml.help@gmail.com](mailto:hls4ml.help@gmail.com?subject=[GitHub]%20qonnx-frontend%20feature%20request)
 
 Or talk to the FINN community here: https://gitter.im/xilinx-finn/community
 
