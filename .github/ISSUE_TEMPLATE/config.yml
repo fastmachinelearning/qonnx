@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contact the hls4ml maintainers
+    url: [hls4ml.help@gmail.com](mailto:hls4ml.help@gmail.com?subject=[GitHub]%20qonnx-frontend%20issue)
+    about: Talk to the hls4ml maintainers to engage with them or get answers to your burning questions.
+  - name: Talk and engage with the FINN community
+    url: https://gitter.im/xilinx-finn/community
+    about: Check out our gitter channel, if you have a question about FINN or a general problem that is likely not a bug.
