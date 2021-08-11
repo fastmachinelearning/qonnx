@@ -1,6 +1,6 @@
-==============
-qonnx-frontend
-==============
+======
+qonnx
+======
 
 
 Frontend and utilities for QONNX
