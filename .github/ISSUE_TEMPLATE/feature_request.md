@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for the qonnx-frontend
+about: Suggest an idea for QONNX
 title: ''
 labels: enhancement
 assignees: ''
@@ -8,9 +8,9 @@ assignees: ''
 ---
 
 ## Prerequisites
-Please talk to either us before creating a new feature request. So that you can check that the idea is not already in active development.
+Please talk to us before creating a new feature request. So that you can check that the idea is not already in active development.
 
-You can present your idea over here at the GitHub discussions page for qonnx: https://github.com/fastmachinelearning/qonnx/discussions/categories/ideas
+You can present your idea over here at the GitHub discussions page for QONNX: https://github.com/fastmachinelearning/qonnx/discussions/categories/ideas
 
 Even if an idea is already being worked on you can still create a feature request,
 if you would like to open a discussion about the feature or want to contribute to it.
@@ -19,10 +19,10 @@ if you would like to open a discussion about the feature or want to contribute t
 Please add to the following sections to describe the feature as accurately as possible.
 
 ### New behavior
-Please add a brief and concise description of what you would like to happen in the qonnx-frontend in the future.
+Please add a brief and concise description of what you would like to happen in QONNX in the future.
 
 ### Motivation
 Please tell us why this feature is important to the community.
 
-### Parts of the qonnx-frontend being affected
-Please describe which parts of the qonnx-frontend would be affected by this feature.
+### Parts of QONNX being affected
+Please describe which parts of QONNX would be affected by this feature.

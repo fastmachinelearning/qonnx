@@ -10,7 +10,7 @@ assignees: ''
 
 ## Prerequisites
 Please make sure to check off these prerequisites before submitting a bug report.
-- [ ] Test that the bug appears on the current version of the dev-branch. Make sure to include the commit hash of the commit you checked out.
+- [ ] Test that the bug appears on the current version of the main branch. Make sure to include the commit hash of the commit you checked out.
 - [ ] Check that the issue hasn't already been reported, by checking the currently open issues.
 - [ ] If there are steps to reproduce the problem, make sure to write them down below.
 - [ ] If relevant, please include the ONNX files, which were created directly before and/or after the bug.
@@ -25,11 +25,10 @@ Please add to the following sections to describe the bug as accurately as possib
 Add what needs to be done to reproduce the bug. Add code examples where useful
 and make sure to include the resulting ONNX files, and the commit hash you are working on.
 
-1. Clone the qonnx-frontend repository
-2. Checkout the dev branch, with commit hash: [...]
-3. Start the docker container with the command: [...]
-4. Run transformation [...] on ONNX file [...].
-5. [Further steps ...]
+1. Clone the qonnx repository
+2. Checkout the main branch, with commit hash: [...]
+3. Run transformation [...] on ONNX file [...]
+4. [Further steps ...]
 
 ### Expected behavior
 Please add a brief description of what you expected to happen.
