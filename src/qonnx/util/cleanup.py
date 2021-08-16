@@ -1,4 +1,5 @@
 import clize
+
 from finn.core.modelwrapper import ModelWrapper
 from finn.transformation.fold_constants import FoldConstants
 from finn.transformation.general import (

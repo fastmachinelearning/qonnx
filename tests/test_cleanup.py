@@ -2,7 +2,6 @@ import os
 import urllib.request
 
 from finn.core.modelwrapper import ModelWrapper
-
 from qonnx.util.cleanup import cleanup
 
 
