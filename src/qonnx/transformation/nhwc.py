@@ -1,7 +1,6 @@
 import warnings
 from onnx import TensorProto, helper
 
-import finn.util.basic as util
 from finn.transformation.base import Transformation
 from finn.transformation.general import RemoveUnusedTensors
 from finn.transformation.infer_shapes import InferShapes
@@ -9,9 +8,8 @@ from finn.util.basic import get_by_name
 
 # ToDo: Similarly to the ops, this should maybe get moved from finn-base into qonnx.
 # ToDo: Should these parameters move into a parent class for all NHWC trafos?
-# ToDo: I also need some of these parameters in the nhwc op wrappers,
-#  so maybe this should get moved to a location, where both, the ops and the trafos
-#  can access it.
+# ToDo: I also need some of these parameters in the nhwc op wrappers, so maybe this should get moved to a location,
+#  where both, the ops and the trafos can access it.
 # Standard ONNX nodes which require a NHWC data format to function properly
 _nchw_node_types = ["Conv", "MaxPool", "BatchNormalization"]
 _to_chan_last_args = (0, 2, 3, 1)
@@ -58,9 +56,7 @@ class ConvertToNHWCAndClean(Transformation):
         for i in range(max_tries):
             # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
             model_changed = False
-            model, m_changed = applyTrafoAndCheckForChange(
-                model, RemoveConsecutiveChanFirstAndChanLastTrafos
-            )
+            model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
             model_changed |= m_changed
 
             # Apply MoveChanLastUpstream
@@ -70,29 +66,21 @@ class ConvertToNHWCAndClean(Transformation):
             # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
             # if something changed in the previous trafo
             if m_changed:
-                model, m_changed = applyTrafoAndCheckForChange(
-                    model, RemoveConsecutiveChanFirstAndChanLastTrafos
-                )
+                model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
                 model_changed |= m_changed
 
             # Apply MoveChanLastDownStream
-            model, m_changed = applyTrafoAndCheckForChange(
-                model, MoveChanFirstDownstream
-            )
+            model, m_changed = applyTrafoAndCheckForChange(model, MoveChanFirstDownstream)
             model_changed |= m_changed
 
             # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
             # if something changed in the previous trafo
             if m_changed:
-                model, m_changed = applyTrafoAndCheckForChange(
-                    model, RemoveConsecutiveChanFirstAndChanLastTrafos
-                )
+                model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
                 model_changed |= m_changed
 
             # Apply AbsorbChanFirstIntoMatMul
-            model, m_changed = applyTrafoAndCheckForChange(
-                model, AbsorbChanFirstIntoMatMul
-            )
+            model, m_changed = applyTrafoAndCheckForChange(model, AbsorbChanFirstIntoMatMul)
             model_changed |= m_changed
 
             # Do some cleanup
@@ -138,9 +126,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
                     NCHW_shape = model.get_tensor_shape(inp)
-                    assert (
-                        len(NCHW_shape) == 4
-                    ), "NCHW to NHWC conversion is only available for 4D tensors."
+                    assert len(NCHW_shape) == 4, "NCHW to NHWC conversion is only available for 4D tensors."
                     NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args]
                     # Intermediate tensor
                     inp_trans_out = helper.make_tensor_value_info(
@@ -152,9 +138,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     inp_trans_out = inp_trans_out.name
 
                     # NCHW -> NHWC transpose
-                    inp_trans_node = helper.make_node(
-                        "Transpose", [inp], [inp_trans_out], perm=_to_chan_last_args
-                    )
+                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=_to_chan_last_args)
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
 
@@ -165,9 +149,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                 output_tensors = n.output
                 for i, outp in enumerate(output_tensors):
                     NCHW_shape = model.get_tensor_shape(outp)
-                    assert (
-                        len(NCHW_shape) == 4
-                    ), "NCHW to NHWC conversion is only available for 4D tensors."
+                    assert len(NCHW_shape) == 4, "NCHW to NHWC conversion is only available for 4D tensors."
                     NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args]
                     # Intermediat tensor
                     outp_trans_in = helper.make_tensor_value_info(
@@ -179,9 +161,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     outp_trans_in = outp_trans_in.name
 
                     # NCHW -> NHWC transpose
-                    outp_trans_node = helper.make_node(
-                        "Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args
-                    )
+                    outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args)
                     graph.node.insert(running_node_index, outp_trans_node)
                     running_node_index += 1
 
@@ -200,8 +180,7 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
     """
     Remove two consecutive transformations, which would do:
     (NHWC -> NCHW) -> (NCHW -> NHWC)
-    Or more concrete, the first converts to channels first
-    and the second to channels last.
+    Or more concrete, the first converts to channels first and the second to channels last.
     """
 
     def apply(self, model):
@@ -220,8 +199,7 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
 
                     successor_nodes = model.find_direct_successors(n)
                     assert len(successor_nodes) == 1, (
-                        "Transpose nodes should only have one output,"
-                        " I don't think more than one would even be possible."
+                        "Transpose nodes should only have one output," " I don't think more than one would even be possible."
                     )
                     successor_node = successor_nodes[0]
 
@@ -250,9 +228,6 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                             graph.node.remove(successor_node)
 
                             graph_modified = True
-
-                            # ToDo: Figure out if the tensors,
-                            #  which are now "hanging in the air" must get removed.
         return model, graph_modified
 
 
@@ -276,8 +251,7 @@ class MoveChanLastUpstream(Transformation):
                     if predecessors is None:
                         continue
                     assert len(predecessors) == 1, (
-                        "Transpose nodes should only have one input, "
-                        "I don't think more than one would even be possible."
+                        "Transpose nodes should only have one input, " "I don't think more than one would even be possible."
                     )
                     predecessor = predecessors[0]
 
@@ -344,9 +318,7 @@ class MoveChanFirstDownstream(Transformation):
                 perm = get_by_name(n.attribute, "perm")
                 if list(_to_chan_first_args) == perm.ints:
                     successors = model.find_direct_successors(n)
-                    assert (
-                        len(successors) == 1
-                    ), "Transpose nodes should only have one output"
+                    assert len(successors) == 1, "Transpose nodes should only have one output"
                     successor = successors[0]
 
                     # Check if we can simply move through the next node
@@ -400,8 +372,7 @@ class FuseTransposeIntoQuantInit(Transformation):
                 if predecessors is None:
                     continue
                 assert len(predecessors) == 1, (
-                    "Transpose nodes should only have one input, "
-                    "I don't think more than one would even be possible."
+                    "Transpose nodes should only have one input, " "I don't think more than one would even be possible."
                 )
                 predecessor = predecessors[0]
                 if predecessor.op_type == "Quant":
@@ -463,18 +434,13 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                 b_shape = model.get_tensor_shape(consumer.input[1])
                                 mw = b_shape[0]
                                 mh = b_shape[1]
-                                (b, h, w, c) = model.get_tensor_shape(
-                                    transp_node.input[0]
-                                )
+                                (b, h, w, c) = model.get_tensor_shape(transp_node.input[0])
                                 # Get the weight initilizer
                                 quant_node = model.find_producer(consumer.input[1])
                                 if quant_node.op_type == "Quant":
                                     W = model.get_initializer(quant_node.input[0])
                                 else:
-                                    warnings.warn(
-                                        f"Could not find weight initializer for "
-                                        f"MatMul: {consumer.name}"
-                                    )
+                                    warnings.warn(f"Could not find weight initializer for " f"MatMul: {consumer.name}")
                                     continue
                                 W_new = W.reshape(c, h, w, mh)
                                 W_new = W_new.transpose((1, 2, 0, 3))
@@ -515,4 +481,3 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                     into subsequent node"
                                 )
         return model, graph_modified
-
