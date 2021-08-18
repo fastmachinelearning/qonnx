@@ -23,15 +23,9 @@ class NhwcWrappedOp(CustomOp):
     def verify_node(self):
         # Check general compatibility
         node = self.onnx_node
-        assert (
-            node.op_type in self._nchw_node_types
-        ), f"{node.op_type} is not supported by the NHWC wrapper op."
-        assert (
-            len(node.input) > 0
-        ), "The NHWC wrapper op only supports nodes with inputs."
-        assert (
-            len(node.output) == 1
-        ), "The NHWC wrapper op only supports nodes with exactly one output."
+        assert node.op_type in self._nchw_node_types, f"{node.op_type} is not supported by the NHWC wrapper op."
+        assert len(node.input) > 0, "The NHWC wrapper op only supports nodes with inputs."
+        assert len(node.output) == 1, "The NHWC wrapper op only supports nodes with exactly one output."
 
         result = [
             "ONNX OP-type is supported by NHWC wrapper for node execution.",
@@ -66,9 +60,7 @@ class NhwcWrappedOp(CustomOp):
             if transpose_input:
                 nchw_array = nchw_array.transpose(self._to_chan_first_args)
             assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
-            tensor = helper.make_tensor_value_info(
-                input, TensorProto.FLOAT, nchw_array.shape
-            )
+            tensor = helper.make_tensor_value_info(input, TensorProto.FLOAT, nchw_array.shape)
             input_dict[input] = nchw_array
             input_tensor_list.append(tensor)
 
@@ -76,16 +68,12 @@ class NhwcWrappedOp(CustomOp):
         nchw_array = context[output]
         nchw_array = nchw_array.transpose(self._to_chan_first_args)
         assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
-        tensor = helper.make_tensor_value_info(
-            output, TensorProto.FLOAT, nchw_array.shape
-        )
+        tensor = helper.make_tensor_value_info(output, TensorProto.FLOAT, nchw_array.shape)
         output_tensor_list.append(tensor)
 
         # Execute the intermediate node with onnxruntime,
         # using the transposed inputs / outputs
-        intermediate_graph = helper.make_graph(
-            [intermediate_node], "test_model", input_tensor_list, output_tensor_list
-        )
+        intermediate_graph = helper.make_graph([intermediate_node], "test_model", input_tensor_list, output_tensor_list)
         intermediate_model = helper.make_model(intermediate_graph)
         sess = rt.InferenceSession(intermediate_model.SerializeToString())
         output_list = sess.run(None, input_dict)
@@ -134,9 +122,7 @@ class Conv(NhwcWrappedOp):
         pad = self.get_nodeattr("pads")  # padding: [H_begin, W_begin, H_end, W_end]
         pad_h = pad[0] + pad[2]
         pad_w = pad[1] + pad[3]
-        assert (
-            len(ishape) == 4
-        ), "Unexpected input shape for nhwc.Conv (currently only supports 4D inputs)"
+        assert len(ishape) == 4, "Unexpected input shape for nhwc.Conv (currently only supports 4D inputs)"
         # NHWC per definition of this op.
         ifm_dim_h = ishape[1]
         ifm_dim_w = ishape[2]
@@ -220,9 +206,7 @@ class Conv(NhwcWrappedOp):
 
         # verify that attributes have the correct datatype.
         try:
-            assert isinstance(
-                self.get_nodeattr("kernel_shape"), RepeatedScalarContainer
-            )
+            assert isinstance(self.get_nodeattr("kernel_shape"), RepeatedScalarContainer)
             assert isinstance(self.get_nodeattr("pads"), RepeatedScalarContainer)
             assert isinstance(self.get_nodeattr("strides"), RepeatedScalarContainer)
             assert isinstance(self.get_nodeattr("dilations"), RepeatedScalarContainer)
@@ -241,8 +225,7 @@ class Conv(NhwcWrappedOp):
 
         if not verification_successful:
             raise RuntimeError(
-                f"Verification of node {node.name} failed, please check the "
-                f"attached info messages: {info_messages}"
+                f"Verification of node {node.name} failed, please check the " f"attached info messages: {info_messages}"
             )
 
         return info_messages
@@ -341,9 +324,7 @@ class MaxPool(NhwcWrappedOp):
 
         # verify that attributes have the correct datatype.
         try:
-            assert isinstance(
-                self.get_nodeattr("kernel_shape"), RepeatedScalarContainer
-            )
+            assert isinstance(self.get_nodeattr("kernel_shape"), RepeatedScalarContainer)
             assert isinstance(self.get_nodeattr("pads"), RepeatedScalarContainer)
             assert isinstance(self.get_nodeattr("strides"), RepeatedScalarContainer)
             info_messages.append("All attributes are of the correct type")
@@ -360,8 +341,7 @@ class MaxPool(NhwcWrappedOp):
 
         if not verification_successful:
             raise RuntimeError(
-                f"Verification of node {node.name} failed, please check the "
-                f"attached info messages: {info_messages}"
+                f"Verification of node {node.name} failed, please check the " f"attached info messages: {info_messages}"
             )
 
         return info_messages
@@ -464,8 +444,7 @@ class BatchNormalization(NhwcWrappedOp):
 
         if not verification_successful:
             raise RuntimeError(
-                f"Verification of node {node.name} failed, please check "
-                f"the attached info messages: {info_messages}"
+                f"Verification of node {node.name} failed, please check " f"the attached info messages: {info_messages}"
             )
 
         return info_messages
