@@ -11,8 +11,14 @@ from finn.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 
 class NhwcWrappedOp(CustomOp):
     _nchw_node_types = ["Conv", "MaxPool", "BatchNormalization"]
-    _to_chan_last_args = (0, 2, 3, 1)
-    _to_chan_first_args = (0, 3, 1, 2)
+    _to_chan_last_args = {
+        3: (0, 2, 1),
+        4: (0, 2, 3, 1),
+    }
+    _to_chan_first_args = {
+        3: (0, 2, 1),
+        4: (0, 3, 1, 2),
+    }
 
     def infer_node_datatype(self, model):
         # data type stays the same for all supported nodes
@@ -51,6 +57,7 @@ class NhwcWrappedOp(CustomOp):
         # Create transposed (channel first) arrays
         # and onnx tensors for the inputs and outputs.
         # And store them in the internal context.
+        ndim = len(context[intermediate_node.input[0]].shape)
         for i, input in enumerate(intermediate_node.input):
             nchw_array = context[input]
             # Generally we only transpose the first input
@@ -58,7 +65,7 @@ class NhwcWrappedOp(CustomOp):
             # Conv is an exception, it also requires the second input to be transposed.
             transpose_input |= intermediate_node.op_type == "Conv" and i < 2
             if transpose_input:
-                nchw_array = nchw_array.transpose(self._to_chan_first_args)
+                nchw_array = nchw_array.transpose(self._to_chan_first_args[ndim])
             assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
             tensor = helper.make_tensor_value_info(input, TensorProto.FLOAT, nchw_array.shape)
             input_dict[input] = nchw_array
@@ -66,7 +73,7 @@ class NhwcWrappedOp(CustomOp):
 
         output = intermediate_node.output[0]
         nchw_array = context[output]
-        nchw_array = nchw_array.transpose(self._to_chan_first_args)
+        nchw_array = nchw_array.transpose(self._to_chan_first_args[ndim])
         assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
         tensor = helper.make_tensor_value_info(output, TensorProto.FLOAT, nchw_array.shape)
         output_tensor_list.append(tensor)
@@ -80,7 +87,7 @@ class NhwcWrappedOp(CustomOp):
         output_onnx = output_list[0]
 
         # Transpose the output back to channel last and save it in the external context.
-        output_onnx = output_onnx.transpose(self._to_chan_last_args)
+        output_onnx = output_onnx.transpose(self._to_chan_last_args[ndim])
         context[node.output[0]] = output_onnx
 
 
