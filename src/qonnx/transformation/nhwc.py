@@ -12,12 +12,18 @@ from finn.util.basic import get_by_name
 #  where both, the ops and the trafos can access it.
 # Standard ONNX nodes which require a NHWC data format to function properly
 _nchw_node_types = ["Conv", "MaxPool", "BatchNormalization"]
-_to_chan_last_args = (0, 2, 3, 1)
-_to_chan_first_args = (0, 3, 1, 2)
+_to_chan_last_args = {
+    3: (0, 2, 1),
+    4: (0, 2, 3, 1),
+}
+_to_chan_first_args = {
+    3: (0, 2, 1),
+    4: (0, 3, 1, 2),
+}
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
-_move_through_nodes = ["Quant"]
+_move_through_nodes = ["Quant", "Relu"]
 
 # Nodes, which do not modify the shape of the tensor,
 # And modify all values in the same way, if the second tensor is a scalar.
@@ -126,8 +132,9 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
                     NCHW_shape = model.get_tensor_shape(inp)
-                    assert len(NCHW_shape) == 4, "NCHW to NHWC conversion is only available for 4D tensors."
-                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args]
+                    ndim = len(NCHW_shape)
+                    assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
+                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args[ndim]]
                     # Intermediate tensor
                     inp_trans_out = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
@@ -137,8 +144,8 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     graph.value_info.append(inp_trans_out)
                     inp_trans_out = inp_trans_out.name
 
-                    # NCHW -> NHWC transpose
-                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=_to_chan_last_args)
+                    # channels last transpose
+                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=_to_chan_last_args[ndim])
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
 
@@ -149,8 +156,9 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                 output_tensors = n.output
                 for i, outp in enumerate(output_tensors):
                     NCHW_shape = model.get_tensor_shape(outp)
-                    assert len(NCHW_shape) == 4, "NCHW to NHWC conversion is only available for 4D tensors."
-                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args]
+                    ndim = len(NCHW_shape)
+                    assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
+                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args[ndim]]
                     # Intermediat tensor
                     outp_trans_in = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
@@ -161,7 +169,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     outp_trans_in = outp_trans_in.name
 
                     # NCHW -> NHWC transpose
-                    outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args)
+                    outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args[ndim])
                     graph.node.insert(running_node_index, outp_trans_node)
                     running_node_index += 1
 
