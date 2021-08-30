@@ -1,4 +1,4 @@
-from qonnx.custom_op.nhwc.wrapped_ops import BatchNormalization, Conv, MaxPool
+from qonnx.custom_op.ChannelsLast.wrapped_ops import BatchNormalization, Conv, MaxPool
 
 custom_op = dict()
 

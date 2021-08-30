@@ -6,11 +6,12 @@ from finn.transformation.general import RemoveUnusedTensors
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
 
-# ToDo: Should these parameters move into a parent class for all NHWC trafos?
-# ToDo: I also need some of these parameters in the nhwc op wrappers, so maybe this should get moved to a location,
+# ToDo: Should these parameters move into a parent class for all ChannelsLast trafos?
+# ToDo: I also need some of these parameters in the ChannelsLast op wrappers, so maybe this should get moved to a location,
 #  where both, the ops and the trafos can access it.
-# Standard ONNX nodes which require a NHWC data format to function properly
-_nchw_node_types = ["Conv", "MaxPool", "BatchNormalization"]
+# Standard ONNX nodes which require a ChannelsLast data format to function properly
+# ToDo: This should be read from the actual op list/registry, which we have in QONNX.
+_channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
 _to_chan_last_args = {
     3: (0, 2, 1),
     4: (0, 2, 3, 1),
@@ -29,16 +30,16 @@ _move_through_nodes = ["Quant", "Relu"]
 _move_through_nodes_if_scalar = ["Mul", "Div", "Sub", "Add"]
 
 
-class ConvertToNHWCAndClean(Transformation):
+class ConvertToChannelsLastAndClean(Transformation):
     """
-    Converts data layout dependent nodes to NHWC nodes and inserts transformations.
+    Converts data layout dependent nodes to ChannelsLast nodes and inserts transformations.
     Then it tries to eliminate as many transformations as possible and moves the
     still existing ones as far upstream as possible.
     """
 
     def apply(self, model):
         model = model.transform(FuseTransposeIntoQuantInit())
-        model = model.transform(InsertNHWCDomainsAndTrafos())
+        model = model.transform(InsertChannelsLastDomainsAndTrafos())
         max_tries = 100
         for i in range(max_tries):
             initial_model_string = model.model.SerializeToString()
@@ -74,29 +75,29 @@ class ConvertToNHWCAndClean(Transformation):
         return model, False
 
 
-class InsertNHWCDomainsAndTrafos(Transformation):
+class InsertChannelsLastDomainsAndTrafos(Transformation):
     """
-    Inserts NHWC domain, where required and also inserts required transposes.
+    Inserts ChannelsLast domain, where required and also inserts required transposes.
     """
 
     def apply(self, model):
         # ToDo: Add a check that all tensors have shape settings,
-        #  otherwise some of the NHWC shape inference breaks
+        #  otherwise some of the ChannelsLast shape inference breaks
         graph = model.graph
         node_ind = 0
         graph_modified = False
         # Find nodes, where the domain should be changed
         for n in graph.node:
             node_ind += 1
-            if (n.op_type in _nchw_node_types) and (n.domain == ""):
+            if (n.op_type in _channelsLast_node_types) and (n.domain == ""):
                 running_node_index = node_ind
                 # Insert transformation nodes for input nodes
                 input_tensors = n.input
                 # Skip for BatchNorm and 2D input tensors,
                 # these contain only channels and need no transpose.
                 # ToDo: Also support these BatchNorms
-                NCHW_shape = model.get_tensor_shape(input_tensors[0])
-                if n.op_type == "BatchNormalization" and len(NCHW_shape) == 2:
+                chanFirst_shape = model.get_tensor_shape(input_tensors[0])
+                if n.op_type == "BatchNormalization" and len(chanFirst_shape) == 2:
                     continue
 
                 for i, inp in enumerate(input_tensors):
@@ -106,15 +107,15 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                         continue
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
-                    NCHW_shape = model.get_tensor_shape(inp)
-                    ndim = len(NCHW_shape)
+                    chanFirst_shape = model.get_tensor_shape(inp)
+                    ndim = len(chanFirst_shape)
                     assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args[ndim]]
+                    chanLast_shape = [chanFirst_shape[idx] for idx in _to_chan_last_args[ndim]]
                     # Intermediate tensor
                     inp_trans_out = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
                         TensorProto.FLOAT,
-                        NHWC_shape,
+                        chanLast_shape,
                     )
                     graph.value_info.append(inp_trans_out)
                     inp_trans_out = inp_trans_out.name
@@ -130,20 +131,20 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                 # Insert transformation nodes for output nodes
                 output_tensors = n.output
                 for i, outp in enumerate(output_tensors):
-                    NCHW_shape = model.get_tensor_shape(outp)
-                    ndim = len(NCHW_shape)
+                    chanFirst_shape = model.get_tensor_shape(outp)
+                    ndim = len(chanFirst_shape)
                     assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    NHWC_shape = [NCHW_shape[idx] for idx in _to_chan_last_args[ndim]]
+                    chanLast_shape = [chanFirst_shape[idx] for idx in _to_chan_last_args[ndim]]
                     # Intermediat tensor
                     outp_trans_in = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
                         TensorProto.FLOAT,
-                        NHWC_shape,
+                        chanLast_shape,
                     )
                     graph.value_info.append(outp_trans_in)
                     outp_trans_in = outp_trans_in.name
 
-                    # NCHW -> NHWC transpose
+                    # ChannelsFirst -> ChannelsLast transpose
                     outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args[ndim])
                     graph.node.insert(running_node_index, outp_trans_node)
                     running_node_index += 1
@@ -152,7 +153,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
                     n.output[i] = outp_trans_in
 
                 # Modify domain
-                n.domain = "qonnx.custom_op.nhwc"
+                n.domain = "qonnx.custom_op.ChannelsLast"
                 # Set modified flag
                 graph_modified = True
 
@@ -162,7 +163,7 @@ class InsertNHWCDomainsAndTrafos(Transformation):
 class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
     """
     Remove two consecutive transformations, which would do:
-    (NHWC -> NCHW) -> (NCHW -> NHWC)
+    (ChannelsLast -> ChannelsFirst) -> (ChannelsFirst -> ChannelsLast)
     Or more concrete, the first converts to channels first and the second to channels last.
     """
 
@@ -434,7 +435,7 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                         ndim = len(input_shape)
                         if ndim not in _to_chan_first_args.keys():
                             continue
-                        # check if transpose converts NHWC to NCHW
+                        # check if transpose converts ChannelsLast to ChannelsFirst
                         perms = get_by_name(transp_node.attribute, "perm").ints
                         if list(_to_chan_first_args[ndim]) == perms:
                             producer = model.find_producer(transp_node.input[0])

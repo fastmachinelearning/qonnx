@@ -9,8 +9,9 @@ from finn.custom_op.general.im2col import compute_conv_output_dim
 from finn.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 
 
-class NhwcWrappedOp(CustomOp):
-    _nchw_node_types = ["Conv", "MaxPool", "BatchNormalization"]
+class ChannelsLastWrappedOp(CustomOp):
+    # ToDo: _channelsLast_node_types should be loaded / inferred from this file or the registry.
+    _channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
     _to_chan_last_args = {
         3: (0, 2, 1),
         4: (0, 2, 3, 1),
@@ -29,12 +30,14 @@ class NhwcWrappedOp(CustomOp):
     def verify_node(self):
         # Check general compatibility
         node = self.onnx_node
-        assert node.op_type in self._nchw_node_types, f"{node.op_type} is not supported by the NHWC wrapper op."
-        assert len(node.input) > 0, "The NHWC wrapper op only supports nodes with inputs."
-        assert len(node.output) == 1, "The NHWC wrapper op only supports nodes with exactly one output."
+        assert (
+            node.op_type in self._channelsLast_node_types
+        ), f"{node.op_type} is not supported by the ChannelsLast wrapper op."
+        assert len(node.input) > 0, "The ChannelsLast wrapper op only supports nodes with inputs."
+        assert len(node.output) == 1, "The ChannelsLast wrapper op only supports nodes with exactly one output."
 
         result = [
-            "ONNX OP-type is supported by NHWC wrapper for node execution.",
+            "ONNX OP-type is supported by ChannelsLast wrapper for node execution.",
             "Number of inputs and outputs is valid for node execution.",
         ]
 
@@ -59,23 +62,23 @@ class NhwcWrappedOp(CustomOp):
         # And store them in the internal context.
         ndim = len(context[intermediate_node.input[0]].shape)
         for i, input in enumerate(intermediate_node.input):
-            nchw_array = context[input]
+            channelsFirst_array = context[input]
             # Generally we only transpose the first input
             transpose_input = i < 1
             # Conv is an exception, it also requires the second input to be transposed.
             transpose_input |= intermediate_node.op_type == "Conv" and i < 2
             if transpose_input:
-                nchw_array = nchw_array.transpose(self._to_chan_first_args[ndim])
-            assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
-            tensor = helper.make_tensor_value_info(input, TensorProto.FLOAT, nchw_array.shape)
-            input_dict[input] = nchw_array
+                channelsFirst_array = channelsFirst_array.transpose(self._to_chan_first_args[ndim])
+            assert channelsFirst_array.dtype == np.float32, "Requires float tensor, currently."
+            tensor = helper.make_tensor_value_info(input, TensorProto.FLOAT, channelsFirst_array.shape)
+            input_dict[input] = channelsFirst_array
             input_tensor_list.append(tensor)
 
         output = intermediate_node.output[0]
-        nchw_array = context[output]
-        nchw_array = nchw_array.transpose(self._to_chan_first_args[ndim])
-        assert nchw_array.dtype == np.float32, "Requires float tensor, currently."
-        tensor = helper.make_tensor_value_info(output, TensorProto.FLOAT, nchw_array.shape)
+        channelsFirst_array = context[output]
+        channelsFirst_array = channelsFirst_array.transpose(self._to_chan_first_args[ndim])
+        assert channelsFirst_array.dtype == np.float32, "Requires float tensor, currently."
+        tensor = helper.make_tensor_value_info(output, TensorProto.FLOAT, channelsFirst_array.shape)
         output_tensor_list.append(tensor)
 
         # Execute the intermediate node with onnxruntime,
@@ -91,7 +94,7 @@ class NhwcWrappedOp(CustomOp):
         context[node.output[0]] = output_onnx
 
 
-class Conv(NhwcWrappedOp):
+class Conv(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)
@@ -180,7 +183,7 @@ class Conv(NhwcWrappedOp):
         verification_successful = True
         info_messages = []
 
-        wrapper_info = NhwcWrappedOp.verify_node(self)
+        wrapper_info = ChannelsLastWrappedOp.verify_node(self)
         info_messages.extend(wrapper_info)
 
         # verify number of attributes
@@ -239,7 +242,7 @@ class Conv(NhwcWrappedOp):
         return info_messages
 
 
-class MaxPool(NhwcWrappedOp):
+class MaxPool(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)
@@ -323,7 +326,7 @@ class MaxPool(NhwcWrappedOp):
         verification_successful = True
         info_messages = []
 
-        wrapper_info = NhwcWrappedOp.verify_node(self)
+        wrapper_info = ChannelsLastWrappedOp.verify_node(self)
         info_messages.extend(wrapper_info)
 
         # verify number of attributes
@@ -378,7 +381,7 @@ class MaxPool(NhwcWrappedOp):
         return info_messages
 
 
-class BatchNormalization(NhwcWrappedOp):
+class BatchNormalization(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)
@@ -428,7 +431,7 @@ class BatchNormalization(NhwcWrappedOp):
         verification_successful = True
         info_messages = []
 
-        wrapper_info = NhwcWrappedOp.verify_node(self)
+        wrapper_info = ChannelsLastWrappedOp.verify_node(self)
         info_messages.extend(wrapper_info)
 
         # verify number of attributes
