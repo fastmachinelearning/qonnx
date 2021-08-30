@@ -6,7 +6,6 @@ from finn.transformation.general import RemoveUnusedTensors
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
 
-# ToDo: Similarly to the ops, this should maybe get moved from finn-base into qonnx.
 # ToDo: Should these parameters move into a parent class for all NHWC trafos?
 # ToDo: I also need some of these parameters in the nhwc op wrappers, so maybe this should get moved to a location,
 #  where both, the ops and the trafos can access it.
@@ -176,22 +175,26 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
         for n in graph.node:
             node_ind += 1
             if n.op_type == "Transpose":
-
+                # Check the input shape and make sure we support it
+                input_shape = model.get_tensor_shape(n.input[0])
+                ndim = len(input_shape)
+                if ndim not in _to_chan_first_args.keys():
+                    continue
                 # Check that this is a "to chan first" trafo
                 perm_1 = get_by_name(n.attribute, "perm")
-                if list(_to_chan_first_args) == perm_1.ints:
+                if list(_to_chan_first_args[ndim]) == perm_1.ints:
 
                     successor_nodes = model.find_direct_successors(n)
-                    assert len(successor_nodes) == 1, (
-                        "Transpose nodes should only have one output," " I don't think more than one would even be possible."
-                    )
+                    assert (
+                        len(successor_nodes) == 1
+                    ), "Transpose nodes should only have one output, I don't think more than one would even be possible."
                     successor_node = successor_nodes[0]
 
                     if successor_node.op_type == "Transpose":
                         # Check that this is a "to chan last" trafo,
                         # if so both can get removed.
                         perm_2 = get_by_name(successor_node.attribute, "perm")
-                        if list(_to_chan_last_args) == perm_2.ints:
+                        if list(_to_chan_last_args[ndim]) == perm_2.ints:
                             # Connect original input to new output
                             input_tensor = n.input[0]
                             output_tensor_name = successor_node.output[0]
@@ -228,15 +231,20 @@ class MoveChanLastUpstream(Transformation):
         for n in graph.node:
             node_ind += 1
             if n.op_type == "Transpose":
+                # Check the input shape and make sure we support it
+                input_shape = model.get_tensor_shape(n.input[0])
+                ndim = len(input_shape)
+                if ndim not in _to_chan_last_args.keys():
+                    continue
                 perm = get_by_name(n.attribute, "perm")
-                if list(_to_chan_last_args) == perm.ints:
+                if list(_to_chan_last_args[ndim]) == perm.ints:
                     predecessors = model.find_direct_predecessors(n)
                     # Check if we reached the top of the graph
                     if predecessors is None:
                         continue
-                    assert len(predecessors) == 1, (
-                        "Transpose nodes should only have one input, " "I don't think more than one would even be possible."
-                    )
+                    assert (
+                        len(predecessors) == 1
+                    ), "Transpose nodes should only have one input, I don't think more than one would even be possible."
                     predecessor = predecessors[0]
 
                     # Check if we can simply move through the previous node
@@ -299,8 +307,20 @@ class MoveChanFirstDownstream(Transformation):
         for n in graph.node:
             node_ind += 1
             if n.op_type == "Transpose":
+                # Check the input shape and make sure we support it
+                input_shape = model.get_tensor_shape(n.input[0])
+                ndim = len(input_shape)
+                if ndim not in _to_chan_first_args.keys():
+                    continue
                 perm = get_by_name(n.attribute, "perm")
-                if list(_to_chan_first_args) == perm.ints:
+                if list(_to_chan_first_args[ndim]) == perm.ints:
+                    # Do not move the node, if it is at the top of the graph,
+                    # this is a strange edge case, for 1D networks, where channels last and channels first trafos
+                    # are identical.
+                    predecessors = model.find_direct_predecessors(n)
+                    if predecessors is None:
+                        continue
+
                     successors = model.find_direct_successors(n)
                     assert len(successors) == 1, "Transpose nodes should only have one output"
                     successor = successors[0]
@@ -355,9 +375,9 @@ class FuseTransposeIntoQuantInit(Transformation):
                 # Check if we reached the top of the graph
                 if predecessors is None:
                     continue
-                assert len(predecessors) == 1, (
-                    "Transpose nodes should only have one input, " "I don't think more than one would even be possible."
-                )
+                assert (
+                    len(predecessors) == 1
+                ), "Transpose nodes should only have one input, I don't think more than one would even be possible."
                 predecessor = predecessors[0]
                 if predecessor.op_type == "Quant":
                     inp = predecessor.input[0]
@@ -409,16 +429,30 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                     if producer.op_type == "Transpose":
                         # transpose + flatten, absorb into following node
                         transp_node = producer
+                        # Check the input shape and make sure we support it
+                        input_shape = model.get_tensor_shape(transp_node.input[0])
+                        ndim = len(input_shape)
+                        if ndim not in _to_chan_first_args.keys():
+                            continue
                         # check if transpose converts NHWC to NCHW
                         perms = get_by_name(transp_node.attribute, "perm").ints
-                        if list(_to_chan_first_args) == perms:
+                        if list(_to_chan_first_args[ndim]) == perms:
                             producer = model.find_producer(transp_node.input[0])
                             consumer = model.find_consumer(n.output[0])
                             if consumer.op_type == "MatMul":
                                 b_shape = model.get_tensor_shape(consumer.input[1])
                                 mw = b_shape[0]
                                 mh = b_shape[1]
-                                (b, h, w, c) = model.get_tensor_shape(transp_node.input[0])
+                                if ndim == 4:
+                                    (b, h, w, c) = model.get_tensor_shape(transp_node.input[0])
+                                elif ndim == 3:
+                                    (b, h, c) = model.get_tensor_shape(transp_node.input[0])
+                                    w = 1
+                                else:
+                                    raise ValueError(
+                                        f"Inputs of dimensionality ndim={ndim}, are currently not supported "
+                                        f"for merging transposes into the matrix multiply weight tensor"
+                                    )
                                 # Get the weight initilizer
                                 quant_node = model.find_producer(consumer.input[1])
                                 if quant_node.op_type == "Quant":

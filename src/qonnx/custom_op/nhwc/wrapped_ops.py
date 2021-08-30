@@ -121,45 +121,46 @@ class Conv(NhwcWrappedOp):
         for performing shape inference."""
         # Modified version of: Im2Col.make_shape_compatible_op
         # From file: src/finn/custom_op/general/im2col.py
-        k_h, k_w = self.get_nodeattr("kernel_shape")
-        stride_h, stride_w = self.get_nodeattr("strides")
-        dilation_h, dilation_w = self.get_nodeattr("dilations")
+        ishape = model.get_tensor_shape(self.onnx_node.input[0])
+        ndim = len(ishape)
+        assert ndim == 3 or ndim == 4, "ChannelsLast Conv currently only supports 3D and 4D input tensors."
+
+        kernel_shape = self.get_nodeattr("kernel_shape")
+        strides = self.get_nodeattr("strides")
+        dilations = self.get_nodeattr("dilations")
         # Get the input shape from the previous tensor
         ishape = model.get_tensor_shape(self.onnx_node.input[0])
-        pad = self.get_nodeattr("pads")  # padding: [H_begin, W_begin, H_end, W_end]
-        pad_h = pad[0] + pad[2]
-        pad_w = pad[1] + pad[3]
-        assert len(ishape) == 4, "Unexpected input shape for nhwc.Conv (currently only supports 4D inputs)"
-        # NHWC per definition of this op.
-        ifm_dim_h = ishape[1]
-        ifm_dim_w = ishape[2]
+        pads = self.get_nodeattr("pads")
 
-        # check that kernel tensor also respects any existing dummy dimensions
-        # ToDo: This should change when 3D tensors are supported.
-        if ifm_dim_h == 1:
-            kernel_1d = k_h == 1
-            pad_1d = pad_h == 0
-            assert (
-                kernel_1d and pad_1d
-            ), "Unexpected kernel shape and padding for input image\
-                     of dimensions (N, 1, W, C)"
-        if ifm_dim_w == 1:
-            kernel_1d = k_w == 1
-            pad_1d = pad_w == 0
-            assert (
-                kernel_1d and pad_1d
-            ), "Unexpected kernel shape padding for input image\
-                     of dimensions (N, H, 1, C)"
-
-        ofm_dim_h = compute_conv_output_dim(ifm_dim_h, k_h, stride_h, pad_h, dilation_h)
-        ofm_dim_w = compute_conv_output_dim(ifm_dim_w, k_w, stride_w, pad_w, dilation_w)
+        ofm_dims = []
+        for i in range(ndim - 2):
+            if ndim == 3:
+                # padding: [begin, end]
+                padding = pads[0] + pads[1]
+            elif ndim == 4:
+                # padding: [H_begin, W_begin, H_end, W_end]
+                padding = pads[i] + pads[i + 2]
+            else:
+                raise ValueError(
+                    f"Inputs of dimensionality ndim={ndim}, are currently not supported for "
+                    f"the channels last Conv operation."
+                )
+            ofm_d = compute_conv_output_dim(ishape[i + 1], kernel_shape[i], strides[i], padding, dilations[i])
+            ofm_dims.append(ofm_d)
 
         # Get the number of output channels form the shape of the weight tensor.
         out_ch = model.get_tensor_shape(self.onnx_node.input[1])
         out_ch = out_ch[0]
 
         # implement tensor with correct shape
-        values = np.random.randn(1, ofm_dim_h, ofm_dim_w, out_ch).astype(np.float32)
+        output_shape = [
+            1,
+        ]
+        for ofm_d in ofm_dims:
+            output_shape.append(ofm_d)
+        output_shape.append(out_ch)
+
+        values = np.random.randn(*output_shape).astype(np.float32)
         return helper.make_node(
             "Constant",
             inputs=[],
@@ -271,15 +272,38 @@ class MaxPool(NhwcWrappedOp):
         kernel_shape = self.get_nodeattr("kernel_shape")
         pads = self.get_nodeattr("pads")
         strides = self.get_nodeattr("strides")
-        assert len(kernel_shape) == 2, "Non-2D MaxPoolNHWC not supported"
-        assert pads[0] == pads[2], "Uneven padding not supported"
-        assert pads[1] == pads[3], "Uneven padding not supported"
-        (n, hi, wi, c) = ishape
-        ho = compute_pool_output_dim(hi, kernel_shape[0], strides[0], pads[0])
-        wo = compute_pool_output_dim(wi, kernel_shape[1], strides[1], pads[2])
-        oshape = (n, ho, wo, c)
+        ndim = len(ishape)
+        assert ndim == 3 or ndim == 4, "ChannelsLast MaxPool currently only supports 3D and 4D input tensors."
+        ofm_dims = []
+        for i in range(ndim - 2):
+            if ndim == 3:
+                # padding: [begin, end]
+                assert pads[0] == pads[1], "Uneven padding not supported"
+            elif ndim == 4:
+                # padding: [H_begin, W_begin, H_end, W_end]
+                assert pads[0] == pads[2], "Uneven padding not supported"
+                assert pads[1] == pads[3], "Uneven padding not supported"
+            else:
+                raise ValueError(
+                    f"Inputs of dimensionality ndim={ndim}, are currently not supported for "
+                    f"the channels last MaxPool operation."
+                )
+            ofm_d = compute_pool_output_dim(ishape[i + 1], kernel_shape[i], strides[i], pads[i])
+            ofm_dims.append(ofm_d)
+
+        # Get the number of output channels form the input shape
+        out_ch = ishape[-1]
+
         # implement tensor with correct shape
-        values = np.random.randn(*oshape).astype(np.float32)
+        output_shape = [
+            1,
+        ]
+        for ofm_d in ofm_dims:
+            output_shape.append(ofm_d)
+        output_shape.append(out_ch)
+
+        # implement tensor with correct shape
+        values = np.random.randn(*output_shape).astype(np.float32)
         return helper.make_node(
             "Constant",
             inputs=[],
