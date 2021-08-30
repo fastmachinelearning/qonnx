@@ -30,24 +30,6 @@ _move_through_nodes = ["Quant", "Relu"]
 _move_through_nodes_if_scalar = ["Mul", "Div", "Sub", "Add"]
 
 
-def applyTrafoAndCheckForChange(model, transformation):
-    """
-    Applies a transformation and checks if the model changed in any way.
-    Returns:
-        The transformed model
-        Boolean indicating if the model has changed.
-    """
-    previous_model_string = model.model.SerializeToString()
-    model = model.transform(transformation())
-    new_model_string = model.model.SerializeToString()
-    if previous_model_string == new_model_string:
-        model_changed = False
-    else:
-        model_changed = True
-
-    return model, model_changed
-
-
 class ConvertToNHWCAndClean(Transformation):
     """
     Converts data layout dependent nodes to NHWC nodes and inserts transformations.
@@ -60,37 +42,31 @@ class ConvertToNHWCAndClean(Transformation):
         model = model.transform(InsertNHWCDomainsAndTrafos())
         max_tries = 100
         for i in range(max_tries):
+            initial_model_string = model.model.SerializeToString()
             # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
-            model_changed = False
-            model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
-            model_changed |= m_changed
+            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
             # Apply MoveChanLastUpstream
-            model, m_changed = applyTrafoAndCheckForChange(model, MoveChanLastUpstream)
-            model_changed |= m_changed
+            model = model.transform(MoveChanLastUpstream())
 
             # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
-            # if something changed in the previous trafo
-            if m_changed:
-                model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
-                model_changed |= m_changed
+            # Technically only required if something changed in the previous trafo
+            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
             # Apply MoveChanLastDownStream
-            model, m_changed = applyTrafoAndCheckForChange(model, MoveChanFirstDownstream)
-            model_changed |= m_changed
+            model = model.transform(MoveChanFirstDownstream())
 
             # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
-            # if something changed in the previous trafo
-            if m_changed:
-                model, m_changed = applyTrafoAndCheckForChange(model, RemoveConsecutiveChanFirstAndChanLastTrafos)
-                model_changed |= m_changed
+            # Technically only required if something changed in the previous trafo
+            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
             # Apply AbsorbChanFirstIntoMatMul
-            model, m_changed = applyTrafoAndCheckForChange(model, AbsorbChanFirstIntoMatMul)
-            model_changed |= m_changed
+            model = model.transform(AbsorbChanFirstIntoMatMul())
 
-            # Do some cleanup
-            if model_changed:
+            # Check if the model changed
+            new_model_string = model.model.SerializeToString()
+            if not (initial_model_string == new_model_string):
+                # Do some cleanup
                 model = model.transform(RemoveUnusedTensors())
                 model = model.transform(InferShapes())
             else:
