@@ -5,8 +5,10 @@ import urllib.request
 
 import finn.core.onnx_exec as oxe
 from finn.core.modelwrapper import ModelWrapper
+from finn.custom_op.registry import getCustomOp
 from finn.transformation.general import GiveUniqueNodeNames
 from finn.transformation.infer_shapes import InferShapes
+from finn.util.basic import is_finn_op
 from qonnx.transformation.channelsLast import (
     AbsorbChanFirstIntoMatMul,
     ConvertToChannelsLastAndClean,
@@ -58,6 +60,33 @@ def get_golden_in_and_output(onnx_file, test_model):
     return input_tensor, golden_result
 
 
+def analysis_testing_for_chanLast_domain(model):
+    ChanLast_node_types_and_min_dim_input = {
+        "Conv": 3,
+        "MaxPool": 3,
+        "BatchNormalization": 3,
+    }
+    for n_type, min_dim in ChanLast_node_types_and_min_dim_input.items():
+        nodes = model.get_nodes_by_op_type("Reshape")
+        for n in nodes:
+            input_shape = model.get_tensor_shape(n.input[0])
+            if len(input_shape) >= min_dim:
+                assert (
+                    n.domain == "qonnx.custom_op.ChannelsLast"
+                ), f"Node domain is not set correctly for node with name: {n.name}"
+    return dict()
+
+
+def verify_all_nodes(model):
+    result = dict()
+    for n in model.graph.node:
+        if is_finn_op(n.domain):
+            n_instance = getCustomOp(n)
+            verify_result = n_instance.verify_node()
+            result[n.name] = verify_result
+    return result
+
+
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
 def test_ChannelsLast_conversion_end2end(test_model):
     # Download an clean model
@@ -75,6 +104,13 @@ def test_ChannelsLast_conversion_end2end(test_model):
     output_dict = oxe.execute_onnx(model, input_dict, True)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), "Output of cleaned QONNX model and channels last model should match."
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
+
+    # Check that the ops, which should be ChannelsLast actually are.
+    _ = model.analysis(analysis_testing_for_chanLast_domain)
+
+    # This would throw an error if anything is misconfigured
+    _ = model.analysis(verify_all_nodes)
 
 
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
@@ -97,6 +133,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "InsertChannelsLastDomainsAndTrafos should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Run trafo
     model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -107,6 +144,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "RemoveConsecutiveChanFirstAndChanLastTrafos should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Run trafo
     model = model.transform(MoveChanLastUpstream())
@@ -117,6 +155,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "MoveChanLastUpstream should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Run trafo
     model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -127,6 +166,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "RemoveConsecutiveChanFirstAndChanLastTrafos should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Run trafo
     model = model.transform(MoveChanFirstDownstream())
@@ -137,6 +177,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "MoveChanFirstDownstream should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Run trafo
     model = model.transform(AbsorbChanFirstIntoMatMul())
@@ -148,4 +189,5 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "AbsorbChanFirstIntoMatMul should match."
     )
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
     model.save(qonnx_all_trafos)
