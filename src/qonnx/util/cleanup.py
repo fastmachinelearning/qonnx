@@ -10,6 +10,7 @@ from finn.transformation.general import (
     RemoveUnusedTensors,
 )
 from finn.transformation.infer_shapes import InferShapes
+from qonnx.transformation.QuantConstantFolding import FoldTransposeIntoQuantInit
 
 
 def cleanup(in_file, *, out_file=None):
@@ -28,7 +29,8 @@ def cleanup(in_file, *, out_file=None):
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
-        FoldConstants(),
+        FoldConstants(exclude_op_types=["Quant"]),
+        FoldTransposeIntoQuantInit(),
         RemoveUnusedTensors(),
         RemoveStaticGraphInputs(),
         GiveUniqueNodeNames(),
