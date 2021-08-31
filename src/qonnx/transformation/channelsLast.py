@@ -39,7 +39,7 @@ class ConvertToChannelsLastAndClean(Transformation):
 
     def apply(self, model):
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
-        max_tries = 100
+        max_tries = 10
         for i in range(max_tries):
             initial_model_string = model.model.SerializeToString()
             # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
