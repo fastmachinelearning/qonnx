@@ -5,13 +5,13 @@ from finn.transformation.base import Transformation
 from finn.transformation.general import RemoveUnusedTensors
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
+from qonnx.custom_op import ChannelsLast
 
 # ToDo: Should these parameters move into a parent class for all ChannelsLast trafos?
 # ToDo: I also need some of these parameters in the ChannelsLast op wrappers, so maybe this should get moved to a location,
 #  where both, the ops and the trafos can access it.
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-# ToDo: This should be read from the actual op list/registry, which we have in QONNX.
-_channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
+_channelsLast_node_types = list(ChannelsLast.custom_op.keys())
 _to_chan_last_args = {
     3: (0, 2, 1),
     4: (0, 2, 3, 1),
