@@ -9,6 +9,7 @@ from finn.custom_op.registry import getCustomOp
 from finn.transformation.general import GiveUniqueNodeNames
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import is_finn_op
+from qonnx.custom_op import ChannelsLast
 from qonnx.transformation.channelsLast import (
     AbsorbChanFirstIntoMatMul,
     ConvertToChannelsLastAndClean,
@@ -61,11 +62,20 @@ def get_golden_in_and_output(onnx_file, test_model):
 
 
 def analysis_testing_for_chanLast_domain(model):
+    # Define for each ChannelsLast operation the number of minimum dimensions, it needs to have
     ChanLast_node_types_and_min_dim_input = {
         "Conv": 3,
         "MaxPool": 3,
         "BatchNormalization": 3,
     }
+    # Check that all wrapped_ops in the registry have a definition here
+    chanLast_op_types = list(ChannelsLast.custom_op.keys())
+    testable_op_types = list(ChanLast_node_types_and_min_dim_input.keys())
+    for op_name in chanLast_op_types:
+        assert (
+            op_name in testable_op_types
+        ), f"The channelsLast op {op_name} is missing a definition for the domain string test."
+
     for n_type, min_dim in ChanLast_node_types_and_min_dim_input.items():
         nodes = model.get_nodes_by_op_type("Reshape")
         for n in nodes:
@@ -106,7 +116,7 @@ def test_ChannelsLast_conversion_end2end(test_model):
     assert (golden_result == current_result).all(), "Output of cleaned QONNX model and channels last model should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
-    # Check that the ops, which should be ChannelsLast actually are.
+    # Check that the ops, which should be ChannelsLast actually are
     _ = model.analysis(analysis_testing_for_chanLast_domain)
 
     # This would throw an error if anything is misconfigured
