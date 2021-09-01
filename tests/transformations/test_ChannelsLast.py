@@ -97,6 +97,14 @@ def verify_all_nodes(model):
     return result
 
 
+def analysis_first_node_is_transpose(model):
+    result = dict()
+    input_tensor = model.graph.input[0].name
+    first_node = model.find_consumer(input_tensor)
+    assert first_node.op_type == "Transpose", "First node in the network should be a transpose node."
+    return result
+
+
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
 def test_ChannelsLast_conversion_end2end(test_model):
     # Download an clean model
@@ -121,6 +129,9 @@ def test_ChannelsLast_conversion_end2end(test_model):
 
     # This would throw an error if anything is misconfigured
     _ = model.analysis(verify_all_nodes)
+
+    # Check that the first node is a transpose node
+    _ = model.analysis(analysis_first_node_is_transpose)
 
 
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
