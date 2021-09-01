@@ -7,15 +7,16 @@ from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
 from qonnx.custom_op import ChannelsLast
 
-# ToDo: Should these parameters move into a parent class for all ChannelsLast trafos?
-# ToDo: I also need some of these parameters in the ChannelsLast op wrappers, so maybe this should get moved to a location,
-#  where both, the ops and the trafos can access it.
+# ToDo: These parameters also exist for the ChannelsLast wrapped_ops, somehow they should be moved to a shared location.
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(ChannelsLast.custom_op.keys())
+# Required for ChannelsLast transformations and ops
+# Transpose parameters to convert to channels last for 3D and 4D tensors
 _to_chan_last_args = {
     3: (0, 2, 1),
     4: (0, 2, 3, 1),
 }
+# Similarly for converting back to channels first.
 _to_chan_first_args = {
     3: (0, 2, 1),
     4: (0, 3, 1, 2),
@@ -38,6 +39,7 @@ class ConvertToChannelsLastAndClean(Transformation):
     """
 
     def apply(self, model):
+        assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
         max_tries = 10
         for i in range(max_tries):
@@ -80,8 +82,6 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
     """
 
     def apply(self, model):
-        # ToDo: Add a check that all tensors have shape settings,
-        #  otherwise some of the ChannelsLast shape inference breaks
         graph = model.graph
         node_ind = 0
         graph_modified = False
@@ -94,7 +94,6 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                 input_tensors = n.input
                 # Skip for BatchNorm and 2D input tensors,
                 # these contain only channels and need no transpose.
-                # ToDo: Also support these BatchNorms
                 chanFirst_shape = model.get_tensor_shape(input_tensors[0])
                 if n.op_type == "BatchNormalization" and len(chanFirst_shape) == 2:
                     continue

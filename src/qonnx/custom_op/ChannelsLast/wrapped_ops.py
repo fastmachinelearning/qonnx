@@ -11,11 +11,15 @@ from finn.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 
 class ChannelsLastWrappedOp(CustomOp):
     # ToDo: _channelsLast_node_types should be loaded / inferred from this file or the registry.
+    # Standard ONNX nodes which require a ChannelsLast data format to function properly
     _channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
+    # Required for ChannelsLast transformations and ops
+    # Transpose parameters to convert to channels last for 3D and 4D tensors
     _to_chan_last_args = {
         3: (0, 2, 1),
         4: (0, 2, 3, 1),
     }
+    # Similarly for converting back to channels first.
     _to_chan_first_args = {
         3: (0, 2, 1),
         4: (0, 3, 1, 2),
