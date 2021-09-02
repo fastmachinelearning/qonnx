@@ -77,7 +77,7 @@ def analysis_testing_for_chanLast_domain(model):
         ), f"The channelsLast op {op_name} is missing a definition for the domain string test."
 
     for n_type, min_dim in ChanLast_node_types_and_min_dim_input.items():
-        nodes = model.get_nodes_by_op_type("Reshape")
+        nodes = model.get_nodes_by_op_type(n_type)
         for n in nodes:
             input_shape = model.get_tensor_shape(n.input[0])
             if len(input_shape) >= min_dim:
