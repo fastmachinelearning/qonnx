@@ -55,7 +55,7 @@ def get_golden_in_and_output(onnx_file, test_model):
 
     model = ModelWrapper(onnx_file)
     input_dict = {model.graph.input[0].name: input_tensor}
-    golden_output_dict = oxe.execute_onnx(model, input_dict, True)
+    golden_output_dict = oxe.execute_onnx(model, input_dict)
     golden_result = golden_output_dict[model.graph.output[0].name]
 
     return input_tensor, golden_result
@@ -119,7 +119,7 @@ def test_ChannelsLast_conversion_end2end(test_model):
 
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), "Output of cleaned QONNX model and channels last model should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
@@ -149,7 +149,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(GiveUniqueNodeNames())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "InsertChannelsLastDomainsAndTrafos should match."
@@ -160,7 +160,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "RemoveConsecutiveChanFirstAndChanLastTrafos should match."
@@ -171,7 +171,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(MoveChanLastUpstream())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "MoveChanLastUpstream should match."
@@ -182,7 +182,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "RemoveConsecutiveChanFirstAndChanLastTrafos should match."
@@ -193,7 +193,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(MoveChanFirstDownstream())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "MoveChanFirstDownstream should match."
@@ -205,7 +205,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(InferShapes())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
-    output_dict = oxe.execute_onnx(model, input_dict, True)
+    output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
     assert (golden_result == current_result).all(), (
         "Output of cleaned QONNX model and model after applying " "AbsorbChanFirstIntoMatMul should match."
