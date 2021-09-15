@@ -44,13 +44,19 @@ def download_model(test_model):
 
 
 def get_golden_in_and_output(onnx_file, test_model):
+    rng = np.random.RandomState(42)
     if test_model == "FINN-CNV_W2A2":
         input_shape = (1, 3, 32, 32)
+        size = np.prod(np.asarray(input_shape))
+        input_tensor = rng.uniform(low=-1.0, high=1.0 - 2.0 ** (-7), size=size)
+
     elif "RadioML_VGG10":
         input_shape = (1, 2, 1024)
+        size = np.prod(np.asarray(input_shape))
+        input_tensor = rng.uniform(low=-2, high=2, size=size)
     else:
         raise ValueError(f"Model called {test_model} is not supported")
-    input_tensor = np.ones(np.prod(np.asarray(input_shape)), dtype=np.float32)
+    input_tensor = input_tensor.astype(np.float32)
     input_tensor = input_tensor.reshape(input_shape)
 
     model = ModelWrapper(onnx_file)
