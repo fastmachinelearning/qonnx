@@ -2,7 +2,6 @@ import warnings
 from onnx import TensorProto, helper
 
 from finn.transformation.base import Transformation
-from finn.transformation.general import RemoveUnusedTensors
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
 from qonnx.custom_op import ChannelsLast
@@ -39,41 +38,41 @@ class ConvertToChannelsLastAndClean(Transformation):
     """
 
     def apply(self, model):
-        assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
+        assert model.check_all_tensor_shapes_specified(), (
+            "All tensor shapes must be specified. " "Consider running InferShapes."
+        )
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
-        max_tries = 10
-        for i in range(max_tries):
-            initial_model_string = model.model.SerializeToString()
-            # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
-            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
+        initial_model_string = model.model.SerializeToString()
+        # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
+        model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-            # Apply MoveChanLastUpstream
-            model = model.transform(MoveChanLastUpstream())
+        # Apply MoveChanLastUpstream
+        model = model.transform(MoveChanLastUpstream())
 
-            # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
-            # Technically only required if something changed in the previous trafo
-            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
+        # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
+        # Technically only required if something changed in the previous trafo
+        model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-            # Apply MoveChanLastDownStream
-            model = model.transform(MoveChanFirstDownstream())
+        # Apply MoveChanLastDownStream
+        model = model.transform(MoveChanFirstDownstream())
 
-            # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
-            # Technically only required if something changed in the previous trafo
-            model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
+        # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
+        # Technically only required if something changed in the previous trafo
+        model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-            # Apply AbsorbChanFirstIntoMatMul
-            model = model.transform(AbsorbChanFirstIntoMatMul())
+        # Apply AbsorbChanFirstIntoMatMul
+        model = model.transform(AbsorbChanFirstIntoMatMul())
 
-            # Check if the model changed
-            new_model_string = model.model.SerializeToString()
-            if not (initial_model_string == new_model_string):
-                # Do some cleanup
-                model = model.transform(RemoveUnusedTensors())
-                model = model.transform(InferShapes())
-            else:
-                break
+        # Check if the model changed
+        new_model_string = model.model.SerializeToString()
 
-        return model, False
+        # Do small cleanup, which isn't done by the cleanup in the normal transformation
+        model = model.transform(InferShapes())
+
+        # Check if the model changed
+        model_changed = initial_model_string != new_model_string
+
+        return model, model_changed
 
 
 class InsertChannelsLastDomainsAndTrafos(Transformation):
