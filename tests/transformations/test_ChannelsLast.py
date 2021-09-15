@@ -23,7 +23,10 @@ from qonnx.util.cleanup import cleanup
 
 def download_model(test_model):
     if test_model == "FINN-CNV_W2A2":
-        qonnx_url = "https://drive.google.com/uc?id=1BAyYM3N28fDHSWMgK8dZ3kVUsxGZLO3U&export=download"
+        qonnx_url = (
+            "https://raw.githubusercontent.com/fastmachinelearning/"
+            "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
+        )
 
     elif "RadioML_VGG10":
         qonnx_url = (
