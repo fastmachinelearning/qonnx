@@ -184,9 +184,6 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                 if list(_to_chan_first_args[ndim]) == perm_1.ints:
 
                     successor_nodes = model.find_direct_successors(n)
-                    assert (
-                        len(successor_nodes) == 1
-                    ), "Transpose nodes should only have one output, I don't think more than one would even be possible."
                     successor_node = successor_nodes[0]
 
                     if successor_node.op_type == "Transpose":
@@ -199,10 +196,6 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                             output_tensor_name = successor_node.output[0]
 
                             target_nodes = model.find_direct_successors(successor_node)
-                            assert len(target_nodes) == 1, (
-                                "Transpose nodes should only have one output,"
-                                " I don't think more than one would even be possible."
-                            )
 
                             target_node = target_nodes[0]
                             for i, inp in enumerate(target_node.input):
@@ -241,9 +234,6 @@ class MoveChanLastUpstream(Transformation):
                     # Check if we reached the top of the graph
                     if predecessors is None:
                         continue
-                    assert (
-                        len(predecessors) == 1
-                    ), "Transpose nodes should only have one input, I don't think more than one would even be possible."
                     predecessor = predecessors[0]
 
                     # Check if we can simply move through the previous node
@@ -321,7 +311,6 @@ class MoveChanFirstDownstream(Transformation):
                         continue
 
                     successors = model.find_direct_successors(n)
-                    assert len(successors) == 1, "Transpose nodes should only have one output"
                     successor = successors[0]
 
                     # Check if we can simply move through the next node
