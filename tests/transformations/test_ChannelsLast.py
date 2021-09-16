@@ -9,8 +9,8 @@ from finn.custom_op.registry import getCustomOp
 from finn.transformation.general import GiveUniqueNodeNames
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import is_finn_op
-from qonnx.custom_op import ChannelsLast
-from qonnx.transformation.channelsLast import (
+from qonnx.custom_op import channels_last
+from qonnx.transformation.channels_last import (
     AbsorbChanFirstIntoMatMul,
     ConvertToChannelsLastAndClean,
     InsertChannelsLastDomainsAndTrafos,
@@ -78,7 +78,7 @@ def analysis_testing_for_chanLast_domain(model):
         "BatchNormalization": 3,
     }
     # Check that all wrapped_ops in the registry have a definition here
-    chanLast_op_types = list(ChannelsLast.custom_op.keys())
+    chanLast_op_types = list(channels_last.custom_op.keys())
     testable_op_types = list(ChanLast_node_types_and_min_dim_input.keys())
     for op_name in chanLast_op_types:
         assert (
@@ -91,7 +91,7 @@ def analysis_testing_for_chanLast_domain(model):
             input_shape = model.get_tensor_shape(n.input[0])
             if len(input_shape) >= min_dim:
                 assert (
-                    n.domain == "qonnx.custom_op.ChannelsLast"
+                    n.domain == "qonnx.custom_op.channels_last"
                 ), f"Node domain is not set correctly for node with name: {n.name}"
     return dict()
 
@@ -122,7 +122,7 @@ def test_ChannelsLast_conversion_end2end(test_model):
 
     # Execute transformation
     model = ModelWrapper(onnx_file)
-    qonnx_all_trafos = onnx_file.split(".onnx")[0] + "_all_nhwc_trafos.onnx"
+    qonnx_all_trafos = onnx_file.split(".onnx")[0] + "_all_nhwc_trafos_test.onnx"
     model = model.transform(ConvertToChannelsLastAndClean())
     model.save(qonnx_all_trafos)
 

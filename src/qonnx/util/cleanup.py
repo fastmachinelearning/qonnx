@@ -10,7 +10,7 @@ from finn.transformation.general import (
     RemoveUnusedTensors,
 )
 from finn.transformation.infer_shapes import InferShapes
-from qonnx.transformation.QuantConstantFolding import FoldTransposeIntoQuantInit
+from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 
 def cleanup(in_file, *, out_file=None):

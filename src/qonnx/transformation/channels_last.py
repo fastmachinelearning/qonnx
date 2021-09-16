@@ -4,11 +4,11 @@ from onnx import TensorProto, helper
 from finn.transformation.base import Transformation
 from finn.transformation.infer_shapes import InferShapes
 from finn.util.basic import get_by_name
-from qonnx.custom_op import ChannelsLast
+from qonnx.custom_op import channels_last
 
 # ToDo: These parameters also exist for the ChannelsLast wrapped_ops, somehow they should be moved to a shared location.
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-_channelsLast_node_types = list(ChannelsLast.custom_op.keys())
+_channelsLast_node_types = list(channels_last.custom_op.keys())
 # Required for ChannelsLast transformations and ops
 # Transpose parameters to convert to channels last for 3D and 4D tensors
 _to_chan_last_args = {
@@ -150,7 +150,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     n.output[i] = outp_trans_in
 
                 # Modify domain
-                n.domain = "qonnx.custom_op.ChannelsLast"
+                n.domain = "qonnx.custom_op.channels_last"
                 # Set modified flag
                 graph_modified = True
 
