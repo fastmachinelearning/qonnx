@@ -11,6 +11,7 @@ from finn.transformation.infer_shapes import InferShapes
 from finn.transformation.make_input_chanlast import MakeInputChannelsLast
 from finn.util.basic import is_finn_op
 from qonnx.custom_op import channels_last
+from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_last_args
 from qonnx.transformation.channels_last import (
     AbsorbChanFirstIntoMatMul,
     ConvertToChannelsLastAndClean,
@@ -18,7 +19,6 @@ from qonnx.transformation.channels_last import (
     MoveChanFirstDownstream,
     MoveChanLastUpstream,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
-    _to_chan_last_args,
 )
 from qonnx.util.cleanup import cleanup
 
@@ -132,7 +132,7 @@ def test_ChannelsLast_conversion_end2end(test_model, make_input_channels_last):
     # Check output
     if make_input_channels_last:
         input_dims = len(model.get_tensor_shape(model.graph.input[0].name))
-        input_tensor = input_tensor.transpose(_to_chan_last_args[input_dims])
+        input_tensor = input_tensor.transpose(to_channels_last_args(input_dims))
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
@@ -237,7 +237,7 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
     model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
     # Check output
     input_dims = len(model.get_tensor_shape(model.graph.input[0].name))
-    input_tensor = input_tensor.transpose(_to_chan_last_args[input_dims])
+    input_tensor = input_tensor.transpose(to_channels_last_args(input_dims))
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]

@@ -6,21 +6,32 @@ from onnx import TensorProto, helper
 from finn.custom_op.base import CustomOp
 
 
+def to_channels_last_args(ndim):
+    """
+    Returns the tuple of parameters to transpose a channels first tensor to a channels last one.
+    :param ndim: Number of dimensions of the tensor to be transposed.
+    """
+    arg_list = list(range(ndim))
+    arg_list.pop(1)
+    arg_list.append(1)
+    return tuple(arg_list)
+
+
+def to_channels_first_args(ndim):
+    """
+    Returns the tuple of parameters to transpose a channels last tensor to a channels first one.
+    :param ndim: Number of dimensions of the tensor to be transposed.
+    """
+    arg_list = list(range(ndim))
+    arg_list.pop(-1)
+    arg_list.insert(1, ndim - 1)
+    return tuple(arg_list)
+
+
 class ChannelsLastWrappedOp(CustomOp):
     # ToDo: _channelsLast_node_types should be loaded / inferred from this file or the registry.
     # Standard ONNX nodes which require a ChannelsLast data format to function properly
     _channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
-    # Required for ChannelsLast transformations and ops
-    # Transpose parameters to convert to channels last for 3D and 4D tensors
-    _to_chan_last_args = {
-        3: (0, 2, 1),
-        4: (0, 2, 3, 1),
-    }
-    # Similarly for converting back to channels first.
-    _to_chan_first_args = {
-        3: (0, 2, 1),
-        4: (0, 3, 1, 2),
-    }
 
     def infer_node_datatype(self, model):
         # data type stays the same for all supported nodes
@@ -69,7 +80,7 @@ class ChannelsLastWrappedOp(CustomOp):
             # Conv is an exception, it also requires the second input to be transposed.
             transpose_input |= intermediate_node.op_type == "Conv" and i < 2
             if transpose_input:
-                channelsFirst_array = channelsFirst_array.transpose(self._to_chan_first_args[ndim])
+                channelsFirst_array = channelsFirst_array.transpose(to_channels_first_args(ndim))
             assert channelsFirst_array.dtype == np.float32, "Requires float tensor, currently."
             tensor = helper.make_tensor_value_info(input, TensorProto.FLOAT, channelsFirst_array.shape)
             input_dict[input] = channelsFirst_array
@@ -77,7 +88,7 @@ class ChannelsLastWrappedOp(CustomOp):
 
         output = intermediate_node.output[0]
         channelsFirst_array = context[output]
-        channelsFirst_array = channelsFirst_array.transpose(self._to_chan_first_args[ndim])
+        channelsFirst_array = channelsFirst_array.transpose(to_channels_first_args(ndim))
         assert channelsFirst_array.dtype == np.float32, "Requires float tensor, currently."
         tensor = helper.make_tensor_value_info(output, TensorProto.FLOAT, channelsFirst_array.shape)
         output_tensor_list.append(tensor)
@@ -91,5 +102,5 @@ class ChannelsLastWrappedOp(CustomOp):
         output_onnx = output_list[0]
 
         # Transpose the output back to channel last and save it in the external context.
-        output_onnx = output_onnx.transpose(self._to_chan_last_args[ndim])
+        output_onnx = output_onnx.transpose(to_channels_last_args(ndim))
         context[node.output[0]] = output_onnx

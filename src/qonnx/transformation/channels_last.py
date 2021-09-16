@@ -6,21 +6,10 @@ from finn.transformation.infer_shapes import InferShapes
 from finn.transformation.make_input_chanlast import MakeInputChannelsLast
 from finn.util.basic import get_by_name
 from qonnx.custom_op import channels_last
+from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
 
-# ToDo: These parameters also exist for the ChannelsLast wrapped_ops, somehow they should be moved to a shared location.
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(channels_last.custom_op.keys())
-# Required for ChannelsLast transformations and ops
-# Transpose parameters to convert to channels last for 3D and 4D tensors
-_to_chan_last_args = {
-    3: (0, 2, 1),
-    4: (0, 2, 3, 1),
-}
-# Similarly for converting back to channels first.
-_to_chan_first_args = {
-    3: (0, 2, 1),
-    4: (0, 3, 1, 2),
-}
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
@@ -119,7 +108,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     chanFirst_shape = model.get_tensor_shape(inp)
                     ndim = len(chanFirst_shape)
                     assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    chanLast_shape = [chanFirst_shape[idx] for idx in _to_chan_last_args[ndim]]
+                    chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
                     # Intermediate tensor
                     inp_trans_out = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
@@ -130,7 +119,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     inp_trans_out = inp_trans_out.name
 
                     # channels last transpose
-                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=_to_chan_last_args[ndim])
+                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
 
@@ -143,7 +132,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     chanFirst_shape = model.get_tensor_shape(outp)
                     ndim = len(chanFirst_shape)
                     assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    chanLast_shape = [chanFirst_shape[idx] for idx in _to_chan_last_args[ndim]]
+                    chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
                     # Intermediat tensor
                     outp_trans_in = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
@@ -154,7 +143,9 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     outp_trans_in = outp_trans_in.name
 
                     # ChannelsFirst -> ChannelsLast transpose
-                    outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=_to_chan_first_args[ndim])
+                    outp_trans_node = helper.make_node(
+                        "Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim)
+                    )
                     graph.node.insert(running_node_index, outp_trans_node)
                     running_node_index += 1
 
@@ -187,12 +178,10 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
             if n.op_type == "Transpose":
                 # Check the input shape and make sure we support it
                 input_shape = model.get_tensor_shape(n.input[0])
-                ndim = len(input_shape)
-                if ndim not in _to_chan_first_args.keys():
-                    continue
                 # Check that this is a "to chan first" trafo
                 perm_1 = get_by_name(n.attribute, "perm")
-                if list(_to_chan_first_args[ndim]) == perm_1.ints:
+                ndim = len(input_shape)
+                if list(to_channels_first_args(ndim)) == perm_1.ints:
 
                     successor_nodes = model.find_direct_successors(n)
                     successor_node = successor_nodes[0]
@@ -201,7 +190,7 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                         # Check that this is a "to chan last" trafo,
                         # if so both can get removed.
                         perm_2 = get_by_name(successor_node.attribute, "perm")
-                        if list(_to_chan_last_args[ndim]) == perm_2.ints:
+                        if list(to_channels_last_args(ndim)) == perm_2.ints:
                             # Connect original input to new output
                             input_tensor = n.input[0]
                             output_tensor_name = successor_node.output[0]
@@ -237,10 +226,8 @@ class MoveChanLastUpstream(Transformation):
                 # Check the input shape and make sure we support it
                 input_shape = model.get_tensor_shape(n.input[0])
                 ndim = len(input_shape)
-                if ndim not in _to_chan_last_args.keys():
-                    continue
                 perm = get_by_name(n.attribute, "perm")
-                if list(_to_chan_last_args[ndim]) == perm.ints:
+                if list(to_channels_last_args(ndim)) == perm.ints:
                     predecessors = model.find_direct_predecessors(n)
                     # Check if we reached the top of the graph
                     if predecessors is None:
@@ -310,10 +297,8 @@ class MoveChanFirstDownstream(Transformation):
                 # Check the input shape and make sure we support it
                 input_shape = model.get_tensor_shape(n.input[0])
                 ndim = len(input_shape)
-                if ndim not in _to_chan_first_args.keys():
-                    continue
                 perm = get_by_name(n.attribute, "perm")
-                if list(_to_chan_first_args[ndim]) == perm.ints:
+                if list(to_channels_first_args(ndim)) == perm.ints:
                     # Do not move the node, if it is at the top of the graph,
                     # this is a strange edge case, for 1D networks, where channels last and channels first trafos
                     # are identical.
@@ -390,12 +375,10 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                         transp_node = producer
                         # Check the input shape and make sure we support it
                         input_shape = model.get_tensor_shape(transp_node.input[0])
-                        ndim = len(input_shape)
-                        if ndim not in _to_chan_first_args.keys():
-                            continue
                         # check if transpose converts ChannelsLast to ChannelsFirst
+                        ndim = len(input_shape)
                         perms = get_by_name(transp_node.attribute, "perm").ints
-                        if list(_to_chan_first_args[ndim]) == perms:
+                        if list(to_channels_first_args(ndim)) == perms:
                             producer = model.find_producer(transp_node.input[0])
                             consumer = model.find_consumer(n.output[0])
                             if consumer.op_type == "MatMul":
