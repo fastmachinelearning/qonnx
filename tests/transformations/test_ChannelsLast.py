@@ -14,7 +14,6 @@ from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_last_args
 from qonnx.transformation.channels_last import (
     AbsorbChanFirstIntoMatMul,
-    ConvertToChannelsLastAndClean,
     InsertChannelsLastDomainsAndTrafos,
     MoveChanFirstDownstream,
     MoveChanLastUpstream,
@@ -22,6 +21,7 @@ from qonnx.transformation.channels_last import (
 )
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 from qonnx.util.cleanup import cleanup
+from qonnx.util.to_channels_last import to_channels_last
 
 
 def download_model(test_model):
@@ -125,12 +125,11 @@ def test_ChannelsLast_conversion_end2end(test_model, make_input_channels_last):
     input_tensor, golden_result = get_golden_in_and_output(onnx_file, test_model)
 
     # Execute transformation
-    model = ModelWrapper(onnx_file)
     qonnx_all_trafos = onnx_file.split(".onnx")[0] + "_all_nhwc_trafos_test.onnx"
-    model = model.transform(ConvertToChannelsLastAndClean(make_input_channels_last=make_input_channels_last))
-    model.save(qonnx_all_trafos)
+    to_channels_last(onnx_file, make_input_channels_last=make_input_channels_last, out_file=qonnx_all_trafos)
 
     # Check output
+    model = ModelWrapper(qonnx_all_trafos)
     if make_input_channels_last:
         input_dims = len(model.get_tensor_shape(model.graph.input[0].name))
         input_tensor = input_tensor.transpose(to_channels_last_args(input_dims))
