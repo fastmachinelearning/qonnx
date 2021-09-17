@@ -20,6 +20,7 @@ from qonnx.transformation.channels_last import (
     MoveChanLastUpstream,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
 )
+from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 from qonnx.util.cleanup import cleanup
 
 
@@ -187,6 +188,17 @@ def test_ChannelsLast_conversion_step_by_step(test_model):
 
     # Run trafo
     model = model.transform(MoveChanLastUpstream())
+    # Check output
+    input_dict = {model.graph.input[0].name: input_tensor}
+    output_dict = oxe.execute_onnx(model, input_dict)
+    current_result = output_dict[model.graph.output[0].name]
+    assert (
+        golden_result == current_result
+    ).all(), "Output of cleaned QONNX model and model after applying MoveChanLastUpstream should match."
+    assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
+
+    # Run trafo
+    model = model.transform(FoldTransposeIntoQuantInit())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)

@@ -7,6 +7,7 @@ from finn.transformation.make_input_chanlast import MakeInputChannelsLast
 from finn.util.basic import get_by_name
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(channels_last.custom_op.keys())
@@ -43,8 +44,9 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-        # Apply MoveChanLastUpstream
+        # Apply MoveChanLastUpstream and fold into initalizers
         model = model.transform(MoveChanLastUpstream())
+        model = model.transform(FoldTransposeIntoQuantInit())
 
         # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
         # Technically only required if something changed in the previous trafo
@@ -265,18 +267,19 @@ class MoveChanLastUpstream(Transformation):
                             model.set_tensor_shape(tensor_2, target_shape)
 
                             graph_modified = True
-                        else:
-                            # Explicitly apply the transpose to the initializer
-                            # of the previous node
-                            target_tensor = model.get_initializer(inp)
-                            target_tensor = target_tensor.transpose(perm.ints)
-                            model.set_initializer(inp, target_tensor)
-                            # Reconnect predecessor and delete transpose node
-                            predecessor.output[0] = n.output[0]
-                            graph.node.remove(n)
-
-                            graph_modified = True
-                        return model, graph_modified
+                            return model, graph_modified
+                        # else:
+                        #     # Explicitly apply the transpose to the initializer
+                        #     # of the previous node
+                        #     target_tensor = model.get_initializer(inp)
+                        #     target_tensor = target_tensor.transpose(perm.ints)
+                        #     model.set_initializer(inp, target_tensor)
+                        #     # Reconnect predecessor and delete transpose node
+                        #     predecessor.output[0] = n.output[0]
+                        #     graph.node.remove(n)
+                        #
+                        #     graph_modified = True
+                        # return model, graph_modified
 
         return model, graph_modified
 
