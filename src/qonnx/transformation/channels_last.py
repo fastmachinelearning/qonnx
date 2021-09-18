@@ -1,6 +1,7 @@
 import warnings
 from onnx import TensorProto, helper
 
+from finn.analysis.topology import is_linear
 from finn.transformation.base import Transformation
 from finn.transformation.infer_shapes import InferShapes
 from finn.transformation.make_input_chanlast import MakeInputChannelsLast
@@ -36,6 +37,7 @@ class ConvertToChannelsLastAndClean(Transformation):
         self._make_input_channels_last = make_input_channels_last
 
     def apply(self, model):
+        assert model.analysis(is_linear)["is_linear"], "Only linear and non-branching models are supported at this moment."
         assert model.check_all_tensor_shapes_specified(), (
             "All tensor shapes must be specified. " "Consider running InferShapes."
         )
@@ -44,7 +46,7 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-        # Apply MoveChanLastUpstream and fold into initalizers
+        # Apply MoveChanLastUpstream and fold into initializers
         model = model.transform(MoveChanLastUpstream())
         model = model.transform(FoldTransposeIntoQuantInit())
 
