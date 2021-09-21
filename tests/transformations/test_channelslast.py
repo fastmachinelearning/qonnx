@@ -23,22 +23,28 @@ from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantIn
 from qonnx.util.cleanup import cleanup
 from qonnx.util.to_channels_last import to_channels_last
 
-
-def download_model(test_model):
-    if test_model == "FINN-CNV_W2A2":
-        qonnx_url = (
+model_details = {
+    "FINN-CNV_W2A2": {
+        "url": (
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
-        )
-
-    elif "RadioML_VGG10":
-        qonnx_url = (
+        ),
+        "input_shape": (1, 3, 32, 32),
+        "input_range": (-1, +1),
+    },
+    "RadioML_VGG10": {
+        "url": (
             "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
             "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
-        )
-    else:
-        raise ValueError(f"Model called {test_model} is not supported")
+        ),
+        "input_shape": (1, 2, 1024),
+        "input_range": (-1, +1),
+    },
+}
 
+
+def download_model(test_model):
+    qonnx_url = model_details[test_model]["url"]
     # download test data
     dl_dir = "/tmp"
     dl_file = dl_dir + f"/{test_model}.onnx"
@@ -51,20 +57,12 @@ def download_model(test_model):
 
 def get_golden_in_and_output(onnx_file, test_model):
     rng = np.random.RandomState(42)
-    if test_model == "FINN-CNV_W2A2":
-        input_shape = (1, 3, 32, 32)
-        size = np.prod(np.asarray(input_shape))
-        input_tensor = rng.uniform(low=-1.0, high=1.0 - 2.0 ** (-7), size=size)
-
-    elif "RadioML_VGG10":
-        input_shape = (1, 2, 1024)
-        size = np.prod(np.asarray(input_shape))
-        input_tensor = rng.uniform(low=-2, high=2, size=size)
-    else:
-        raise ValueError(f"Model called {test_model} is not supported")
+    input_shape = model_details[test_model]["input_shape"]
+    (low, high) = model_details[test_model]["input_range"]
+    size = np.prod(np.asarray(input_shape))
+    input_tensor = rng.uniform(low=low, high=high, size=size)
     input_tensor = input_tensor.astype(np.float32)
     input_tensor = input_tensor.reshape(input_shape)
-
     model = ModelWrapper(onnx_file)
     input_dict = {model.graph.input[0].name: input_tensor}
     golden_output_dict = oxe.execute_onnx(model, input_dict)
@@ -118,7 +116,7 @@ def analysis_first_node_is_transpose(model):
 
 
 @pytest.mark.parametrize("make_input_channels_last", [True, False])
-@pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
+@pytest.mark.parametrize("test_model", model_details.keys())
 def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     # Download an clean model
     onnx_file = download_model(test_model)
@@ -150,7 +148,7 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
         _ = model.analysis(analysis_first_node_is_transpose)
 
 
-@pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
+@pytest.mark.parametrize("test_model", model_details.keys())
 def test_channelslast_conversion_step_by_step(test_model):
     # Download an clean model
     onnx_file = download_model(test_model)
