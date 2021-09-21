@@ -31,6 +31,16 @@ model_details = {
         ),
         "input_shape": (1, 3, 32, 32),
         "input_range": (-1, +1),
+        "layout_sensitive": True,
+    },
+    "FINN-TFC_W2A2": {
+        "url": (
+            "https://github.com/fastmachinelearning/QONNX_model_zoo/"
+            "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
+        ),
+        "input_shape": (1, 1, 28, 28),
+        "input_range": (-1, +1),
+        "layout_sensitive": False,
     },
     "RadioML_VGG10": {
         "url": (
@@ -39,6 +49,7 @@ model_details = {
         ),
         "input_shape": (1, 2, 1024),
         "input_range": (-1, +1),
+        "layout_sensitive": True,
     },
 }
 
@@ -143,8 +154,8 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     # This would throw an error if anything is misconfigured
     _ = model.analysis(verify_all_nodes)
 
-    # Check that the first node is a transpose node
-    if not make_input_channels_last:
+    # Check that the first node is a transpose node for layout-sensitive models
+    if (not make_input_channels_last) and (model_details[test_model]["layout_sensitive"]):
         _ = model.analysis(analysis_first_node_is_transpose)
 
 
