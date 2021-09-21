@@ -73,7 +73,7 @@ def get_golden_in_and_output(onnx_file, test_model):
     return input_tensor, golden_result
 
 
-def analysis_testing_for_chanLast_domain(model):
+def analysis_testing_for_chanlast_domain(model):
     # Define for each ChannelsLast operation the number of minimum dimensions, it needs to have
     ChanLast_node_types_and_min_dim_input = {
         "Conv": 3,
@@ -81,9 +81,9 @@ def analysis_testing_for_chanLast_domain(model):
         "BatchNormalization": 3,
     }
     # Check that all wrapped_ops in the registry have a definition here
-    chanLast_op_types = list(channels_last.custom_op.keys())
+    chanlast_op_types = list(channels_last.custom_op.keys())
     testable_op_types = list(ChanLast_node_types_and_min_dim_input.keys())
-    for op_name in chanLast_op_types:
+    for op_name in chanlast_op_types:
         assert (
             op_name in testable_op_types
         ), f"The channelsLast op {op_name} is missing a definition for the domain string test."
@@ -140,7 +140,7 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Check that the ops, which should be ChannelsLast actually are
-    _ = model.analysis(analysis_testing_for_chanLast_domain)
+    _ = model.analysis(analysis_testing_for_chanlast_domain)
 
     # This would throw an error if anything is misconfigured
     _ = model.analysis(verify_all_nodes)
