@@ -119,7 +119,7 @@ def analysis_first_node_is_transpose(model):
 
 @pytest.mark.parametrize("make_input_channels_last", [True, False])
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
-def test_ChannelsLast_conversion_end2end(test_model, make_input_channels_last):
+def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     # Download an clean model
     onnx_file = download_model(test_model)
     input_tensor, golden_result = get_golden_in_and_output(onnx_file, test_model)
@@ -151,7 +151,7 @@ def test_ChannelsLast_conversion_end2end(test_model, make_input_channels_last):
 
 
 @pytest.mark.parametrize("test_model", ["FINN-CNV_W2A2", "RadioML_VGG10"])
-def test_ChannelsLast_conversion_step_by_step(test_model):
+def test_channelslast_conversion_step_by_step(test_model):
     # Download an clean model
     onnx_file = download_model(test_model)
     input_tensor, golden_result = get_golden_in_and_output(onnx_file, test_model)
