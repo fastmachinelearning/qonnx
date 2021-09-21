@@ -188,6 +188,8 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                 if list(to_channels_first_args(ndim)) == perm_1.ints:
 
                     successor_nodes = model.find_direct_successors(n)
+                    if successor_nodes is not None:
+                        continue
                     successor_node = successor_nodes[0]
 
                     if successor_node.op_type == "Transpose":
@@ -200,6 +202,8 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                             output_tensor_name = successor_node.output[0]
 
                             target_nodes = model.find_direct_successors(successor_node)
+                            if target_nodes is None:
+                                continue
 
                             target_node = target_nodes[0]
                             for i, inp in enumerate(target_node.input):
@@ -312,6 +316,8 @@ class MoveChanFirstDownstream(Transformation):
                         continue
 
                     successors = model.find_direct_successors(n)
+                    if successors is None:
+                        continue
                     successor = successors[0]
 
                     # Check if we can simply move through the next node
@@ -375,7 +381,7 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                     continue
                 if len(oshape) == 2 and ishape[0] == oshape[0]:
                     producer = model.find_producer(n.input[0])
-                    if producer.op_type == "Transpose":
+                    if (producer is not None) and (producer.op_type == "Transpose"):
                         # transpose + flatten, absorb into following node
                         transp_node = producer
                         # Check the input shape and make sure we support it
@@ -386,7 +392,7 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                         if list(to_channels_first_args(ndim)) == perms:
                             producer = model.find_producer(transp_node.input[0])
                             consumer = model.find_consumer(n.output[0])
-                            if consumer.op_type == "MatMul":
+                            if (consumer is not None) and (consumer.op_type == "MatMul"):
                                 b_shape = model.get_tensor_shape(consumer.input[1])
                                 mw = b_shape[0]
                                 mh = b_shape[1]
@@ -402,6 +408,8 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                     )
                                 # Get the weight initilizer
                                 quant_node = model.find_producer(consumer.input[1])
+                                if quant_node is None:
+                                    continue
                                 if quant_node.op_type == "Quant":
                                     W = model.get_initializer(quant_node.input[0])
                                 else:
