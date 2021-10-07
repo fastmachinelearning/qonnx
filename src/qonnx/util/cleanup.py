@@ -26,6 +26,10 @@ def cleanup(in_file, *, out_file=None):
     qnt_nodes = model.get_nodes_by_op_type("Quant")
     for qnt_node in qnt_nodes:
         qnt_node.domain = "finn.custom_op.general"
+    # temporary fix for Trunc op domains
+    qnt_nodes = model.get_nodes_by_op_type("Trunc")
+    for qnt_node in qnt_nodes:
+        qnt_node.domain = "finn.custom_op.general"
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
