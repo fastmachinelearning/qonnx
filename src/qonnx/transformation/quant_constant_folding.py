@@ -1,3 +1,5 @@
+import warnings
+
 from finn.transformation.base import Transformation
 from finn.util.basic import get_by_name
 
@@ -15,7 +17,6 @@ class FoldTransposeIntoQuantInit(Transformation):
         for n in graph.node:
             node_ind += 1
             if n.op_type == "Transpose":
-                perm = get_by_name(n.attribute, "perm")
                 predecessors = model.find_direct_predecessors(n)
                 # Check if we reached the top of the graph
                 if predecessors is None:
@@ -27,8 +28,20 @@ class FoldTransposeIntoQuantInit(Transformation):
                             # Explicitly apply the transpose to the initializers
                             # of the previous node
                             target_tensor = model.get_initializer(inp)
+                            if target_tensor is None:
+                                warnings.warn(
+                                    f"Cannot fold transpose {n} into Quant node {predecessor}, "
+                                    f"due to not initialized tensor: {inp}. "
+                                    f"Exiting FoldTransposeIntoQuantInit transformation."
+                                )
+                                return model, False
                             # Make sure the tensor has the correct shape
-                            if len(perm.ints) == len(target_tensor.shape):
+                            perm = get_by_name(n.attribute, "perm")
+                            if perm is None:
+                                target_tensor = target_tensor.transpose()
+                                model.set_initializer(inp, target_tensor)
+                                graph_modified = True
+                            elif len(perm.ints) == len(target_tensor.shape):
                                 target_tensor = target_tensor.transpose(perm.ints)
                                 model.set_initializer(inp, target_tensor)
                                 graph_modified = True
