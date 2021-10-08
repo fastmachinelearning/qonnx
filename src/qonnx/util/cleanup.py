@@ -13,15 +13,14 @@ from finn.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 
-def cleanup(in_file, *, out_file=None):
-    """Execute a set of graph transformations to clean-up the given ONNX file.
+def cleanup_model(model):
+    """Execute the transformations for the cleanup function on a model level.
+    This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
 
-    :param in_file: Filename for the input ONNX model
-    :param out_file: If set, filename for the output ONNX model. Set to in_file with _clean
-        suffix otherwise.
+    :param model: A raw QONNX model from as example Brevitas.
+    :return model_clean: The cleaned model
     """
 
-    model = ModelWrapper(in_file)
     # temporary fix for Quant op domains
     qnt_nodes = model.get_nodes_by_op_type("Quant")
     for qnt_node in qnt_nodes:
@@ -42,6 +41,20 @@ def cleanup(in_file, *, out_file=None):
     ]
     for t in cleanup_transformations:
         model = model.transform(t)
+
+    return model
+
+
+def cleanup(in_file, *, out_file=None):
+    """Execute a set of graph transformations to clean-up the given ONNX file.
+
+    :param in_file: Filename for the input ONNX model
+    :param out_file: If set, filename for the output ONNX model. Set to in_file with _clean
+        suffix otherwise.
+    """
+
+    model = ModelWrapper(in_file)
+    model = cleanup_model(model)
     if out_file is None:
         out_file = in_file.replace(".onnx", "_clean.onnx")
     model.save(out_file)
