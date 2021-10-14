@@ -22,7 +22,7 @@ class FoldTransposeIntoQuantInit(Transformation):
                 if predecessors is None:
                     continue
                 predecessor = predecessors[0]
-                if predecessor.op_type == "Quant":
+                if predecessor.op_type == "Quant" or predecessor.op_type == "BinaryQuant":
                     for inp in predecessor.input:
                         if not isinstance(model.get_initializer(inp), type(None)):
                             # Explicitly apply the transpose to the initializers
@@ -30,7 +30,7 @@ class FoldTransposeIntoQuantInit(Transformation):
                             target_tensor = model.get_initializer(inp)
                             if target_tensor is None:
                                 warnings.warn(
-                                    f"Cannot fold transpose {n} into Quant node {predecessor}, "
+                                    f"Cannot fold transpose {n} into Quant/BinaryQuant node {predecessor}, "
                                     f"due to not initialized tensor: {inp}. "
                                     f"Exiting FoldTransposeIntoQuantInit transformation."
                                 )
