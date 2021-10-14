@@ -21,18 +21,16 @@ def cleanup_model(model):
     :return model_clean: The cleaned model
     """
 
-    # temporary fix for Quant op domains
-    qnt_nodes = model.get_nodes_by_op_type("Quant")
-    for qnt_node in qnt_nodes:
-        qnt_node.domain = "finn.custom_op.general"
-    # temporary fix for Trunc op domains
-    qnt_nodes = model.get_nodes_by_op_type("Trunc")
-    for qnt_node in qnt_nodes:
-        qnt_node.domain = "finn.custom_op.general"
+    # temporary fix for QONNX op domains
+    qonnx_domain_ops = ["Quant", "Trunc", "BinaryQuant"]
+    for q_op_type in qonnx_domain_ops:
+        qnt_nodes = model.get_nodes_by_op_type(q_op_type)
+        for qnt_node in qnt_nodes:
+            qnt_node.domain = "finn.custom_op.general"
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
-        FoldConstants(exclude_op_types=["Quant"]),
+        FoldConstants(exclude_op_types=["Quant", "BinaryQuant"]),
         FoldTransposeIntoQuantInit(),
         RemoveUnusedTensors(),
         RemoveStaticGraphInputs(),
