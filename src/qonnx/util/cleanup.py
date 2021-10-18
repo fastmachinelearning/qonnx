@@ -22,7 +22,7 @@ def cleanup_model(model):
     """
 
     # temporary fix for QONNX op domains
-    qonnx_domain_ops = ["Quant", "Trunc", "BinaryQuant"]
+    qonnx_domain_ops = ["Quant", "Trunc", "BipolarQuant"]
     for q_op_type in qonnx_domain_ops:
         qnt_nodes = model.get_nodes_by_op_type(q_op_type)
         for qnt_node in qnt_nodes:
@@ -30,7 +30,7 @@ def cleanup_model(model):
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
-        FoldConstants(exclude_op_types=["Quant", "BinaryQuant"]),
+        FoldConstants(exclude_op_types=["Quant", "BipolarQuant"]),
         FoldTransposeIntoQuantInit(),
         RemoveUnusedTensors(),
         RemoveStaticGraphInputs(),
