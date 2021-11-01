@@ -10,6 +10,37 @@ from finn.transformation.general import (
     RemoveUnusedTensors,
 )
 from finn.transformation.infer_shapes import InferShapes
+from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
+
+
+def cleanup_model(model):
+    """Execute the transformations for the cleanup function on a model level.
+    This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
+
+    :param model: A raw QONNX model from as example Brevitas.
+    :return model_clean: The cleaned model
+    """
+
+    # temporary fix for QONNX op domains
+    qonnx_domain_ops = ["Quant", "Trunc", "BipolarQuant"]
+    for q_op_type in qonnx_domain_ops:
+        qnt_nodes = model.get_nodes_by_op_type(q_op_type)
+        for qnt_node in qnt_nodes:
+            qnt_node.domain = "finn.custom_op.general"
+    cleanup_transformations = [
+        InferShapes(),
+        GiveUniqueParameterTensors(),
+        FoldConstants(exclude_op_types=["Quant", "BipolarQuant"]),
+        FoldTransposeIntoQuantInit(),
+        RemoveUnusedTensors(),
+        RemoveStaticGraphInputs(),
+        GiveUniqueNodeNames(),
+        GiveReadableTensorNames(),
+    ]
+    for t in cleanup_transformations:
+        model = model.transform(t)
+
+    return model
 
 
 def cleanup(in_file, *, out_file=None):
@@ -21,21 +52,7 @@ def cleanup(in_file, *, out_file=None):
     """
 
     model = ModelWrapper(in_file)
-    # temporary fix for Quant op domains
-    qnt_nodes = model.get_nodes_by_op_type("Quant")
-    for qnt_node in qnt_nodes:
-        qnt_node.domain = "finn.custom_op.general"
-    cleanup_transformations = [
-        InferShapes(),
-        GiveUniqueParameterTensors(),
-        FoldConstants(),
-        RemoveUnusedTensors(),
-        RemoveStaticGraphInputs(),
-        GiveUniqueNodeNames(),
-        GiveReadableTensorNames(),
-    ]
-    for t in cleanup_transformations:
-        model = model.transform(t)
+    model = cleanup_model(model)
     if out_file is None:
         out_file = in_file.replace(".onnx", "_clean.onnx")
     model.save(out_file)

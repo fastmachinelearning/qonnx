@@ -9,7 +9,10 @@ def test_cleanup_cnv_w2a2():
     # download test data
     dl_dir = "/tmp"
     dl_file = dl_dir + "/cnv-w2a2.onnx"
-    cnv_w2a2_qonnx_url = "https://drive.google.com/uc?id=1BAyYM3N28fDHSWMgK8dZ3kVUsxGZLO3U&export=download"
+    cnv_w2a2_qonnx_url = (
+        "https://raw.githubusercontent.com/fastmachinelearning/"
+        "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
+    )
     urllib.request.urlretrieve(cnv_w2a2_qonnx_url, dl_file)
     assert os.path.isfile(dl_file)
     # run cleanup with default settings
