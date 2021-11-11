@@ -108,6 +108,18 @@ def analysis_testing_for_chanlast_domain(model):
     return dict()
 
 
+def analysis_test_for_left_transposes(model, test_model, make_input_channels_last):
+    t_nodes = model.get_nodes_by_op_type("Transpose")
+    if test_model == "FINN-TFC_W2A2":
+        # For the TFC the assertion should be the other way around.
+        make_input_channels_last = not make_input_channels_last
+    if make_input_channels_last:
+        assert len(t_nodes) == 0, "There should be no transposes left in the network."
+    else:
+        assert len(t_nodes) == 1, "There should be only one transposes node left in the network."
+    return dict()
+
+
 def verify_all_nodes(model):
     result = dict()
     for n in model.graph.node:
@@ -153,6 +165,9 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
 
     # This would throw an error if anything is misconfigured
     _ = model.analysis(verify_all_nodes)
+
+    # Check that the transposes are gone
+    _ = analysis_test_for_left_transposes(model, test_model, make_input_channels_last)
 
     # Check that the first node is a transpose node for layout-sensitive models
     if (not make_input_channels_last) and (model_details[test_model]["layout_sensitive"]):
