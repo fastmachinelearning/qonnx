@@ -1,3 +1,4 @@
+import numpy as np
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
 
@@ -31,29 +32,48 @@ def qlayer_handler(ctx, node, name, args):
 
     if quantizers.get("kernel_quantizer"):
         weights = node.inputs[1].get_tensor_value(as_list=True)
-        kernel_quant_params = get_quant_params(weights, quantizers["kernel_quantizer"])
+        quant_params = get_quant_params(weights, quantizers["kernel_quantizer"])
+        attr = quant_params["attributes"]
+        input_nodes = [node.input[1]]
+        for key in quant_params["inputs"].keys():
+            name = f"{node.name}_kernel_quantizer_{key}"
+            np_val = np.asarray(quant_params["inputs"][key])
+            ctx.make_const(name, np_val)
+            input_nodes.append(name)
         ctx.insert_new_node_on_input(
-            node, "Quant", node.input[1], name=node.name + "_kernel_quantizer", **kernel_quant_params, domain="qonnx"
+            node, "Quant", input_nodes, name=node.name + "_kernel_quantizer", **attr, domain="qonnx"
         )
 
     if quantizers.get("bias_quantizer") and len(node.input) == 3:
         bias = node.inputs[2].get_tensor_value(as_list=True)
-        bias_quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
-        ctx.insert_new_node_on_input(
-            node, "Quant", node.input[2], name=node.name + "_bias_quantizer", **bias_quant_params, domain="qonnx"
-        )
+        quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
+        attr = quant_params["attributes"]
+        input_nodes = [node.input[2]]
+        for key in quant_params["inputs"].keys():
+            name = f"{node.name}_bias_quantizer_{key}"
+            np_val = np.asarray(quant_params["inputs"][key])
+            ctx.make_const(name, np_val)
+            input_nodes.append(name)
+        ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
 
     if quantizers.get("activation"):
         output_shapes = [ctx.get_shape(node.output[0])]
         dtypes = [ctx.get_dtype(node.output[0])]
-        act_quant_params = get_quant_params(None, quantizers["activation"])
+        quant_params = get_quant_params(None, quantizers["activation"])
+        attr = quant_params["attributes"]
+        input_nodes = [node.output[0]]
+        for key in quant_params["inputs"].keys():
+            name = f"{node.name}_activation_quantizer_{key}"
+            np_val = np.asarray(quant_params["inputs"][key])
+            ctx.make_const(name, np_val)
+            input_nodes.append(name)
         quant_act_node = ctx.make_node(
             "Quant",
-            [node.output[0]],
+            input_nodes,
             shapes=output_shapes,
             dtypes=dtypes,
             name=node.name + "_activation_quantizer",
-            attr=act_quant_params,
+            attr=attr,
             domain="qonnx",
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
@@ -69,14 +89,21 @@ def qact_handler(ctx, node, name, args):
     if quantizers.get("activation"):
         output_shapes = [ctx.get_shape(node.output[0])]
         dtypes = [ctx.get_dtype(node.output[0])]
-        act_quant_params = get_quant_params(None, quantizers["activation"])
+        quant_params = get_quant_params(None, quantizers["activation"])
+        attr = quant_params["attributes"]
+        input_nodes = [node.output[0]]
+        for key in quant_params["inputs"].keys():
+            name = f"{node.name}_activation_quantizer_{key}"
+            np_val = np.asarray(quant_params["inputs"][key])
+            ctx.make_const(name, np_val)
+            input_nodes.append(name)
         quant_act_node = ctx.make_node(
             "Quant",
-            [node.output[0]],
+            input_nodes,
             shapes=output_shapes,
             dtypes=dtypes,
             name=node.name + "_activation_quantizer",
-            attr=act_quant_params,
+            attr=attr,
             domain="qonnx",
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
@@ -103,10 +130,15 @@ def bias_handler(ctx, node, name, args):
 
     if quantizers.get("bias_quantizer"):
         bias = node.inputs[1].get_tensor_value(as_list=True)
-        bias_quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
-        ctx.insert_new_node_on_input(
-            node, "Quant", node.input[1], name=node.name + "_bias_quantizer", **bias_quant_params, domain="qonnx"
-        )
+        quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
+        attr = quant_params["attributes"]
+        input_nodes = [node.input[1]]
+        for key in quant_params["inputs"].keys():
+            name = f"{node.name}_activation_quantizer_{key}"
+            np_val = np.asarray(quant_params["inputs"][key])
+            ctx.make_const(name, np_val)
+            input_nodes.append(name)
+        ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
 
 
 def relu_handler(ctx, node, name, args):
