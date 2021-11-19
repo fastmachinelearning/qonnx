@@ -31,8 +31,13 @@ def convert_quantized_bits(tensor, quantizer):
     scale = _get_scale_from_alpha(tensor, quantizer)
     zero_point = 0
     bit_width = int(config["bits"])
+    rounding_mode = "ROUND"
 
-    return {"scale": scale, "zero_point": zero_point, "bit_width": bit_width, "signed": signed, "narrow": narrow}
+    settings = {
+        "attributes": {"signed": signed, "narrow": narrow, "rounding_mode": rounding_mode},
+        "inputs": {"scale": scale, "zero_point": zero_point, "bit_width": bit_width},
+    }
+    return settings
 
 
 def convert_quantized_relu(tensor, quantizer):
@@ -43,8 +48,13 @@ def convert_quantized_relu(tensor, quantizer):
     scale = 1
     zero_point = 0
     bit_width = int(config["bits"])
+    rounding_mode = "ROUND"
 
-    return {"scale": scale, "zero_point": zero_point, "bit_width": bit_width, "signed": signed, "narrow": narrow}
+    settings = {
+        "attributes": {"signed": signed, "narrow": narrow, "rounding_mode": rounding_mode},
+        "inputs": {"scale": scale, "zero_point": zero_point, "bit_width": bit_width},
+    }
+    return settings
 
 
 def convert_binary(tensor, quantizer):
@@ -56,8 +66,13 @@ def convert_binary(tensor, quantizer):
     scale = 1
     zero_point = 0
     bit_width = 1
+    rounding_mode = "ROUND"
 
-    return {"scale": scale, "zero_point": zero_point, "bit_width": bit_width, "signed": signed, "narrow": narrow}
+    settings = {
+        "attributes": {"signed": signed, "narrow": narrow, "rounding_mode": rounding_mode},
+        "inputs": {"scale": scale, "zero_point": zero_point, "bit_width": bit_width},
+    }
+    return settings
 
 
 def convert_ternary(tensor, quantizer):
@@ -69,8 +84,13 @@ def convert_ternary(tensor, quantizer):
     scale = 1
     zero_point = 0
     bit_width = 2
+    rounding_mode = "ROUND"
 
-    return {"scale": scale, "zero_point": zero_point, "bit_width": bit_width, "signed": signed, "narrow": narrow}
+    settings = {
+        "attributes": {"signed": signed, "narrow": narrow, "rounding_mode": rounding_mode},
+        "inputs": {"scale": scale, "zero_point": zero_point, "bit_width": bit_width},
+    }
+    return settings
 
 
 handler_map = {
