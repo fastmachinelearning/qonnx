@@ -77,6 +77,7 @@ def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
 
 def from_keras(
     model,
+    name,
     input_signature=None,
     opset=None,
     custom_ops=None,
@@ -140,6 +141,16 @@ def from_keras(
     )
 
     onnx_model = ModelWrapper(model_proto)
+    # ToDo: Set first value of input/output shape to 1, currently it's unknown, because it is technically the batch size
+    if not (len(onnx_model.graph.input) == 1 and len(onnx_model.graph.output) == 1):
+        raise ValueError("Qkeras to QONNX conversion only supports models with exactly one input and output.")
+    inp_shape = onnx_model.get_tensor_shape(onnx_model.graph.input[0].name)
+    out_shape = onnx_model.get_tensor_shape(onnx_model.graph.output[0].name)
+    inp_shape[0] = 1
+    out_shape[0] = 1
+    onnx_model.set_tensor_shape(onnx_model.graph.input[0].name, inp_shape)
+    onnx_model.set_tensor_shape(onnx_model.graph.output[0].name, out_shape)
+
     cleanup_model(onnx_model)
 
     if output_path is not None:
