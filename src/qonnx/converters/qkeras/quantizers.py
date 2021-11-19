@@ -49,7 +49,7 @@ def convert_quantized_relu(tensor, quantizer):
 
 def convert_binary(tensor, quantizer):
     # TODO This is a stub, not a correct implementation
-    config = quantizer.get_config()
+    # config = quantizer.get_config()
 
     signed = 0
     narrow = int(False)
@@ -62,7 +62,7 @@ def convert_binary(tensor, quantizer):
 
 def convert_ternary(tensor, quantizer):
     # TODO This is a stub, not a correct implementation
-    config = quantizer.get_config()
+    # config = quantizer.get_config()
 
     signed = 0
     narrow = int(False)
