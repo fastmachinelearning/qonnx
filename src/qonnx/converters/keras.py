@@ -141,7 +141,8 @@ def from_keras(
     )
 
     onnx_model = ModelWrapper(model_proto)
-    # ToDo: Set first value of input/output shape to 1, currently it's unknown, because it is technically the batch size
+    # Set the first value of input/output shape to 1, currently this is set to unknown,
+    # because it is technically the batch size
     if not (len(onnx_model.graph.input) == 1 and len(onnx_model.graph.output) == 1):
         raise ValueError("Qkeras to QONNX conversion only supports models with exactly one input and output.")
     inp_shape = onnx_model.get_tensor_shape(onnx_model.graph.input[0].name)
@@ -150,6 +151,17 @@ def from_keras(
     out_shape[0] = 1
     onnx_model.set_tensor_shape(onnx_model.graph.input[0].name, inp_shape)
     onnx_model.set_tensor_shape(onnx_model.graph.output[0].name, out_shape)
+
+    # Set all Quant output tensors to float32 datatype, otherwise they are undefined and crash ONNX execution
+    qonnx_domain_ops = ["Quant", "Trunc", "BipolarQuant"]
+    for q_op_type in qonnx_domain_ops:
+        quant_nodes = onnx_model.get_nodes_by_op_type(q_op_type)
+        q_node_outputs = [qn.output[0] for qn in quant_nodes]
+        for tensor in onnx_model.graph.value_info:
+            if tensor.name in q_node_outputs:
+                tensor.type.tensor_type.elem_type = 1
+
+    onnx_model.save(f"tmp{name}.onnx")
 
     cleanup_model(onnx_model)
 
