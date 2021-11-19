@@ -57,7 +57,6 @@ def qlayer_handler(ctx, node, name, args):
         ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
 
     if quantizers.get("activation"):
-        output_shapes = [ctx.get_shape(node.output[0])]
         dtypes = [ctx.get_dtype(node.output[0])]
         quant_params = get_quant_params(None, quantizers["activation"])
         attr = quant_params["attributes"]
@@ -70,7 +69,6 @@ def qlayer_handler(ctx, node, name, args):
         quant_act_node = ctx.make_node(
             "Quant",
             input_nodes,
-            shapes=output_shapes,
             dtypes=dtypes,
             name=node.name + "_activation_quantizer",
             attr=attr,
@@ -87,7 +85,6 @@ def qact_handler(ctx, node, name, args):
     quantizers = all_quantizers[keras_name]
 
     if quantizers.get("activation"):
-        output_shapes = [ctx.get_shape(node.output[0])]
         dtypes = [ctx.get_dtype(node.output[0])]
         quant_params = get_quant_params(None, quantizers["activation"])
         attr = quant_params["attributes"]
@@ -100,7 +97,6 @@ def qact_handler(ctx, node, name, args):
         quant_act_node = ctx.make_node(
             "Quant",
             input_nodes,
-            shapes=output_shapes,
             dtypes=dtypes,
             name=node.name + "_activation_quantizer",
             attr=attr,
