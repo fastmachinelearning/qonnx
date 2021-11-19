@@ -1,1 +1,1 @@
-from qonnx import converters
+from qonnx import converters  # noqa: F401

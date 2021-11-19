@@ -1,5 +1,6 @@
 import qkeras
-import tensorflow as tf
+
+# import tensorflow as tf
 from qkeras.quantizers import BaseQuantizer
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 

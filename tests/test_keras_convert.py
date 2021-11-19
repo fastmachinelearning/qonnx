@@ -1,9 +1,11 @@
 import pytest
 
 import onnx
-from numpy.testing import assert_allclose
+
+# from numpy.testing import assert_allclose
 from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
-from tensorflow.keras import backend as K
+
+# from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
 
