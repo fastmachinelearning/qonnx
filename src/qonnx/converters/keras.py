@@ -77,7 +77,7 @@ def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
 
 def from_keras(
     model,
-    name,
+    name="qkeras_to_qonnx_converted",
     input_signature=None,
     opset=None,
     custom_ops=None,
@@ -161,7 +161,7 @@ def from_keras(
             if tensor.name in q_node_outputs:
                 tensor.type.tensor_type.elem_type = 1
 
-    onnx_model.save(f"tmp{name}.onnx")
+    onnx_model.save(f"tmp_{name}.onnx")
 
     cleanup_model(onnx_model)
 

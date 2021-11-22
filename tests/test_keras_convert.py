@@ -56,9 +56,9 @@ def test_qkeras_conversion():
 
     model = Model(inputs=[x_in], outputs=[x])
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model)
+    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
-    onnx.save(onnx_model, "model.onnx")
+    onnx.save(onnx_model, "model_test_qkeras_conversion.onnx")
 
     # TODO add some useful test with the model
 
@@ -76,11 +76,11 @@ def test_keras_conversion():
 
     model = Model(inputs=[x_in], outputs=[x])
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model)
+    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_dense_conversion")
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
 
     assert external_storage is None
-    onnx.save(onnx_model, "model.onnx")
+    onnx.save(onnx_model, "model_test_keras_conversion.onnx")
 
 
 def test_keras_dense_conversion():
@@ -93,11 +93,11 @@ def test_keras_dense_conversion():
 
     model = Model(inputs=[x_in], outputs=[x])
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model)
+    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_dense_conversion")
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
 
     assert external_storage is None
-    onnx.save(onnx_model, "model.onnx")
+    onnx.save(onnx_model, "model_test_keras_dense_conversion.onnx")
 
 
 if __name__ == "__main__":
