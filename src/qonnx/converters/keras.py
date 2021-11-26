@@ -163,7 +163,7 @@ def from_keras(
 
     onnx_model.save(f"tmp_{name}.onnx")
 
-    cleanup_model(onnx_model)
+    onnx_model = cleanup_model(onnx_model)
 
     if output_path is not None:
         onnx_model.save(output_path)
