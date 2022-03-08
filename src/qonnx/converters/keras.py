@@ -116,6 +116,7 @@ def _strip_qkeras_model(model):
         return layer_class.from_config(layer_cfg)
 
     stripped_model = tf.keras.models.clone_model(model, clone_function=extract_quantizers)
+    stripped_model.set_weights(model.get_weights())
     return stripped_model, quantizers
 
 
