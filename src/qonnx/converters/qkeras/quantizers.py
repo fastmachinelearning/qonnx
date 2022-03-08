@@ -20,15 +20,19 @@ def _get_scale_from_alpha(tensor, quantizer):
     else:
         return alpha
 
+def _get_quantizer_scale(tensor, quantizer):
+    # call the quantizer on the tensor to get its scale
+    import numpy as np
+    quantized_tensor = quantizer(np.array(tensor).astype(np.float32))
+    return quantizer.scale
 
 def convert_quantized_bits(tensor, quantizer):
     config = quantizer.get_config()
-    # Let's assume the quantizer is symmetric
-    assert config["symmetric"] == 1
-
     signed = int(config["keep_negative"])
-    narrow = int(False)
-    scale = _get_scale_from_alpha(tensor, quantizer)
+    narrow = int(config["symmetric"])
+    qscale = _get_quantizer_scale(tensor, quantizer)
+    assert qscale == 1, "Non-unity alpha is not yet supported"
+    scale = 1. / 2 ** (int(config["bits"]) - int(config["integer"] + signed))
     zero_point = 0
     bit_width = int(config["bits"])
     rounding_mode = "ROUND"
@@ -43,9 +47,9 @@ def convert_quantized_bits(tensor, quantizer):
 def convert_quantized_relu(tensor, quantizer):
     config = quantizer.get_config()
 
-    signed = int(True)
+    signed = int(config["negative_slope"] != 0.0)
     narrow = int(False)
-    scale = 1
+    scale = 1. / 2 ** (int(config["bits"]) - int(config["integer"] + signed))
     zero_point = 0
     bit_width = int(config["bits"])
     rounding_mode = "ROUND"
@@ -58,11 +62,10 @@ def convert_quantized_relu(tensor, quantizer):
 
 
 def convert_binary(tensor, quantizer):
-    # TODO This is a stub, not a correct implementation
-    # config = quantizer.get_config()
-
-    signed = 0
-    narrow = int(False)
+    signed = 1
+    narrow = 1
+    qscale = _get_quantizer_scale(tensor, quantizer)
+    assert qscale == 1, "binary - non-unity alpha is not yet supported"
     scale = 1
     zero_point = 0
     bit_width = 1
@@ -76,12 +79,19 @@ def convert_binary(tensor, quantizer):
 
 
 def convert_ternary(tensor, quantizer):
-    # TODO This is a stub, not a correct implementation
-    # config = quantizer.get_config()
-
-    signed = 0
-    narrow = int(False)
-    scale = 1
+    config = quantizer.get_config()
+    signed = 1
+    narrow = 1
+    qscale = _get_quantizer_scale(tensor, quantizer)
+    assert qscale == 1, "ternary - non-unity alpha is not yet supported"
+    # qkeras ternary quantizer has threshold parameter to change rounding point
+    # here we could scale such that normal 'ROUND' op gives the same result, but doesn't work with re-scaling
+    t = config['threshold']
+    if t is None:
+        ternary = qkeras.ternary()
+        t = ternary.default_threshold
+    assert t == 0.5, "ternary - only threshold 0.5 is supported"
+    scale = 1.
     zero_point = 0
     bit_width = 2
     rounding_mode = "ROUND"

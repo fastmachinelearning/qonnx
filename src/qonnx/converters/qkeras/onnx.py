@@ -139,4 +139,4 @@ def bias_handler(ctx, node, name, args):
 
 def relu_handler(ctx, node, name, args):
     DirectOp.version_1(ctx, node)
-    # qact_handler(ctx, node, name, args)
+    qact_handler(ctx, node, name, args)
