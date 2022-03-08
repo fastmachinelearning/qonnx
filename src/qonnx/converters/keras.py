@@ -116,7 +116,6 @@ def _strip_qkeras_model(model):
         return layer_class.from_config(layer_cfg)
 
     stripped_model = tf.keras.models.clone_model(model, clone_function=extract_quantizers)
-
     return stripped_model, quantizers
 
 
@@ -220,7 +219,7 @@ def from_keras(
     onnx_model.save(f"tmp_{name}.onnx")
 
     onnx_model = cleanup_model(onnx_model)
-    onnx_model = add_value_info_for_constants(onnx_model)
+    onnx_model.model = add_value_info_for_constants(onnx_model.model)
 
     if output_path is not None:
         onnx_model.save(output_path)
