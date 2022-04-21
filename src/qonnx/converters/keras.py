@@ -16,7 +16,8 @@ _unsupported_layers = [
     "QDepthwiseConv2DBatchnorm",
 ]
 
-def add_value_info_for_constants(model : onnx.ModelProto):
+
+def add_value_info_for_constants(model: onnx.ModelProto):
     """
     Currently onnx.shape_inference doesn't use the shape of initializers, so add
     that info explicitly as ValueInfoProtos.
@@ -28,7 +29,7 @@ def add_value_info_for_constants(model : onnx.ModelProto):
     if model.ir_version < 4:
         return model
 
-    def add_const_value_infos_to_graph(graph : onnx.GraphProto):
+    def add_const_value_infos_to_graph(graph: onnx.GraphProto):
         inputs = {i.name for i in graph.input}
         existing_info = {vi.name: vi for vi in graph.value_info}
         for init in graph.initializer:
@@ -71,6 +72,7 @@ def add_value_info_for_constants(model : onnx.ModelProto):
 
     add_const_value_infos_to_graph(model.graph)
     return model
+
 
 def _is_qkeras_model(model):
     def iterate_model(model):

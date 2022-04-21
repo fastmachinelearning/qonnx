@@ -16,27 +16,31 @@ import qonnx
 from finn.core.modelwrapper import ModelWrapper
 from finn.transformation.infer_shapes import InferShapes
 
-act_quantizers = [quantized_relu(8),
-                  quantized_relu(8,4),
-                  quantized_relu(4),
-                  quantized_relu(4,4),
-                  quantized_bits(8,4,0,alpha=1),
-                  quantized_bits(8,4,1,alpha=1),
-                  quantized_bits(8,8,0,alpha=1),
-                  quantized_bits(8,8,1,alpha=1),
-                  quantized_bits(4,4,0,alpha=1),
-                  quantized_bits(4,4,1,alpha=1),
-                  quantized_bits(4,0,0,alpha=1),
-                  quantized_bits(4,0,1,alpha=1),
-                  quantized_bits(4,2,0,alpha=1),
-                  quantized_bits(2,2,1,alpha=1),
-                  quantized_bits(2,1,1,alpha=1),
-                  ternary(alpha=1),
-                  binary(alpha=1)]
+act_quantizers = [
+    quantized_relu(8),
+    quantized_relu(8, 4),
+    quantized_relu(4),
+    quantized_relu(4, 4),
+    quantized_bits(8, 4, 0, alpha=1),
+    quantized_bits(8, 4, 1, alpha=1),
+    quantized_bits(8, 8, 0, alpha=1),
+    quantized_bits(8, 8, 1, alpha=1),
+    quantized_bits(4, 4, 0, alpha=1),
+    quantized_bits(4, 4, 1, alpha=1),
+    quantized_bits(4, 0, 0, alpha=1),
+    quantized_bits(4, 0, 1, alpha=1),
+    quantized_bits(4, 2, 0, alpha=1),
+    quantized_bits(2, 2, 1, alpha=1),
+    quantized_bits(2, 1, 1, alpha=1),
+    ternary(alpha=1),
+    binary(alpha=1),
+]
 act_quantizers_ids = list(range(len(act_quantizers)))
-@pytest.mark.parametrize('quantizer', act_quantizers, ids=act_quantizers_ids)
+
+
+@pytest.mark.parametrize("quantizer", act_quantizers, ids=act_quantizers_ids)
 def test_qkeras_qactivation(quantizer, request):
-    ini = tf.keras.initializers.RandomUniform(minval=-1., maxval=1.)
+    ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
     x = x_in = Input((16), name="input")
     x = QActivation(activation=quantizer, name="act_0")(x)
     model = Model(inputs=[x_in], outputs=[x])
@@ -57,23 +61,27 @@ def test_qkeras_qactivation(quantizer, request):
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
 
+
 # pairs of quantizers for kernel and bias
-kb_quantizers = [(quantized_bits(8,4,0,alpha=1), quantized_bits(8,4,0,alpha=1)),
-                 (quantized_bits(8,4,1,alpha=1), quantized_bits(8,4,1,alpha=1)),
-                 (quantized_bits(8,8,0,alpha=1), quantized_bits(8,8,0,alpha=1)),
-                 (quantized_bits(8,8,1,alpha=1), quantized_bits(8,8,1,alpha=1)),
-                 (quantized_bits(4,4,0,alpha=1), quantized_bits(8,8,0,alpha=1)),
-                 (quantized_bits(4,4,1,alpha=1), quantized_bits(8,8,1,alpha=1)),
-                 (quantized_bits(4,0,0,alpha=1), quantized_bits(8,0,0,alpha=1)),
-                 (quantized_bits(4,0,1,alpha=1), quantized_bits(8,0,1,alpha=1)),
-                 (quantized_bits(4,2,0,alpha=1), quantized_bits(8,2,0,alpha=1)),
-                 (quantized_bits(2,2,1,alpha=1), quantized_bits(2,2,1,alpha=1)),
-                 (quantized_bits(2,1,1,alpha=1), quantized_bits(2,1,1,alpha=1)),
-                 (ternary(alpha=1, threshold=0.5), quantized_bits(4,4)),
-                 (binary(alpha=1), quantized_bits(4,4))]
+kb_quantizers = [
+    (quantized_bits(8, 4, 0, alpha=1), quantized_bits(8, 4, 0, alpha=1)),
+    (quantized_bits(8, 4, 1, alpha=1), quantized_bits(8, 4, 1, alpha=1)),
+    (quantized_bits(8, 8, 0, alpha=1), quantized_bits(8, 8, 0, alpha=1)),
+    (quantized_bits(8, 8, 1, alpha=1), quantized_bits(8, 8, 1, alpha=1)),
+    (quantized_bits(4, 4, 0, alpha=1), quantized_bits(8, 8, 0, alpha=1)),
+    (quantized_bits(4, 4, 1, alpha=1), quantized_bits(8, 8, 1, alpha=1)),
+    (quantized_bits(4, 0, 0, alpha=1), quantized_bits(8, 0, 0, alpha=1)),
+    (quantized_bits(4, 0, 1, alpha=1), quantized_bits(8, 0, 1, alpha=1)),
+    (quantized_bits(4, 2, 0, alpha=1), quantized_bits(8, 2, 0, alpha=1)),
+    (quantized_bits(2, 2, 1, alpha=1), quantized_bits(2, 2, 1, alpha=1)),
+    (quantized_bits(2, 1, 1, alpha=1), quantized_bits(2, 1, 1, alpha=1)),
+    (ternary(alpha=1, threshold=0.5), quantized_bits(4, 4)),
+    (binary(alpha=1), quantized_bits(4, 4)),
+]
 kb_quantizers_ids = list(range(len(kb_quantizers)))
 
-@pytest.mark.parametrize('quantizers', kb_quantizers, ids=kb_quantizers_ids)
+
+@pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qconv2d(quantizers, request):
     kq, bq = quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
@@ -108,7 +116,8 @@ def test_qkeras_qconv2d(quantizers, request):
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
 
-@pytest.mark.parametrize('quantizers', kb_quantizers, ids=kb_quantizers_ids)
+
+@pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qdense(quantizers, request):
     kq, bq = quantizers
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
@@ -140,6 +149,7 @@ def test_qkeras_qdense(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+
 
 def test_keras_conv2d_conversion():
     x = x_in = Input((28, 28, 1), name="input")
@@ -174,7 +184,7 @@ def test_keras_conv2d_conversion():
 
 
 def test_keras_dense_conversion():
-    ini = tf.keras.initializers.RandomUniform(minval=-1., maxval=1.)
+    ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
     x = x_in = Input((15), name="input")
     x = Dense(10, kernel_initializer=ini, bias_initializer=ini, name="dense1")(x)
     x = Activation("relu", name="act0_m")(x)
@@ -200,8 +210,9 @@ def test_keras_dense_conversion():
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
 
+
 def test_qkeras_conv2d_conversion():
-    ini = tf.keras.initializers.RandomUniform(minval=-1., maxval=1.)
+    ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
     x = x_in = Input((28, 28, 1), name="input")
     x = QConv2D(
         32,
@@ -274,6 +285,7 @@ def test_qkeras_conv2d_conversion():
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_array_equal(y_qkeras, y_qonnx)
+
 
 if __name__ == "__main__":
     pytest.main([__file__])
