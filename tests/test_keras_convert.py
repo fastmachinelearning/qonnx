@@ -40,7 +40,6 @@ act_quantizers_ids = list(range(len(act_quantizers)))
 
 @pytest.mark.parametrize("quantizer", act_quantizers, ids=act_quantizers_ids)
 def test_qkeras_qactivation(quantizer, request):
-    ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
     x = x_in = Input((16), name="input")
     x = QActivation(activation=quantizer, name="act_0")(x)
     model = Model(inputs=[x_in], outputs=[x])
