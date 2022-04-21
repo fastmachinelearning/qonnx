@@ -1,6 +1,6 @@
+import onnx
 import tensorflow as tf
 import tf2onnx
-import onnx
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 from finn.core.modelwrapper import ModelWrapper

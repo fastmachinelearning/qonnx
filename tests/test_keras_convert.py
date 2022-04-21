@@ -1,6 +1,8 @@
 import pytest
 
+import numpy as np
 import onnx
+import tensorflow as tf
 
 # from numpy.testing import assert_allclose
 from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
@@ -8,15 +10,11 @@ from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantiz
 # from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
-import tensorflow as tf
-
-import numpy as np
 
 import finn.core.onnx_exec as oxe
+import qonnx
 from finn.core.modelwrapper import ModelWrapper
 from finn.transformation.infer_shapes import InferShapes
-
-import qonnx
 
 act_quantizers = [quantized_relu(8),
                   quantized_relu(8,4),
@@ -44,7 +42,7 @@ def test_qkeras_qactivation(quantizer, request):
     model = Model(inputs=[x_in], outputs=[x])
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
-    
+
     onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qactivation_{request.node.callspec.id}.onnx"
@@ -95,12 +93,12 @@ def test_qkeras_qconv2d(quantizers, request):
 
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
-    
+
     onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
- 
+
     onnx_model = ModelWrapper(model_path)
     onnx_model = onnx_model.transform(InferShapes())
 
@@ -128,7 +126,7 @@ def test_qkeras_qdense(quantizers, request):
     model = Model(inputs=[x_in], outputs=[x])
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
-    
+
     onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense_{request.node.callspec.id}.onnx"
@@ -247,7 +245,7 @@ def test_qkeras_conv2d_conversion():
         use_bias=False,  # Lets try this one without bias to see if that trips up the converter
         name="conv2d_3_m",
     )(x)
-    x = QActivation("quantized_bits(4,4,0,alpha=1)", name="act3_m")(x)    
+    x = QActivation("quantized_bits(4,4,0,alpha=1)", name="act3_m")(x)
     x = Flatten(name="flatten")(x)
     x = QDense(
         10,
