@@ -25,7 +25,7 @@ def _get_quantizer_scale(tensor, quantizer):
     # call the quantizer on the tensor to get its scale
     import numpy as np
 
-    quantized_tensor = quantizer(np.array(tensor).astype(np.float32))
+    quantizer(np.array(tensor).astype(np.float32))
     return quantizer.scale
 
 
