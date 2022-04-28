@@ -166,13 +166,13 @@ def test_keras_conv2d_conversion():
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_dense_conversion")
+    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_conv2d_conversion")
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
 
     assert external_storage is None
-    onnx.save(onnx_model, "model_test_keras_conversion.onnx")
+    onnx.save(onnx_model, "model_test_keras_conv2d_conversion.onnx")
 
-    onnx_model = ModelWrapper("model_test_keras_conversion.onnx")
+    onnx_model = ModelWrapper("model_test_keras_conv2d_conversion.onnx")
     onnx_model = onnx_model.transform(InferShapes())
 
     idict = {onnx_model.graph.input[0].name: x_test}
@@ -210,7 +210,7 @@ def test_keras_dense_conversion():
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
 
 
-def test_qkeras_conv2d_conversion():
+def test_qkeras_qconv2d_conversion():
     ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
     x = x_in = Input((28, 28, 1), name="input")
     x = QConv2D(
@@ -272,11 +272,11 @@ def test_qkeras_conv2d_conversion():
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
     assert external_storage is None
-    onnx.save(onnx_model, "model_test_qkeras_conversion.onnx")
+    onnx.save(onnx_model, "model_test_qkeras_qconv2d_conversion.onnx")
 
-    onnx_model = ModelWrapper("model_test_qkeras_conversion.onnx")
+    onnx_model = ModelWrapper("model_test_qkeras_qconv2d_conversion.onnx")
     onnx_model = onnx_model.transform(InferShapes())
 
     idict = {onnx_model.graph.input[0].name: x_test}
