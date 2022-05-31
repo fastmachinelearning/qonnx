@@ -2,8 +2,8 @@ import clize
 import numpy as np
 import onnx
 
-from finn.core.modelwrapper import ModelWrapper
-from finn.core.onnx_exec import execute_onnx
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.core.onnx_exec import execute_onnx
 
 
 def exec_qonnx(qonnx_model_file, *in_npy, override_opset: int = None, output_prefix: str = "out_"):

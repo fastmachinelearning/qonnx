@@ -2,8 +2,8 @@ import numpy as np
 from google.protobuf.pyext._message import RepeatedScalarContainer
 from onnx import TensorProto, helper
 
-from finn.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
+from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 
 
 class MaxPool(ChannelsLastWrappedOp):

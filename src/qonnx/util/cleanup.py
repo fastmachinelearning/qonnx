@@ -1,15 +1,15 @@
 import clize
 
-from finn.core.modelwrapper import ModelWrapper
-from finn.transformation.fold_constants import FoldConstants
-from finn.transformation.general import (
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.transformation.general import (
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
     GiveUniqueParameterTensors,
     RemoveStaticGraphInputs,
     RemoveUnusedTensors,
 )
-from finn.transformation.infer_shapes import InferShapes
+from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 
@@ -26,7 +26,7 @@ def cleanup_model(model):
     for q_op_type in qonnx_domain_ops:
         qnt_nodes = model.get_nodes_by_op_type(q_op_type)
         for qnt_node in qnt_nodes:
-            qnt_node.domain = "finn.custom_op.general"
+            qnt_node.domain = "qonnx.custom_op.general"
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),

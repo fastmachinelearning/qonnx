@@ -1,14 +1,14 @@
 import warnings
 from onnx import TensorProto, helper
 
-from finn.analysis.topology import is_linear
-from finn.transformation.base import Transformation
-from finn.transformation.infer_shapes import InferShapes
-from finn.transformation.make_input_chanlast import MakeInputChannelsLast
-from finn.util.basic import get_by_name
+from qonnx.analysis.topology import is_linear
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.transformation.base import Transformation
+from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
+from qonnx.util.basic import get_by_name
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(channels_last.custom_op.keys())

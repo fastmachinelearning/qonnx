@@ -3,15 +3,11 @@ import pytest
 import numpy as np
 import urllib.request
 
-import finn.core.onnx_exec as oxe
-from finn.core.modelwrapper import ModelWrapper
-from finn.custom_op.registry import getCustomOp
-from finn.transformation.general import GiveUniqueNodeNames
-from finn.transformation.infer_shapes import InferShapes
-from finn.transformation.make_input_chanlast import MakeInputChannelsLast
-from finn.util.basic import is_finn_op
+import qonnx.core.onnx_exec as oxe
+from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_last_args
+from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.channels_last import (
     AbsorbChanFirstIntoMatMul,
     InsertChannelsLastDomainsAndTrafos,
@@ -19,7 +15,11 @@ from qonnx.transformation.channels_last import (
     MoveChanLastUpstream,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
 )
+from qonnx.transformation.general import GiveUniqueNodeNames
+from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
+from qonnx.util.basic import is_finn_op
 from qonnx.util.cleanup import cleanup
 from qonnx.util.to_channels_last import to_channels_last
 
