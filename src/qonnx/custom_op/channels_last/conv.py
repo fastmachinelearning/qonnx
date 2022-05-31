@@ -1,5 +1,5 @@
 import numpy as np
-from google.protobuf.pyext._message import RepeatedScalarContainer
+from google.protobuf.internal.containers import RepeatedScalarFieldContainer
 from onnx import TensorProto, helper
 
 from finn.custom_op.general.im2col import compute_conv_output_dim
@@ -129,10 +129,10 @@ class Conv(ChannelsLastWrappedOp):
 
         # verify that attributes have the correct datatype.
         try:
-            assert isinstance(self.get_nodeattr("kernel_shape"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("pads"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("strides"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("dilations"), RepeatedScalarContainer)
+            assert isinstance(self.get_nodeattr("kernel_shape"), RepeatedScalarFieldContainer)
+            assert isinstance(self.get_nodeattr("pads"), RepeatedScalarFieldContainer)
+            assert isinstance(self.get_nodeattr("strides"), RepeatedScalarFieldContainer)
+            assert isinstance(self.get_nodeattr("dilations"), RepeatedScalarFieldContainer)
             assert isinstance(self.get_nodeattr("group"), int)
             info_messages.append("All attributes are of the correct type")
         except Exception:
