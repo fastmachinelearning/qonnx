@@ -1,11 +1,12 @@
 import clize
-
-from finn.core.modelwrapper import ModelWrapper
 import numpy as np
-from finn.core.onnx_exec import execute_onnx
 import onnx
 
-def exec_qonnx(qonnx_model_file, *in_npy, override_opset:int=None, output_prefix:str="out_"):
+from finn.core.modelwrapper import ModelWrapper
+from finn.core.onnx_exec import execute_onnx
+
+
+def exec_qonnx(qonnx_model_file, *in_npy, override_opset: int = None, output_prefix: str = "out_"):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
     The input model have been previously cleaned by the cleanup transformation or commandline tool.
@@ -28,17 +29,19 @@ def exec_qonnx(qonnx_model_file, *in_npy, override_opset:int=None, output_prefix
             idict[inp.name] = np.load(in_npy[inp_ind])
         else:
             i_tensor_shape = model.get_tensor_shape(inp.name)
-            i_dtype_npy=onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[inp.type.tensor_type.elem_type]
+            i_dtype_npy = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[inp.type.tensor_type.elem_type]
             idict[inp.name] = np.zeros(i_tensor_shape, dtype=i_dtype_npy)
         inp_ind += 1
     odict = execute_onnx(model, idict)
     outp_ind = 0
     for outp in model.graph.output:
-        np.save(output_prefix+"%d.npy" % outp_ind, odict[outp.name])
+        np.save(output_prefix + "%d.npy" % outp_ind, odict[outp.name])
         outp_ind += 1
+
 
 def main():
     clize.run(exec_qonnx)
+
 
 if __name__ == "__main__":
     main()
