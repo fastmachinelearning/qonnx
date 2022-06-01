@@ -79,6 +79,9 @@ class ModelWrapper:
                 else:
                     n.domain = "qonnx.custom_op.general"
                 found_oldstyle = True
+            elif n.domain == "finn.custom_op.general":
+                n.domain == "qonnx.custom_op.general"
+                found_oldstyle = True
         if found_oldstyle:
             warnings.warn(
                 """Some old-style domain attributes were automatically converted to new-style,
