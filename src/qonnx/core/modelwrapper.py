@@ -73,14 +73,14 @@ class ModelWrapper:
                 if n_backend is not None:
                     backend_value = n_backend.s.decode("UTF-8")
                     if backend_value == "fpgadataflow":
-                        n.domain = "qonnx.custom_op.fpgadataflow"
+                        n.domain = "finn.custom_op.fpgadataflow"
                     else:
                         warnings.warn("Can't fix domain for node " + str(n))
                 else:
                     n.domain = "qonnx.custom_op.general"
                 found_oldstyle = True
             elif n.domain == "finn.custom_op.general":
-                n.domain == "qonnx.custom_op.general"
+                n.domain = "qonnx.custom_op.general"
                 found_oldstyle = True
         if found_oldstyle:
             warnings.warn(
