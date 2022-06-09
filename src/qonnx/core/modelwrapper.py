@@ -45,13 +45,15 @@ class ModelWrapper:
     """A wrapper around ONNX ModelProto that exposes some useful utility
     functions for graph manipulation and exploration."""
 
-    def __init__(self, onnx_model_proto, make_deepcopy=False, fix_missing_initializer_valueinfo=True):
+    def __init__(self, onnx_model_proto, make_deepcopy=False, fix_float64=False, fix_missing_initializer_valueinfo=True):
         """Creates a ModelWrapper instance.
         onnx_model_proto can be either a ModelProto instance, or a string
         with the path to a stored .onnx file on disk, or serialized bytes.
 
         make_deepcopy: controls whether a deep copy of the ModelProto
         is made internally.
+        fix_float64 : DoubleToSingleFloat correction before applying any
+        transformations on this model.
         fix_missing_initializer_valueinfo: add ValueInfoProto fields for
         initializers that are missing theirs.
         """
@@ -68,6 +70,7 @@ class ModelWrapper:
         self.temporary_fix_oldstyle_domain()
         if fix_missing_initializer_valueinfo:
             self.check_all_tensor_shapes_specified(fix_missing_init_shape=True)
+        self.fix_float64 = fix_float64
 
     def temporary_fix_oldstyle_domain(self):
         found_oldstyle = False
@@ -120,18 +123,17 @@ class ModelWrapper:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True, fix_float64=True):
+    def transform(self, transformation, make_deepcopy=True, cleanup=True):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
-        - fix_float64 : DoubleToSingleFloat correction before starting
         - cleanup : execute cleanup transformations before returning
         """
         transformed_model = self
         if make_deepcopy:
             transformed_model = copy.deepcopy(self)
-        if fix_float64:
+        if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
         model_was_changed = True
         while model_was_changed:

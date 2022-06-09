@@ -98,7 +98,7 @@ class BipolarQuant(CustomOp):
         # since numpy silently flattens 0d arrays to scalars
         # more: https://github.com/numpy/numpy/issues/13105
         if not isinstance(ret, np.ndarray):
-            ret = np.asarray(ret)
+            ret = np.asarray(ret, dtype=np.float32)
         # set context according to output name
         context[node.output[0]] = ret
 
