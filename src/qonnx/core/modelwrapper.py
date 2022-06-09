@@ -45,13 +45,15 @@ class ModelWrapper:
     """A wrapper around ONNX ModelProto that exposes some useful utility
     functions for graph manipulation and exploration."""
 
-    def __init__(self, onnx_model_proto, make_deepcopy=False):
+    def __init__(self, onnx_model_proto, make_deepcopy=False, fix_missing_initializer_valueinfo=True):
         """Creates a ModelWrapper instance.
         onnx_model_proto can be either a ModelProto instance, or a string
         with the path to a stored .onnx file on disk, or serialized bytes.
 
         make_deepcopy: controls whether a deep copy of the ModelProto
         is made internally.
+        fix_missing_initializer_valueinfo: add ValueInfoProto fields for
+        initializers that are missing theirs.
         """
         if isinstance(onnx_model_proto, str):
             assert os.path.isfile(onnx_model_proto), f"File not found: {onnx_model_proto}"
@@ -64,6 +66,8 @@ class ModelWrapper:
             else:
                 self._model_proto = onnx_model_proto
         self.temporary_fix_oldstyle_domain()
+        if fix_missing_initializer_valueinfo:
+            self.check_all_tensor_shapes_specified(fix_missing_init_shape=True)
 
     def temporary_fix_oldstyle_domain(self):
         found_oldstyle = False
@@ -215,8 +219,10 @@ class ModelWrapper:
         except ValueError:
             return None
 
-    def get_tensor_shape(self, tensor_name):
-        """Returns the shape of tensor with given name, if it has ValueInfoProto."""
+    def get_tensor_shape(self, tensor_name, fix_missing_init_shape=False):
+        """Returns the shape of tensor with given name, if it has ValueInfoProto.
+        If fix_missing_init_shape is specified, it will add a ValueInfoProto for initializers
+        that are missing theirs."""
         graph = self._model_proto.graph
         vi_names = [(x.name, x) for x in graph.input]
         vi_names += [(x.name, x) for x in graph.output]
@@ -229,13 +235,23 @@ class ModelWrapper:
             dims = [x.dim_value for x in vi.type.tensor_type.shape.dim]
             return dims
         except ValueError:
-            return None
+            # no ValueInfo found for tensor, check initializer
+            # (see https://github.com/onnx/onnx/issues/2874)
+            tensor_init, tensor_init_dtype = self.get_initializer(tensor_name, return_dtype=True)
+            if tensor_init is None:
+                # no shape defined for this tensor
+                return None
+            else:
+                if fix_missing_init_shape:
+                    self.set_tensor_shape(tensor_name, tensor_init.shape, dtype=tensor_init_dtype)
+                # use list return type to keep it consistent with ValueInfo case
+                return list(tensor_init.shape)
 
     def set_tensor_shape(self, tensor_name, tensor_shape, dtype=TensorProto.FLOAT):
         """Assigns shape in ValueInfoProto for tensor with given name."""
         new_vi = oh.make_tensor_value_info(tensor_name, dtype, tensor_shape)
-        # call get_tensor_shape to catch multiple ValueInfoProto cases
-        self.get_tensor_shape(tensor_name)
+        # call get_tensor_valueinfo to raise a warning for multiple ValueInfoProto cases
+        self.get_tensor_valueinfo(tensor_name)
         # find what container tis tensor's ValueInfo lives in
         # if not found anywhere, we assume it's a new value_info
         target_container = self.graph.value_info
@@ -292,15 +308,25 @@ class ModelWrapper:
             if old_name in n.output:
                 n.output[list(n.output).index(old_name)] = new_name
 
-    def get_initializer(self, tensor_name):
-        """Gets the initializer value for tensor with given name, if any."""
+    def get_initializer(self, tensor_name, return_dtype=False):
+        """Gets the initializer value for tensor with given name, if any.
+        ret_dtype can be set to True to retrieve the TensorProto.DataType of the
+        initializer by returning it as a second element of a tuple."""
         graph = self._model_proto.graph
         init_names = [x.name for x in graph.initializer]
         try:
             init_ind = init_names.index(tensor_name)
-            return np_helper.to_array(graph.initializer[init_ind])
+            ret = np_helper.to_array(graph.initializer[init_ind])
+            ret_dtype = graph.initializer[init_ind].data_type
+            if return_dtype:
+                return (ret, ret_dtype)
+            else:
+                return ret
         except ValueError:
-            return None
+            if return_dtype:
+                return (None, None)
+            else:
+                return None
 
     def find_producer(self, tensor_name):
         """Finds and returns the node that produces the tensor with given name."""
@@ -434,17 +460,19 @@ class ModelWrapper:
             execution_context[t.name] = np_helper.to_array(t)
         return execution_context
 
-    def check_all_tensor_shapes_specified(self):
+    def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
         """Checks whether all tensors have a specified shape (ValueInfo).
         The ONNX standard allows for intermediate activations to have no
-        associated ValueInfo, but FINN expects this."""
+        associated ValueInfo, but FINN expects this.
+        If fix_missing_init_shape is specified, it will add a ValueInfoProto
+        for initializers that are missing theirs."""
         graph = self._model_proto.graph
         ret = True
         for n in graph.node:
             for i in n.input:
-                ret = ret and (self.get_tensor_shape(i) is not None)
+                ret = ret and (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None)
             for o in n.output:
-                ret = ret and (self.get_tensor_shape(o) is not None)
+                ret = ret and (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None)
         return ret
 
     def get_tensor_fanout(self, tensor_name):
