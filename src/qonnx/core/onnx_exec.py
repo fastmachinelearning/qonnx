@@ -34,8 +34,6 @@ import onnxruntime as rt
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
-from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op.registry import getCustomOp
 from qonnx.util.basic import get_sanitize_quant_tensors, is_finn_op, sanitize_quant_values
 
 
@@ -44,75 +42,54 @@ def execute_node(node, context, graph, return_full_exec_context=False, opset_ver
 
     Input/output provided via context."""
 
-    if node.op_type in ["GenericPartition", "StreamingDataflowPartition"]:
-        partition_node = getCustomOp(node)
-        model = ModelWrapper(partition_node.get_nodeattr("model"))
-        inp_ctx = dict(filter(lambda x: x[0] in node.input, context.items()))
-        # inputs may have been renamed in partition
-        for i, old_iname in enumerate(node.input):
-            new_iname = model.graph.input[i].name
-            if old_iname != new_iname:
-                inp_ctx[new_iname] = inp_ctx[old_iname]
-                del inp_ctx[old_iname]
-        ret = execute_onnx(model, inp_ctx, return_full_exec_context)
-        # outputs may have been renamed in partition
-        for i, node_oname in enumerate(node.output):
-            model_oname = model.graph.output[i].name
-            context[node_oname] = ret[model_oname]
-        # prefix and insert exec context entries
-        if return_full_exec_context:
-            for tname in ret.keys():
-                if tname not in [x.name for x in model.graph.output]:
-                    context[node.name + "_" + tname] = ret[tname]
+    if is_finn_op(node.domain):
+        ex_cu_node.execute_custom_node(node, context, graph)
     else:
-        if is_finn_op(node.domain):
-            ex_cu_node.execute_custom_node(node, context, graph)
-        else:
-            # onnxruntime unfortunately does not implement run_node as defined by ONNX,
-            # it can only execute entire models -- so we create a model which solely
-            # consists of our current node.
-            # note: ensure that the same ValueInfo does not appear both in
-            # graph.value_info as well as graph.output or graph.input
-            # nodes with multiple outputs that are a mix of value_info and
-            # input/outputs may get them reordered below
-            # note: a node's input may (also) be a top-level input or output
-            node_inputs = list(filter(lambda x: x.name in node.input, graph.input))
-            node_inputs += list(filter(lambda x: x.name in node.input, graph.output))
-            node_inputs += list(filter(lambda x: x.name in node.input, graph.value_info))
-            node_outputs = list(filter(lambda x: x.name in node.output, graph.output))
-            node_outputs += list(filter(lambda x: x.name in node.output, graph.value_info))
-            node_graph = helper.make_graph(
-                nodes=[node],
-                name="single-node-exec",
-                inputs=node_inputs,
-                outputs=node_outputs,
-            )
-            node_model = helper.make_model(node_graph)
-            node_model.opset_import[0].version = opset_version
-            input_dict = dict()
-            for inp in node.input:
-                input_dict[inp] = context[inp]
+        # onnxruntime unfortunately does not implement run_node as defined by ONNX,
+        # it can only execute entire models -- so we create a model which solely
+        # consists of our current node.
+        # note: ensure that the same ValueInfo does not appear both in
+        # graph.value_info as well as graph.output or graph.input
+        # nodes with multiple outputs that are a mix of value_info and
+        # input/outputs may get them reordered below
+        # note: a node's input may (also) be a top-level input or output
+        node_inputs = list(filter(lambda x: x.name in node.input, graph.input))
+        node_inputs += list(filter(lambda x: x.name in node.input, graph.output))
+        node_inputs += list(filter(lambda x: x.name in node.input, graph.value_info))
+        node_outputs = list(filter(lambda x: x.name in node.output, graph.output))
+        node_outputs += list(filter(lambda x: x.name in node.output, graph.value_info))
+        node_graph = helper.make_graph(
+            nodes=[node],
+            name="single-node-exec",
+            inputs=node_inputs,
+            outputs=node_outputs,
+        )
+        node_model = helper.make_model(node_graph)
+        node_model.opset_import[0].version = opset_version
+        input_dict = dict()
+        for inp in node.input:
+            input_dict[inp] = context[inp]
 
-            sess = rt.InferenceSession(node_model.SerializeToString())
-            output_list = sess.run(None, input_dict)
+        sess = rt.InferenceSession(node_model.SerializeToString())
+        output_list = sess.run(None, input_dict)
 
-            for output_ind in range(len(node.output)):
-                # get the name of the target buffer from node.output
-                outp = node.output[output_ind]
+        for output_ind in range(len(node.output)):
+            # get the name of the target buffer from node.output
+            outp = node.output[output_ind]
 
-                # retrieve the index of that name in node_outputs
-                for i in range(len(node_outputs)):
-                    if outp == node_outputs[i].name:
-                        list_ind = i
+            # retrieve the index of that name in node_outputs
+            for i in range(len(node_outputs)):
+                if outp == node_outputs[i].name:
+                    list_ind = i
 
-                # use that index to index output_list
-                if output_list[list_ind].shape != context[outp].shape:
-                    raise Exception(
-                        """Output shapes disagree after node execution:
-                        found %s vs expected %s"""
-                        % (str(output_list[list_ind].shape), str(context[outp].shape))
-                    )
-                context[outp] = output_list[list_ind]
+            # use that index to index output_list
+            if output_list[list_ind].shape != context[outp].shape:
+                raise Exception(
+                    """Output shapes disagree after node execution:
+                    found %s vs expected %s"""
+                    % (str(output_list[list_ind].shape), str(context[outp].shape))
+                )
+            context[outp] = output_list[list_ind]
 
 
 def execute_onnx(model, input_dict, return_full_exec_context=False, start_node=None, end_node=None):
