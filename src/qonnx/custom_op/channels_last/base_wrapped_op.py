@@ -3,7 +3,7 @@ import onnxruntime as rt
 from copy import deepcopy
 from onnx import TensorProto, helper
 
-from finn.custom_op.base import CustomOp
+from qonnx.custom_op.base import CustomOp
 
 
 def to_channels_last_args(ndim):
