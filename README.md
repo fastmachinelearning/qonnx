@@ -3,7 +3,8 @@
 [![ReadTheDocs](https://readthedocs.org/projects/finn-base/badge/?version=latest&style=plastic)](http://finn-base.readthedocs.io/)
 [![GitHub Discussions](https://img.shields.io/github/discussions/fastmachinelearning/qonnx)](https://github.com/fastmachinelearning/qonnx/discussions)
 ![Tests](https://github.com/fastmachinelearning/qonnx/actions/workflows/test.yml/badge.svg)
-
+![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
 
 <img align="left" src="https://xilinx.github.io/finn/img/TFC_1W2A.onnx.png" alt="QONNX example" style="margin-right: 20px" width="200"/>
 
@@ -141,13 +142,31 @@ The QONNX efforts were started by the FINN and hls4ml communities working togeth
 
 ## Resources
 
-You can read more about QONNX in [this paper](https://arxiv.org/abs/2206.07527). If you find QONNX useful in your work, please consider a citation:
+You can read more about QONNX in [this paper](https://arxiv.org/abs/2206.07527). If you find QONNX useful in your work, please consider citing:
 
 ```
-@article{pappalardo2022qonnx,
-  title={QONNX: Representing Arbitrary-Precision Quantized Neural Networks},
-  author={Pappalardo, Alessandro and Umuroglu, Yaman and Blott, Michaela and Mitrevski, Jovan and Hawks, Ben and Tran, Nhan and Loncar, Vladimir and Summers, Sioni and Borras, Hendrik and Muhizi, Jules and others},
-  journal={arXiv preprint arXiv:2206.07527},
-  year={2022}
+@inproceedings{Pappalardo:2022nxk,
+    author = "Pappalardo, Alessandro and Umuroglu, Yaman and Blott, Michaela and Mitrevski, Jovan and Hawks, Ben and Tran, Nhan and Loncar, Vladimir and Summers, Sioni and Borras, Hendrik and Muhizi, Jules and Trahms, Matthew and Hsu, Shih-Chieh Hsu and Hauck, Scott and Duarte, Javier"
+    title = "{QONNX: Representing Arbitrary-Precision Quantized Neural Networks}",
+    booktitle = "{4th Workshop on Accelerated Machine Learning (AccML) at HiPEAC 2022 Conference}",
+    eprint = "2206.07527",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.LG",
+    reportNumber = "FERMILAB-CONF-22-471-SCD",
+    month = "6",
+    year = "2022",
+    url = "https://accml.dcs.gla.ac.uk/papers/2022/4thAccML_paper_1(12).pdf"
+}
+```
+```
+@software{umuroglu_2022_XXXXXXX,
+  author       = "Umuroglu, Yaman and Borras, Hendrik and Loncar, Vladimir, and Summers, Sioni and Duarte, Javier",
+  title        = "fastmachinelearning/qonnx",
+  month        = {6},
+  year         = 2022,
+  publisher    = {Zenodo},
+  version      = {vX.X.X},
+  doi          = {10.5281/zenodo.XXXXXXX},
+  url          = {https://github.com/fastmachinelearning/qonnx}
 }
 ```
