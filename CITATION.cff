@@ -1,0 +1,32 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: QONNX
+message: 'If you use this software, please cite it as below.'
+type: software
+doi: 10.5281/zenodo.XXXXXXX
+license: Apache-2.0
+date-released: 2022-XX-XX
+version: X.X.X
+url: "https://github.com/fastmachinelearning/qonnx"
+authors:
+  - given-names: Yaman
+    family-names: Umuroglu
+    affiliation: AMD
+    orcid: 'https://orcid.org/ 0000-0002-3700-5935'
+  - given-names: Hendrik
+    family-names: Borras
+    affiliation: Heidelberg University
+  - given-names: Vladimir
+    family-names: Loncar
+    affiliation: MIT
+    orcid: 'https://orcid.org/0000-0003-3651-0232'
+  - given-names: Sioni
+    family-names: Summers
+    affiliation: CERN
+    orcid: 'https://orcid.org/0000-0003-4244-2061'
+  - given-names: Javier
+    family-names: Duarte
+    affiliation: UC San Diego
+    orcid: 'https://orcid.org/0000-0002-5076-7096'
