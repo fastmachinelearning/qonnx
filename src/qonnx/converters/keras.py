@@ -4,7 +4,7 @@ import tf2onnx
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 from collections import OrderedDict
 
-from finn.core.modelwrapper import ModelWrapper
+from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup_model
 
 from .qkeras.onnx import get_qkeras_onnx_handlers
