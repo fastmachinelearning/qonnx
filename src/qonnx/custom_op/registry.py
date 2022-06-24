@@ -30,7 +30,7 @@ import importlib
 
 
 def getCustomOp(node):
-    "Return a FINN CustomOp instance for the given ONNX node, if it exists."
+    "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
     op_type = node.op_type
     domain = node.domain
     try:

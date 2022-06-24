@@ -1,60 +1,97 @@
-==============
-qonnx-frontend
-==============
+======
+QONNX
+======
 
-This is the documentation of **qonnx-frontend**.
+.. note:: **QONNX** is currently under active development. APIs will likely change.
 
-.. note::
+QONNX (Quantized ONNX) introduces three new custom operators -- `Quant <docs/qonnx-custom-ops/quant_op.md>`_, `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_ and `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_  -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
 
-    This is the main page of your project's `Sphinx`_ documentation.
-    It is formatted in `reStructuredText`_. Add additional pages
-    by creating rst-files in ``docs`` and adding them to the `toctree`_ below.
-    Use then `references`_ in order to link them from this page, e.g.
-    :ref:`authors` and :ref:`changes`.
+* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
 
-    It is also possible to refer to the documentation of other Python packages
-    with the `Python domain syntax`_. By default you can reference the
-    documentation of `Sphinx`_, `Python`_, `NumPy`_, `SciPy`_, `matplotlib`_,
-    `Pandas`_, `Scikit-Learn`_. You can add more by extending the
-    ``intersphinx_mapping`` in your Sphinx's ``conf.py``.
+* Quantization is an operator itself, and can be applied to any parameter or layer input.
 
-    The pretty useful extension `autodoc`_ is activated by default and lets
-    you include documentation from docstrings. Docstrings can be written in
-    `Google style`_ (recommended!), `NumPy style`_ and `classical style`_.
+* Flexible choices for scaling factor and zero-point granularity.
+
+* Quantized values are carried using standard `float` datatypes to remain ONNX protobuf-compatible.
+
+This repository contains a set of Python utilities to work with QONNX models, including but not limited to:
+
+* executing QONNX models for (slow) functional verification
+
+* shape inference, constant folding and other basic optimizations
+
+* summarizing the inference cost of a QONNX model in terms of mixed-precision MACs, parameter and activation volume
+
+* Python infrastructure for writing transformations and defining executable, shape-inferencable custom ops
+
+* (experimental) data layout conversion from standard ONNX NCHW to custom QONNX NHWC ops
 
 
-Contents
-========
+Quickstart
+-----------
+
+Operator definitions
++++++++++++++++++++++
+
+* `Quant <docs/qonnx-custom-ops/quant_op.md>`_ for 2-to-arbitrary-bit quantization, with scaling and zero-point
+
+* `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_  for 1-bit (bipolar) quantization, with scaling and zero-point
+
+* `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_ for truncating to a specified number of bits, with scaling and zero-point
+
+Installation
++++++++++++++
+
+Install latest release from PyPI:
+
+::
+
+   pip install qonnx
+
+
+Development
+++++++++++++
+
+Install in editable mode in a venv:
+
+::
+
+   git clone https://github.com/fastmachinelearning/qonnx
+   cd qonnx
+   virtualenv -p python3.7 venv
+   source venv/bin/activate
+   pip install -e .[testing, docs, notebooks]
+
+
+Run entire test suite, parallelized across CPU cores:
+
+::
+
+   pytest -n auto --verbose
+
+
+
+Run a particular test and fall into pdb if it fails:
+
+::
+
+   pytest --pdb -k "test*extend*partition.py::test*extend*partition[extend_id1-2]"
+
+
+
+QONNX also uses GitHub actions to run the full test suite on PRs.
 
 .. toctree::
    :maxdepth: 2
+   :hidden:
 
-   Overview <readme>
+   ONNX-Based Compiler Infrastructure <overview>
+   Tutorials <tutorials>
+   API <api/modules>
    License <license>
-   Authors <authors>
-   Changelog <changelog>
-   Module Reference <api/modules>
+   Contributors <authors>
+   Index <genindex>
 
 
-Indices and tables
-==================
-
-* :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
-.. _toctree: http://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html
-.. _reStructuredText: http://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
-.. _references: http://www.sphinx-doc.org/en/stable/markup/inline.html
-.. _Python domain syntax: http://sphinx-doc.org/domains.html#the-python-domain
-.. _Sphinx: http://www.sphinx-doc.org/
-.. _Python: http://docs.python.org/
-.. _Numpy: http://docs.scipy.org/doc/numpy
-.. _SciPy: http://docs.scipy.org/doc/scipy/reference/
-.. _matplotlib: https://matplotlib.org/contents.html#
-.. _Pandas: http://pandas.pydata.org/pandas-docs/stable
-.. _Scikit-Learn: http://scikit-learn.org/stable
-.. _autodoc: http://www.sphinx-doc.org/en/stable/ext/autodoc.html
-.. _Google style: https://github.com/google/styleguide/blob/gh-pages/pyguide.md#38-comments-and-docstrings
-.. _NumPy style: https://numpydoc.readthedocs.io/en/latest/format.html
-.. _classical style: http://www.sphinx-doc.org/en/stable/domains.html#info-field-lists

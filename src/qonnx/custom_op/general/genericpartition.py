@@ -34,7 +34,7 @@ from qonnx.custom_op.base import CustomOp
 class GenericPartition(CustomOp):
     """Class that corresponds to the meta/container node GenericPartition
     which is a placeholder for a group of nodes that have been separated
-    out into a FINN-ONNX model of its own."""
+    out into an ONNX model of its own."""
 
     def get_nodeattr_types(self):
         return {

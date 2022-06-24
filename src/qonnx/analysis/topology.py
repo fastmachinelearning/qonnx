@@ -62,7 +62,7 @@ def all_tensors_f32(model):
 
 
 def node_inputs_in_expected_order(model):
-    """Verifies that the node inputs are ordered in the way that FINN expects
+    """Verifies that the node inputs are ordered in the way that QONNX expects
     them. When a node has a mixture of static (= constant, initialized) inputs
     and dynamic inputs, the dynamic input should come first, followed by the
     static one. Only verifiable for a small subset of op_types for now.

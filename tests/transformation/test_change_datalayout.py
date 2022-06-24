@@ -60,7 +60,7 @@ def test_change_datalayout_quantavgpool(s, k, ibits, obits, signed, c, idim):
 
     n = 1
     odim = compute_pool_output_dim(idim, k, s)
-    # determine input FINN datatype
+    # determine input QONNX datatype
     if signed is True:
         prefix = "INT"
     else:

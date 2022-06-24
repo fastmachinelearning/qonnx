@@ -155,7 +155,7 @@ class ModelWrapper:
         return transformed_model
 
     def check_compatibility(self):
-        """Checks this model for FINN compatibility:
+        """Checks this model for QONNX compatibility:
 
         * no embedded subgraphs
 
@@ -169,7 +169,7 @@ class ModelWrapper:
         return True
 
     def get_tensor_datatype(self, tensor_name):
-        """Returns the FINN DataType of tensor with given name."""
+        """Returns the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
         ret = util.get_by_name(qnt_annotations, tensor_name, "tensor_name")
@@ -181,7 +181,7 @@ class ModelWrapper:
         return DataType["FLOAT32"]
 
     def set_tensor_datatype(self, tensor_name, datatype):
-        """Sets the FINN DataType of tensor with given name."""
+        """Sets the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
         ret = util.get_by_name(qnt_annotations, tensor_name, "tensor_name")
@@ -465,7 +465,7 @@ class ModelWrapper:
     def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
         """Checks whether all tensors have a specified shape (ValueInfo).
         The ONNX standard allows for intermediate activations to have no
-        associated ValueInfo, but FINN expects this.
+        associated ValueInfo, but QONNX expects this.
         If fix_missing_init_shape is specified, it will add a ValueInfoProto
         for initializers that are missing theirs."""
         graph = self._model_proto.graph

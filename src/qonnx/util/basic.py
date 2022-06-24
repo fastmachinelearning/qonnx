@@ -209,7 +209,7 @@ def calculate_matvec_accumulator_range(matrix, vec_dt):
 
 
 def gen_finn_dt_tensor(finn_dt, tensor_shape):
-    """Generates random tensor in given shape and with given FINN DataType."""
+    """Generates random tensor in given shape and with given QONNX DataType."""
     if type(tensor_shape) == list:
         tensor_shape = tuple(tensor_shape)
     if finn_dt == DataType["BIPOLAR"]:
@@ -305,7 +305,7 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
             execution_context[tensor_name] = updated_values
         else:
             raise Exception(
-                """Rounding error is too high to match set FINN
+                """Rounding error is too high to match set QONNX
             datatype ({}) for input {}""".format(
                     dtype, tensor_name
                 )

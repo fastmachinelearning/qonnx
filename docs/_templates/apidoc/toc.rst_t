@@ -1,0 +1,9 @@
+{{ header | heading }}
+
+The QONNX compiler infrastructure sources are divided into different modules. They are listed below.
+
+.. toctree::
+   :maxdepth: {{ maxdepth }}
+{% for docname in docnames %}
+   {{ docname }}
+{%- endfor %}

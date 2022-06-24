@@ -70,7 +70,7 @@ class BipolarQuant(CustomOp):
         node = self.onnx_node
         # scale must be read from initializers
         scale = model.get_initializer(node.input[1])
-        # determine the FINN DataType
+        # determine the QONNX DataType
         unit_scale = np.all(scale == 1.0)
         if unit_scale:
             finn_dt = self.get_integer_datatype(model)

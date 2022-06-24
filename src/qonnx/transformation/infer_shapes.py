@@ -35,7 +35,7 @@ from qonnx.util.basic import is_finn_op
 
 
 def _make_shape_compatible_op(node, model):
-    """Return a shape-compatible non-FINN op for a given FINN op. Used for
+    """Return a shape-compatible non-QONNX op for a given QONNX op. Used for
     shape inference with custom ops."""
     assert is_finn_op(node.domain), "Node domain is not set to qonnx.*"
     op_type = node.op_type
@@ -49,7 +49,7 @@ def _make_shape_compatible_op(node, model):
 
 
 def _hide_finn_ops(model):
-    """Replace any FINN ops by shape-compatible ones, and return a dict that
+    """Replace any QONNX ops by shape-compatible ones, and return a dict that
     can be used to map the string representations of the new (shape-compatible)
     ops back to the old ops."""
     hidden_ops = {}
@@ -65,7 +65,7 @@ def _hide_finn_ops(model):
 
 
 def _restore_finn_ops(model, hidden_ops):
-    """Replace any shape-compatible ops with the FINN ops that originally
+    """Replace any shape-compatible ops with the QONNX ops that originally
     generated them."""
     node_ind = 0
     for node in model.graph.node:
