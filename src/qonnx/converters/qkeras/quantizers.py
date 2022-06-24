@@ -94,7 +94,8 @@ def convert_ternary(tensor, quantizer):
         ternary = qkeras.ternary()
         t = ternary.default_threshold
     assert t == 0.5, "ternary - only threshold 0.5 is supported"
-    # note that if assertions fail, Quant node is not inserted, but model is still converted; this seems to be unexpected behavior
+    # note that if assertions fail, Quant node is not inserted, but model is still converted
+    # this seems to be unexpected behavior
     scale = 1.0
     zero_point = 0
     bit_width = 2
