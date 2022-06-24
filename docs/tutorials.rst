@@ -1,37 +1,26 @@
 .. _tutorials:
 
-*********
-Tutorials
-*********
+********************
+Developer Tutorials
+********************
 
-The FINN compiler repository FINN provides several Jupyter notebooks that can help to get familiar with the basics, the internals and the end-to-end flow in FINN.
-All Jupyter notebooks can be found in the FINN compiler repository under the `notebook folder <https://github.com/Xilinx/finn/tree/master/notebooks>`_.
-Some of those notebooks are specific to FPGA dataflow-style deployment,
-but the ones highlighted below are more generic, relating to the core
-infrastructure that ``finn-base`` provides.
+The QONNX repository provides several Jupyter notebooks tutorials.
+These can help new developers get up-to-speed on QONNX internals.
+All Jupyter notebooks can be found under the `notebook folder <https://github.com/fastmachinelearning/qonnx/tree/main/notebooks>`_.
 
-Basics
-======
-
-The notebooks in this folder should give a basic insight into FINN, how to get started and the basic concepts.
 
 * 0_how_to_work_with_onnx
 
-  * This notebook can help you to learn how to create and manipulate a simple ONNX model, also by using FINN
+  * This notebook can help you to learn how to create and manipulate a simple ONNX model, also by using QONNX
 
-Advanced
-========
+* 1_custom_analysis_pass
 
-The notebooks in this folder are more developer oriented. They should help you to get familiar with the principles in FINN and how to add new content regarding these concepts.
+  * Explains what an analysis pass is and how to write one for QONNX.
 
-* 0_custom_analysis_pass
+* 2_custom_transformation_pass
 
-  * Explains what an analysis pass is and how to write one for FINN.
+  * Explains what a transformation pass is and how to write one for QONNX.
 
-* 1_custom_transformation_pass
+* 3_custom_op
 
-  * Explains what a transformation pass is and how to write one for FINN.
-
-* 2_custom_op
-
-  * Explains the basics of FINN custom ops and how to define a new one.
+  * Explains the basics of QONNX custom ops and how to define a new one.

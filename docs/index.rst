@@ -1,10 +1,10 @@
-******
+======
 QONNX
-******
+======
 
 .. note:: **QONNX** is currently under active development. APIs will likely change.
 
-QONNX (Quantized ONNX) introduces three new custom operators -- ``Quant`](docs/qonnx-custom-ops/quant*op.md), [`BipolarQuant`](docs/qonnx-custom-ops/bipolar*quant*op.md), and [`Trunc` <docs/qonnx-custom-ops/trunc*op.md>`*, ``BipolarQuant`](docs/qonnx-custom-ops/bipolar*quant*op.md), and [`Trunc` <docs/qonnx-custom-ops/trunc*op.md>`*, and ``Trunc` <docs/qonnx-custom-ops/trunc*op.md>`_ -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
+QONNX (Quantized ONNX) introduces three new custom operators -- `Quant <docs/qonnx-custom-ops/quant_op.md>`_, `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_ and `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_  -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
 
 * Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
 
@@ -26,20 +26,21 @@ This repository contains a set of Python utilities to work with QONNX models, in
 
 * (experimental) data layout conversion from standard ONNX NCHW to custom QONNX NHWC ops
 
-# Quickstart
-============
 
-## Operator definitions
-=======================
+Quickstart
+-----------
 
-* `Quant <docs/qonnx-custom-ops/quant*op.md>`* for 2-to-arbitrary-bit quantization, with scaling and zero-point
+Operator definitions
++++++++++++++++++++++
 
-* `BipolarQuant <docs/qonnx-custom-ops/bipolar*quant*op.md>`_  for 1-bit (bipolar) quantization, with scaling and zero-point
+* `Quant <docs/qonnx-custom-ops/quant_op.md>`_ for 2-to-arbitrary-bit quantization, with scaling and zero-point
 
-* `Trunc <docs/qonnx-custom-ops/trunc*op.md>`* for truncating to a specified number of bits, with scaling and zero-point
+* `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_  for 1-bit (bipolar) quantization, with scaling and zero-point
 
-## Installation
-===============
+* `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_ for truncating to a specified number of bits, with scaling and zero-point
+
+Installation
++++++++++++++
 
 Install latest release from PyPI:
 
@@ -48,40 +49,35 @@ Install latest release from PyPI:
    pip install qonnx
 
 
-## Development
-==============
+Development
+++++++++++++
 
 Install in editable mode in a venv:
 
-```
+::
 
-git clone https://github.com/fastmachinelearning/qonnx
+   git clone https://github.com/fastmachinelearning/qonnx
+   cd qonnx
+   virtualenv -p python3.7 venv
+   source venv/bin/activate
+   pip install -e .[testing, docs]
 
-cd qonnx
-
-virtualenv -p python3.7 venv
-
-source venv/bin/activate
-
-pip install -e .[testing, docs]
-
-```
 
 Run entire test suite, parallelized across CPU cores:
 
-```
+::
 
-pytest -n auto --verbose
+   pytest -n auto --verbose
 
-```
+
 
 Run a particular test and fall into pdb if it fails:
 
-```
+::
 
-pytest --pdb -k "test*extend*partition.py::test*extend*partition[extend_id1-2]"
+   pytest --pdb -k "test*extend*partition.py::test*extend*partition[extend_id1-2]"
 
-```
+
 
 QONNX also uses GitHub actions to run the full test suite on PRs.
 
@@ -90,7 +86,6 @@ QONNX also uses GitHub actions to run the full test suite on PRs.
    :hidden:
 
    Overview <overview>
-   Tutorials <tutorials>
    API <api/modules>
    License <license>
    Contributors <authors>
