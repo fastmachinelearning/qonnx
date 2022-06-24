@@ -1,6 +1,6 @@
 # QONNX: Arbitrary-Precision Quantized Neural Networks in ONNX
 
-[![ReadTheDocs](https://readthedocs.org/projects/finn-base/badge/?version=latest&style=plastic)](http://finn-base.readthedocs.io/)
+[![ReadTheDocs](https://readthedocs.org/projects/qonnx/badge/?version=latest&style=plastic)](http://qonnx.readthedocs.io/)
 [![GitHub Discussions](https://img.shields.io/github/discussions/fastmachinelearning/qonnx)](https://github.com/fastmachinelearning/qonnx/discussions)
 ![Tests](https://github.com/fastmachinelearning/qonnx/actions/workflows/test.yml/badge.svg)
 ![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)

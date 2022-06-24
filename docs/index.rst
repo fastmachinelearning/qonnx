@@ -1,53 +1,89 @@
-*********
-finn-base
-*********
+******
+QONNX
+******
 
-.. note:: **finn-base** is currently under active development. APIs will likely change.
+.. note:: **QONNX** is currently under active development. APIs will likely change.
 
-``finn-base`` is part of the `FINN
-project <https://xilinx.github.io/finn/>`__ and provides the core
-infrastructure for the `FINN
-compiler <https://github.com/Xilinx/finn/>`__, including:
+QONNX (Quantized ONNX) introduces three new custom operators -- ``Quant`](docs/qonnx-custom-ops/quant*op.md), [`BipolarQuant`](docs/qonnx-custom-ops/bipolar*quant*op.md), and [`Trunc` <docs/qonnx-custom-ops/trunc*op.md>`*, ``BipolarQuant`](docs/qonnx-custom-ops/bipolar*quant*op.md), and [`Trunc` <docs/qonnx-custom-ops/trunc*op.md>`*, and ``Trunc` <docs/qonnx-custom-ops/trunc*op.md>`_ -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
 
--  wrapper around ONNX models for easier manipulation
--  infrastructure for applying transformation and analysis passes on
-   ONNX graphs
--  infrastructure for defining and executing custom ONNX ops (for
-   verification and code generation)
--  extensions to ONNX models using annotations, including few-bit data
-   types, sparsity and data layout specifiers
--  several transformation passes, including topological sorting,
-   constant folding and convolution lowering
--  several custom ops including im2col and multi-thresholding for
-   quantized activations
--  several utility functions, including packing for few-bit integers
+* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
 
-Installation
+* Quantization is an operator itself, and can be applied to any parameter or layer input.
+
+* Flexible choices for scaling factor and zero-point granularity.
+
+* Quantized values are carried using standard `float` datatypes to remain ONNX protobuf-compatible.
+
+This repository contains a set of Python utilities to work with QONNX models, including but not limited to:
+
+* executing QONNX models for (slow) functional verification
+
+* shape inference, constant folding and other basic optimizations
+
+* summarizing the inference cost of a QONNX model in terms of mixed-precision MACs, parameter and activation volume
+
+* Python infrastructure for writing transformations and defining executable, shape-inferencable custom ops
+
+* (experimental) data layout conversion from standard ONNX NCHW to custom QONNX NHWC ops
+
+# Quickstart
 ============
 
-Install with full functionality including documentation building:
+## Operator definitions
+=======================
+
+* `Quant <docs/qonnx-custom-ops/quant*op.md>`* for 2-to-arbitrary-bit quantization, with scaling and zero-point
+
+* `BipolarQuant <docs/qonnx-custom-ops/bipolar*quant*op.md>`_  for 1-bit (bipolar) quantization, with scaling and zero-point
+
+* `Trunc <docs/qonnx-custom-ops/trunc*op.md>`* for truncating to a specified number of bits, with scaling and zero-point
+
+## Installation
+===============
+
+Install latest release from PyPI:
 
 ::
 
-  pip install finn-base[onnx,pyverilator,docs]
+   pip install qonnx
 
-Lightweight install for e.g. access to data packing utility functions:
 
-::
+## Development
+==============
 
-  pip install finn-base
+Install in editable mode in a venv:
 
-Testing
-=======
+```
 
-With Docker CE installed, execute the following in the repo root:
+git clone https://github.com/fastmachinelearning/qonnx
 
-::
+cd qonnx
 
-  ./run-docker.sh tests
+virtualenv -p python3.7 venv
 
-Alternatively, pull requests to `dev` will trigger GitHub Actions for the above.
+source venv/bin/activate
 
+pip install -e .[testing, docs]
+
+```
+
+Run entire test suite, parallelized across CPU cores:
+
+```
+
+pytest -n auto --verbose
+
+```
+
+Run a particular test and fall into pdb if it fails:
+
+```
+
+pytest --pdb -k "test*extend*partition.py::test*extend*partition[extend_id1-2]"
+
+```
+
+QONNX also uses GitHub actions to run the full test suite on PRs.
 
 .. toctree::
    :maxdepth: 2
