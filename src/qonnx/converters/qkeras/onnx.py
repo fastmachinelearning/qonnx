@@ -11,21 +11,29 @@ def get_qkeras_onnx_handlers(all_quantizers):
         "MatMul": (dense_handler, ["MatMul", all_quantizers]),
         "BiasAdd": (bias_handler, ["BiasAdd", all_quantizers]),
         "Relu": (relu_handler, ["Relu", all_quantizers]),
+        "Identity": (identity_handler, ["Identity", all_quantizers]),
     }
 
 
-def _extract_node_name(onnx_name, keras_names):
+def _extract_node_name(onnx_node, keras_quantizers):
+    onnx_name = onnx_node.name
+    keras_names = keras_quantizers.keys()
     for keras_name in keras_names:
         match = "/" + keras_name + "/"
         if match in onnx_name:
             return keras_name
+        elif "Identity" in onnx_name:
+            onnx_input = onnx_node.input[0]
+            keras_input = keras_quantizers[keras_name]["input"]
+            if keras_input in onnx_input:
+                return keras_name
 
     return None
 
 
 def qlayer_handler(ctx, node, name, args):
     all_quantizers = args[0]
-    keras_name = _extract_node_name(name, all_quantizers.keys())
+    keras_name = _extract_node_name(node, all_quantizers)
     if not keras_name:
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
@@ -79,7 +87,7 @@ def qlayer_handler(ctx, node, name, args):
 
 def qact_handler(ctx, node, name, args):
     all_quantizers = args[0]
-    keras_name = _extract_node_name(name, all_quantizers.keys())
+    keras_name = _extract_node_name(node, all_quantizers)
     if not keras_name:
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
@@ -119,7 +127,7 @@ def bias_handler(ctx, node, name, args):
     BiasAdd.version_1(ctx, node)
 
     all_quantizers = args[0]
-    keras_name = _extract_node_name(name, all_quantizers.keys())
+    keras_name = _extract_node_name(node, all_quantizers)
     if not keras_name:
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
@@ -138,5 +146,10 @@ def bias_handler(ctx, node, name, args):
 
 
 def relu_handler(ctx, node, name, args):
+    DirectOp.version_1(ctx, node)
+    qact_handler(ctx, node, name, args)
+
+
+def identity_handler(ctx, node, name, args):
     DirectOp.version_1(ctx, node)
     qact_handler(ctx, node, name, args)
