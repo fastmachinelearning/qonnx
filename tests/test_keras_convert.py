@@ -11,10 +11,10 @@ from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantiz
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
 
-import finn.core.onnx_exec as oxe
+import qonnx.core.onnx_exec as oxe
 import qonnx
-from finn.core.modelwrapper import ModelWrapper
-from finn.transformation.infer_shapes import InferShapes
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.infer_shapes import InferShapes
 
 act_quantizers = [
     quantized_relu(8),
