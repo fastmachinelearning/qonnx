@@ -85,7 +85,8 @@ QONNX also uses GitHub actions to run the full test suite on PRs.
    :maxdepth: 2
    :hidden:
 
-   Overview <overview>
+   ONNX-Based Compiler Infrastructure <overview>
+   Tutorials <tutorials>
    API <api/modules>
    License <license>
    Contributors <authors>

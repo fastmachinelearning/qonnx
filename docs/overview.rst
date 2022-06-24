@@ -1,6 +1,6 @@
-*********
-Overview
-*********
+**********************************
+ONNX-based Compiler Infrastructure
+**********************************
 
 Beyond the custom operators for quantization, the ``QONNX`` repo also
 provides core infrastructure for building lightweight ONNX-based compilers
@@ -45,7 +45,6 @@ Custom Operations/Nodes
 
 QONNX uses many custom operations (op_type in ONNX NodeProto) that are not defined in the ONNX operator schema. These custom nodes are marked with domain="qonnx.*" in the protobuf to identify them as such. These nodes can represent specific operations that we need for low-bit networks, or operations that are specific to a particular hardware backend. To get more familiar with custom operations and how they are created, please take a look in the Jupyter notebook about CustomOps (see chapter :ref:`tutorials` for details) or directly in the module :py:mod:`qonnx.custom_op`.
 
-.. note:: See the description of `this PR <https://github.com/Xilinx/finn-base/pull/6>`_ for more on how the operator wrapper library is organized.
 
 Custom ONNX Execution Flow
 ==========================
@@ -138,8 +137,8 @@ As mentioned above there are QONNX DataTypes additional to the container datatyp
   # set tensor datatype of third tensor in model tensor list
   from qonnx.core.datatype import DataType
 
-  finn_dtype = DataType.BIPOLAR
-  model.set_tensor_datatype(tensor_list[2], finn_dtype)
+  qonnx_dtype = DataType.BIPOLAR
+  model.set_tensor_datatype(tensor_list[2], qonnx_dtype)
 
 ModelWrapper contains two helper functions for tensor initializers, one to determine the current initializer and one to set the initializer of a tensor. If there is no initializer, None is returned.
 ::
@@ -155,11 +154,11 @@ ModelWrapper contains more useful functions, if you are interested please have a
 Analysis Pass
 =============
 
-An analysis pass traverses the graph structure and produces information about certain properties. It gets the model in the ModelWrapper as input and returns a dictionary of the properties the analysis extracts. If you are interested in how to write an analysis pass for QONNX, please take a look at the Jupyter notebook about how to write an analysis pass, see chapter :ref:`tutorials` for details. For more information about existing analysis passes in finn-base, see module :py:mod:`qonnx.analysis`.
+An analysis pass traverses the graph structure and produces information about certain properties. It gets the model in the ModelWrapper as input and returns a dictionary of the properties the analysis extracts. If you are interested in how to write an analysis pass for QONNX, please take a look at the Jupyter notebook about how to write an analysis pass, see chapter :ref:`tutorials` for details. For more information about existing analysis passes in QONNX, see module :py:mod:`qonnx.analysis`.
 
 .. _transformation_pass:
 
 Transformation Pass
 ===================
 
-A transformation passes changes (transforms) the given model, it gets the model in the ModelWrapper as input and returns the changed model (ModelWrapper) to the QONNX flow. Additional the flag *model_was_changed* which indicates if a transformation has to be performed more than once, is returned. If you are interested in how to write a transformation pass for QONNX, please take a look at the Jupyter notebook about how to write a transformation pass, see chapter :ref:`tutorials` for details. For more information about existing transformation passes in finn-base, see module :py:mod:`qonnx.transformation`.
+A transformation passes changes (transforms) the given model, it gets the model in the ModelWrapper as input and returns the changed model (ModelWrapper) to the QONNX flow. Additional the flag *model_was_changed* which indicates if a transformation has to be performed more than once, is returned. If you are interested in how to write a transformation pass for QONNX, please take a look at the Jupyter notebook about how to write a transformation pass, see chapter :ref:`tutorials` for details. For more information about existing transformation passes in QONNX, see module :py:mod:`qonnx.transformation`.
