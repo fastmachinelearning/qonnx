@@ -60,7 +60,7 @@ Install in editable mode in a venv:
    cd qonnx
    virtualenv -p python3.7 venv
    source venv/bin/activate
-   pip install -e .[testing, docs]
+   pip install -e .[testing, docs, notebooks]
 
 
 Run entire test suite, parallelized across CPU cores:
