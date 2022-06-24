@@ -115,7 +115,7 @@ def _infer_node_datatype(model, node):
 
 
 class InferDataTypes(Transformation):
-    """Infer FINN DataType info for all intermediate/output tensors based on
+    """Infer QONNX DataType info for all intermediate/output tensors based on
     inputs and node type."""
 
     def apply(self, model):

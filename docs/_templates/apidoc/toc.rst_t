@@ -1,6 +1,6 @@
 {{ header | heading }}
 
-The finn-base sources are divided into different modules. They are listed below.
+The QONNX compiler infrastructure sources are divided into different modules. They are listed below.
 
 .. toctree::
    :maxdepth: {{ maxdepth }}

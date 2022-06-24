@@ -156,7 +156,7 @@ class Im2Col(CustomOp):
         # extract all necessary information and determine output dimensions
         ifm_ch = ishape[-1]
         assert len(ishape) == 4, "Unexpected input shape for Im2Col"
-        # NHWC (FINN always converts to NHWC during conv lowering)
+        # NHWC (QONNX always converts to NHWC during conv lowering)
         ifm_dim_h = ishape[1]
         ifm_dim_w = ishape[2]
 

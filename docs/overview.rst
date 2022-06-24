@@ -22,7 +22,7 @@ compiler <https://github.com/Xilinx/finn/>`__ and includes:
 
 While the FINN compiler itself is focused on producing customized
 streaming dataflow hardware architectures from quantized neural network (QNN)
-descriptions, the infrastructure offered by ``QONNX`` is more generic and
+descriptions to FPGAs, the infrastructure offered by ``QONNX`` is more generic and
 can be used for developing compilers and code generators for QNN inference.
 
 From ONNX to QONNX

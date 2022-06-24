@@ -48,7 +48,7 @@ def test_mnist_onnx_download_extract_run():
     raw_o = get_data("qonnx.data", "onnx/mnist-conv/test_data_set_0/output_0.pb")
     input_tensor = onnx.load_tensor_from_string(raw_i)
     output_tensor = onnx.load_tensor_from_string(raw_o)
-    # run using FINN-based execution (full graph)
+    # run using QONNX-based execution (full graph)
     input_dict = {"Input3": np_helper.to_array(input_tensor)}
     output_dict = oxe.execute_onnx(model, input_dict, return_full_exec_context=True)
     assert np.isclose(np_helper.to_array(output_tensor), output_dict["Plus214_Output_0"], atol=1e-3).all()

@@ -41,7 +41,7 @@ def test_finn_tensor_generator():
             shape_bp[i] == tensor_bp.shape[i]
         ), """Shape of generated tensor
             does not match the desired shape"""
-    # test if elements are FINN datatype
+    # test if elements are QONNX datatype
     for value in tensor_bp.flatten():
         assert dt_bp.allowed(
             value
@@ -58,7 +58,7 @@ def test_finn_tensor_generator():
             shape_b[i] == tensor_b.shape[i]
         ), """Shape of generated tensor
             does not match the desired shape"""
-    # test if elements are FINN datatype
+    # test if elements are QONNX datatype
     for value in tensor_b.flatten():
         assert dt_b.allowed(
             value
@@ -75,7 +75,7 @@ def test_finn_tensor_generator():
             shape_t[i] == tensor_t.shape[i]
         ), """Shape of generated tensor
             does not match the desired shape"""
-    # test if elements are FINN datatype
+    # test if elements are QONNX datatype
     for value in tensor_t.flatten():
         assert dt_t.allowed(
             value
@@ -92,7 +92,7 @@ def test_finn_tensor_generator():
             shape_int2[i] == tensor_int2.shape[i]
         ), """Shape of generated tensor
             does not match the desired shape"""
-    # test if elements are FINN datatype
+    # test if elements are QONNX datatype
     for value in tensor_int2.flatten():
         assert value in [
             -2,
@@ -113,7 +113,7 @@ def test_finn_tensor_generator():
             shape_t[i] == tensor_t.shape[i]
         ), """Shape of generated tensor
             does not match the desired shape"""
-    # test if elements are FINN datatype
+    # test if elements are QONNX datatype
     for value in tensor_t.flatten():
         assert dt_t.allowed(
             value

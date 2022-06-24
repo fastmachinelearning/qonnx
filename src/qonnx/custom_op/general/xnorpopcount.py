@@ -76,11 +76,11 @@ class XnorPopcountMatMul(CustomOp):
         # ensure inputs are binary
         assert (
             model.get_tensor_datatype(node.input[0]) == DataType["BINARY"]
-        ), """FINN
+        ), """QONNX
         DataType of first input is not set to BINARY as it should be."""
         assert (
             model.get_tensor_datatype(node.input[1]) == DataType["BINARY"]
-        ), """FINN
+        ), """QONNX
         DataTypes of second input is not set to BINARY as it should be."""
         # XNOR-popcount produces unsigned integers, assume uint32
         model.set_tensor_datatype(node.output[0], DataType["UINT32"])
