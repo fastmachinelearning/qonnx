@@ -1,8 +1,8 @@
 import onnx
 import tensorflow as tf
 import tf2onnx
-from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 from collections import OrderedDict
+from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup_model
@@ -18,7 +18,7 @@ _unsupported_layers = [
 ]
 
 # Skip remove_identity optimizer
-del tf2onnx.optimizer._optimizers['remove_identity']
+del tf2onnx.optimizer._optimizers["remove_identity"]
 
 
 def add_value_info_for_constants(model: onnx.ModelProto):
