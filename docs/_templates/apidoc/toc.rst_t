@@ -1,0 +1,9 @@
+{{ header | heading }}
+
+The finn-base sources are divided into different modules. They are listed below.
+
+.. toctree::
+   :maxdepth: {{ maxdepth }}
+{% for docname in docnames %}
+   {{ docname }}
+{%- endfor %}

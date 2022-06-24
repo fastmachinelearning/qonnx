@@ -1,60 +1,65 @@
-==============
-qonnx-frontend
-==============
+*********
+finn-base
+*********
 
-This is the documentation of **qonnx-frontend**.
+.. note:: **finn-base** is currently under active development. APIs will likely change.
 
-.. note::
+``finn-base`` is part of the `FINN
+project <https://xilinx.github.io/finn/>`__ and provides the core
+infrastructure for the `FINN
+compiler <https://github.com/Xilinx/finn/>`__, including:
 
-    This is the main page of your project's `Sphinx`_ documentation.
-    It is formatted in `reStructuredText`_. Add additional pages
-    by creating rst-files in ``docs`` and adding them to the `toctree`_ below.
-    Use then `references`_ in order to link them from this page, e.g.
-    :ref:`authors` and :ref:`changes`.
+-  wrapper around ONNX models for easier manipulation
+-  infrastructure for applying transformation and analysis passes on
+   ONNX graphs
+-  infrastructure for defining and executing custom ONNX ops (for
+   verification and code generation)
+-  extensions to ONNX models using annotations, including few-bit data
+   types, sparsity and data layout specifiers
+-  several transformation passes, including topological sorting,
+   constant folding and convolution lowering
+-  several custom ops including im2col and multi-thresholding for
+   quantized activations
+-  several utility functions, including packing for few-bit integers
 
-    It is also possible to refer to the documentation of other Python packages
-    with the `Python domain syntax`_. By default you can reference the
-    documentation of `Sphinx`_, `Python`_, `NumPy`_, `SciPy`_, `matplotlib`_,
-    `Pandas`_, `Scikit-Learn`_. You can add more by extending the
-    ``intersphinx_mapping`` in your Sphinx's ``conf.py``.
+Installation
+============
 
-    The pretty useful extension `autodoc`_ is activated by default and lets
-    you include documentation from docstrings. Docstrings can be written in
-    `Google style`_ (recommended!), `NumPy style`_ and `classical style`_.
+Install with full functionality including documentation building:
 
+::
 
-Contents
-========
+  pip install finn-base[onnx,pyverilator,docs]
+
+Lightweight install for e.g. access to data packing utility functions:
+
+::
+
+  pip install finn-base
+
+Testing
+=======
+
+With Docker CE installed, execute the following in the repo root:
+
+::
+
+  ./run-docker.sh tests
+
+Alternatively, pull requests to `dev` will trigger GitHub Actions for the above.
+
 
 .. toctree::
    :maxdepth: 2
+   :hidden:
 
-   Overview <readme>
+   Overview <overview>
+   Tutorials <tutorials>
+   API <api/modules>
    License <license>
-   Authors <authors>
-   Changelog <changelog>
-   Module Reference <api/modules>
+   Contributors <authors>
+   Index <genindex>
 
 
-Indices and tables
-==================
-
-* :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
-.. _toctree: http://www.sphinx-doc.org/en/master/usage/restructuredtext/directives.html
-.. _reStructuredText: http://www.sphinx-doc.org/en/master/usage/restructuredtext/basics.html
-.. _references: http://www.sphinx-doc.org/en/stable/markup/inline.html
-.. _Python domain syntax: http://sphinx-doc.org/domains.html#the-python-domain
-.. _Sphinx: http://www.sphinx-doc.org/
-.. _Python: http://docs.python.org/
-.. _Numpy: http://docs.scipy.org/doc/numpy
-.. _SciPy: http://docs.scipy.org/doc/scipy/reference/
-.. _matplotlib: https://matplotlib.org/contents.html#
-.. _Pandas: http://pandas.pydata.org/pandas-docs/stable
-.. _Scikit-Learn: http://scikit-learn.org/stable
-.. _autodoc: http://www.sphinx-doc.org/en/stable/ext/autodoc.html
-.. _Google style: https://github.com/google/styleguide/blob/gh-pages/pyguide.md#38-comments-and-docstrings
-.. _NumPy style: https://numpydoc.readthedocs.io/en/latest/format.html
-.. _classical style: http://www.sphinx-doc.org/en/stable/domains.html#info-field-lists
