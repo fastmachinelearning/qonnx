@@ -11,8 +11,8 @@ from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantiz
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
 
-import qonnx.core.onnx_exec as oxe
 import qonnx
+import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
 
