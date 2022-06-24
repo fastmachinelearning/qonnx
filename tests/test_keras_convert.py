@@ -32,7 +32,7 @@ act_quantizers = [
     quantized_bits(4, 2, 0, alpha=1),
     quantized_bits(2, 2, 1, alpha=1),
     quantized_bits(2, 1, 1, alpha=1),
-    ternary(alpha=1),
+    ternary(alpha=1, threshold=0.5),
     binary(alpha=1),
 ]
 act_quantizers_ids = list(range(len(act_quantizers)))

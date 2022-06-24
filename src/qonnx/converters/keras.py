@@ -2,6 +2,7 @@ import onnx
 import tensorflow as tf
 import tf2onnx
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
+from collections import OrderedDict
 
 from finn.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup_model
@@ -15,6 +16,9 @@ _unsupported_layers = [
     "QConv2DBatchnorm",
     "QDepthwiseConv2DBatchnorm",
 ]
+
+# Skip remove_identity optimizer
+del tf2onnx.optimizer._optimizers['remove_identity']
 
 
 def add_value_info_for_constants(model: onnx.ModelProto):
@@ -101,7 +105,7 @@ def _check_supported_layers(model):
 
 
 def _strip_qkeras_model(model):
-    quantizers = {}
+    quantizers = OrderedDict()
 
     def extract_quantizers(layer):
         keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_layer(layer)
@@ -109,6 +113,7 @@ def _strip_qkeras_model(model):
             layer_quantizers = {
                 k: None if v == "None" else v for k, v in layer_quantizers.items()
             }  # Get rid of 'None' strings
+            layer_quantizers["input"] = layer.input.name
             quantizers[layer.name] = layer_quantizers
 
         layer_class = tf.keras.layers.__dict__.get(keras_cls_name, None)
