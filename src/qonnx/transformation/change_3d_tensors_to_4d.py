@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
 import warnings
 
 from qonnx.transformation.base import Transformation
@@ -62,6 +63,7 @@ def _find_invalid_nodes(model):
         "Flatten",
         "Reshape",
         "MaxPool",
+        "Upsample",
     ]
     invalid_nodes = []
     for n in model.graph.node:
@@ -185,6 +187,13 @@ class Change3DTo4DTensors(Transformation):
                     pads.append(0)
                 if len(strides) == 1:  # strides = [stride_h, stride_w]
                     strides.append(1)
+            elif node_op_type == "Upsample":
+                # the parameter for the Upsample layer is a 1d list of
+                # upsampling factors along each axis
+                scales = model.get_initializer(n.input[1])
+                assert list(scales.shape) == [3]
+                scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
+                model.set_initializer(n.input[1], scales)
 
         # Change format of each input/value_info/output tensor
         for k, v in all_tensors.items():
