@@ -2,11 +2,13 @@ import pytest
 
 import numpy as np
 import onnx
+import onnx.parser as oprs
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.change_3d_tensors_to_4d import Change3DTo4DTensors
+from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import gen_finn_dt_tensor
 
 
@@ -151,6 +153,7 @@ def create_arbitrary_model(invalid=False):
     )
     onnx_model = onnx.helper.make_model(graph, producer_name="4d_conversion_test-model")
     model = ModelWrapper(onnx_model)
+    set_all_initializers(model)
 
     return model
 
@@ -260,11 +263,42 @@ def create_arbitrary_model_vgg():
 
     # Fixed TopK initializer (K=3)
     model.set_initializer("in2topk1", np.array([3]))
+    set_all_initializers(model)
 
     return model
 
 
-@pytest.mark.parametrize("test_model", ["Quartz", "VGG"])
+def create_conv_upsample():
+    input = """
+    <
+        ir_version: 7,
+        opset_import: ["" : 9]
+    >
+    agraph (float[1,4,256] in0) => (float[1,2,256] out0)
+    <
+        float[4,1,16] param_c0_weight,
+        float[4] param_c0_bias,
+        float[2,4,1] param_c1_weight,
+        float[2] param_c1_bias,
+        float[3] upsample_scales = {1.0,1.0,2.0}
+    >
+    {
+        c0_out = Conv<dilations=[1],group=4,kernel_shape=[16],pads=[7,7],strides=[2]>(in0, param_c0_weight, param_c0_bias)
+        c1_out = Conv<dilations=[1],group=1,kernel_shape=[1],pads=[0,0],strides=[1]>(c0_out, param_c1_weight, param_c1_bias)
+        out0 = Upsample<mode="nearest">(c1_out, upsample_scales)
+    }
+    """
+    model = oprs.parse_model(input)
+    model = ModelWrapper(model)
+    model = model.transform(InferShapes())
+    for tensor_name in model.get_all_tensor_names():
+        if tensor_name.startswith("param_"):
+            init_shape = model.get_tensor_shape(tensor_name)
+            model.set_initializer(tensor_name, gen_finn_dt_tensor(DataType["FLOAT32"], init_shape))
+    return model
+
+
+@pytest.mark.parametrize("test_model", ["Quartz", "VGG", "ConvUpsample"])
 def test_4d_conversion(test_model):
     """
     Test for the 3D to 4D transformation with a valid graph.
@@ -274,14 +308,13 @@ def test_4d_conversion(test_model):
         model = create_arbitrary_model(invalid=False)
     elif test_model == "VGG":
         model = create_arbitrary_model_vgg()
+    elif test_model == "ConvUpsample":
+        model = create_conv_upsample()
     else:
         raise Exception("Unknown test_model in test_4d_conversion")
 
     # Inputs
     input_dict = generate_random_input(model)
-
-    # Initializers
-    set_all_initializers(model)
 
     # Comparing the outputs of the model before and after the transform
     output_node_name = model.graph.output[0].name
