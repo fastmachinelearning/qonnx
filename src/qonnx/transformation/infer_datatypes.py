@@ -94,6 +94,17 @@ def _infer_node_datatype(model, node):
                 # set output dtype = input dtype
                 idtype = model.get_tensor_datatype(node.input[0])
                 model.set_tensor_datatype(node.output[0], idtype)
+        elif node.op_type == "Add":
+            if len(list(filter(lambda x: x == DataType["FLOAT32"], idtypes))) != 0:
+                # node has at least one float input, output is also float
+                model.set_tensor_datatype(node.output[0], DataType["FLOAT32"])
+            else:
+                has_signed_inp = len(list(filter(lambda x: x.signed(), idtypes))) != 0
+                if has_signed_inp:
+                    odtype = DataType["INT32"]
+                else:
+                    odtype = DataType["UINT32"]
+                model.set_tensor_datatype(node.output[0], odtype)
         elif node.op_type in dt_identity_optypes:
             # set output dtype = input dtype
             idtype = model.get_tensor_datatype(node.input[0])
