@@ -29,15 +29,49 @@
 import json
 import numpy as np
 import onnx
+import onnx.parser as oprs
 import os
 from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
+from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.registry import getCustomOp
-from qonnx.transformation.general import ApplyConfig, GiveUniqueNodeNames, GiveUniqueParameterTensors
+from qonnx.transformation.general import ApplyConfig, ConvertDivToMul, GiveUniqueNodeNames, GiveUniqueParameterTensors
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
+from qonnx.util.basic import gen_finn_dt_tensor
+
+
+def test_mul_to_div():
+    shp = (1, 2, 4)
+    dt0 = DataType["UINT8"]
+    np.random.seed(0)
+    shp_str = str(list(shp))
+
+    input = f"""
+    <
+        ir_version: 7,
+        opset_import: ["" : 9]
+    >
+    agraph (float{shp_str} in0) => (float{shp_str} out0)
+    <
+        float param_div = {{2.0}}
+    >
+    {{
+        out0 = Div(in0, param_div)
+    }}
+    """
+    model = oprs.parse_model(input)
+    model = ModelWrapper(model)
+    model.set_tensor_datatype("in0", dt0)
+    model = model.transform(InferShapes())
+    inp = gen_finn_dt_tensor(dt0, shp)
+    input_dict = {"in0": inp}
+    out_expected = oxe.execute_onnx(model, input_dict)["out0"]
+    new_model = model.transform(ConvertDivToMul())
+    out_produced = oxe.execute_onnx(new_model, input_dict)["out0"]
+    assert (out_expected == out_produced).all()
 
 
 def test_give_unique_node_names():
