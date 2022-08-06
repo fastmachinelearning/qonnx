@@ -255,7 +255,7 @@ class ConvertDivToMul(Transformation):
                 A = model.get_initializer(n.input[1])
                 if A is not None:
                     n.op_type = "Mul"
-                    model.set_initializer(n.input[1], 1.0 / A)
+                    model.set_initializer(n.input[1], (1.0 / A).astype(A.dtype))
         # return model_was_changed = False as single iteration is always enough
         return (model, False)
 
