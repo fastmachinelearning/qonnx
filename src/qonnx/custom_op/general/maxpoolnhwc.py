@@ -70,7 +70,7 @@ class MaxPoolNHWC(CustomOp):
         assert pads[1] == pads[3], "Uneven padding not supported"
         (n, hi, wi, c) = ishape
         ho = compute_pool_output_dim(hi, kernel_shape[0], strides[0], pads[0], ceil_mode)
-        wo = compute_pool_output_dim(wi, kernel_shape[1], strides[1], pads[2], ceil_mode)
+        wo = compute_pool_output_dim(wi, kernel_shape[1], strides[1], pads[1], ceil_mode)
         oshape = (n, ho, wo, c)
         return super().make_const_shape_op(oshape)
 
