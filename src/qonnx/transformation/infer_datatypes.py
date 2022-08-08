@@ -94,13 +94,13 @@ def _infer_node_datatype(model, node):
                 # set output dtype = input dtype
                 idtype = model.get_tensor_datatype(node.input[0])
                 model.set_tensor_datatype(node.output[0], idtype)
-        elif node.op_type == "Add":
-            if len(list(filter(lambda x: x == DataType["FLOAT32"], idtypes))) != 0:
-                # node has at least one float input, output is also float
+        elif node.op_type in ["Add", "Sub"]:
+            if len(list(filter(lambda x: not (x.is_integer() or x.is_fixed_point()), idtypes))) != 0:
+                # node has at least one non-quantized input, output is also float
                 model.set_tensor_datatype(node.output[0], DataType["FLOAT32"])
             else:
                 has_signed_inp = len(list(filter(lambda x: x.signed(), idtypes))) != 0
-                if has_signed_inp:
+                if has_signed_inp or (node.op_type == "Sub"):
                     odtype = DataType["INT32"]
                 else:
                     odtype = DataType["UINT32"]
