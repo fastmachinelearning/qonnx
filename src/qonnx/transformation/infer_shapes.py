@@ -58,6 +58,8 @@ def _hide_finn_ops(model):
         node_ind += 1
         if is_finn_op(node.domain):
             new_node = _make_shape_compatible_op(node, model)
+            # keep old node name to help debug shape inference issues
+            new_node.name = node.name
             hidden_ops[str(new_node)] = node
             model.graph.node.insert(node_ind, new_node)
             model.graph.node.remove(node)
