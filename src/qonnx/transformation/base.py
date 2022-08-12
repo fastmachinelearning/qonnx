@@ -47,6 +47,7 @@ Guide to writing QONNX transformations
   manually re-apply the transform.
 """
 
+import copy
 import multiprocessing as mp
 from abc import ABC, abstractmethod
 
@@ -71,7 +72,9 @@ class NodeLocalTransformation(Transformation):
     by accessing and modifying the attributes of only that node.
     This class can then automatically parallelize the transformation.
     Transformations sublcassing NodeLocalTransformation must implement the
-    abstract method applyNodeLocal().
+    abstract method applyNodeLocal(). A read-only copy of the model is available
+    as a member variable ref_input_model, but any modifications there will be
+    disregarded.
 
     To control the degree of parallelization, specify the num_workers argument
     in the constructor, using one of the following values:
@@ -95,6 +98,9 @@ class NodeLocalTransformation(Transformation):
         pass
 
     def apply(self, model):
+        # make a detached copy of the input model that applyNodeLocal
+        # can use for read-only access
+        self.ref_input_model = copy.deepcopy(model)
         # Remove old nodes from the current model
         old_nodes = []
         for i in range(len(model.graph.node)):
