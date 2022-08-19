@@ -6,6 +6,14 @@ from .quantizers import get_quant_params
 
 
 def get_qkeras_onnx_handlers(all_quantizers):
+    """Returns the handlers for each kind of layer
+
+    Args:
+        all_quantizers: All the quantizers of the model in dictionary format *check
+
+    Returns:
+        Dictionary containing the handler information for every type of layer
+    """
     return {
         "Conv2D": (conv2d_handler, ["Conv2D", all_quantizers]),
         "MatMul": (dense_handler, ["MatMul", all_quantizers]),
