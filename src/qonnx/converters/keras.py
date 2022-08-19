@@ -79,6 +79,14 @@ def add_value_info_for_constants(model: onnx.ModelProto):
 
 
 def _is_qkeras_model(model):
+    """Check if the model has any qkeras layers, so we can handle the qkeras layers separately
+
+    Args:
+        model: the model we want to convert
+
+    Returns:
+        True if the model contains any qkeras layer
+    """
     def iterate_model(model):
         for layer in model.layers:
             if isinstance(layer, tf.keras.Model):
@@ -94,6 +102,14 @@ def _is_qkeras_model(model):
 
 
 def _check_supported_layers(model):
+    """Check if all the layers in the model are supported for conversion
+
+    Args:
+        model: the tf.keras model we want to convert
+
+    Returns:
+        Exception if an unsupported layer is found in the model
+    """
     def iterate_model(model):
         for layer in model.layers:
             if isinstance(layer, tf.keras.Model):
@@ -105,6 +121,14 @@ def _check_supported_layers(model):
 
 
 def _strip_qkeras_model(model):
+    """Strip a qkeras model to obtain the keras model and obtain the quant nodes.
+
+    Args:
+        model: the tf.keras model we want to convert
+
+    Returns:
+        The stripped model, and the quantizers in a dictionary format
+    """
     quantizers = OrderedDict()
 
     def extract_quantizers(layer):
@@ -127,6 +151,7 @@ def _strip_qkeras_model(model):
     return stripped_model, quantizers
 
 
+# tests run without this function
 def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
 
     for node_name, quantizers in quantizers_dict.items():
