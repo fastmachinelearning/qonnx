@@ -6,6 +6,8 @@ from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 
 def extract_quantizers_from_layer(layer):
+    """
+    """
     layer_class = layer.__class__.__name__
     if layer_class in QKERAS_LAYERS:
         handler = handler_map.get(layer_class, None)
@@ -18,6 +20,14 @@ def extract_quantizers_from_layer(layer):
 
 
 def _is_keras_quantizer(quant):
+    """Check if the quantizer is a qkeras quantizer
+
+    Args:
+        quant: The quantizer node we need this information for
+
+    Returns:
+        True if the quantizer is a qkeras quantizer
+    """
     try:
         # If we can deserialize the quantizer, it means it belongs to qkeras
         # TODO Since quantizer can be any callable, this should be more robust
@@ -28,6 +38,14 @@ def _is_keras_quantizer(quant):
 
 
 def _extract_initializers(layer_cfg):
+    """Return the initializers for the layer
+    
+    Args:
+        layer_cfg: The layer configuration
+
+    Returns:
+        Initializers for the given layer
+    """
     initializers = {}
     for key, value in layer_cfg.items():
         if value is None:
@@ -41,6 +59,14 @@ def _extract_initializers(layer_cfg):
 
 
 def _extract_constraints(layer_cfg):
+    """Returns the constraints for the layer
+
+    Args:
+        layer_cfg: The layer configuration
+
+    Returns:
+        Initializers for the given layer
+    """
     constraints = {}
     for key, value in layer_cfg.items():
         if value is None:

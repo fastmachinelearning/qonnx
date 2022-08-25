@@ -24,6 +24,13 @@ def get_qkeras_onnx_handlers(all_quantizers):
 
 
 def _extract_node_name(onnx_node, keras_quantizers):
+    """
+
+    Args:
+        onnx_node: The onnx node to get the information from
+        keras_quantizers: The dictionary of all the keras quantizers
+    
+    """
     onnx_name = onnx_node.name
     keras_names = keras_quantizers.keys()
     for keras_name in keras_names:
