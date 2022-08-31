@@ -108,6 +108,9 @@ class CustomOp(ABC):
                     str(allowed_values),
                 )
             attr = get_by_name(self.onnx_node.attribute, name)
+            if dtype == "t":
+                # convert numpy array to TensorProto
+                value = np_helper.from_array(value)
             if attr is not None:
                 # dtype indicates which ONNX Attribute member to use
                 # (such as i, f, s...)
@@ -120,7 +123,7 @@ class CustomOp(ABC):
                 elif dtype == "ints":  # list of integers
                     attr.ints[:] = value
                 elif dtype == "t":  # single tensor
-                    attr.t.CopyFrom(np_helper.from_array(value))
+                    attr.t.CopyFrom(value)
                 elif dtype in ["strings", "tensors", "graphs", "sparse_tensors"]:
                     # untested / unsupported attribute types
                     # add testcases & appropriate getters before enabling
