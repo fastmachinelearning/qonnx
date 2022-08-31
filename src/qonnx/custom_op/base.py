@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import onnx.helper as helper
+import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
 
 from qonnx.util.basic import get_by_name
@@ -72,6 +73,9 @@ class CustomOp(ABC):
                 if dtype == "s":
                     # decode string attributes
                     ret = ret.decode("utf-8")
+                elif dtype == "t":
+                    # use numpy helper to convert TensorProto -> np array
+                    ret = np_helper.to_array(ret)
                 if allowed_values is not None:
                     assert ret in allowed_values, "%s = %s not in %s" % (
                         str(name),
@@ -115,6 +119,8 @@ class CustomOp(ABC):
                     attr.floats[:] = value
                 elif dtype == "ints":  # list of integers
                     attr.ints[:] = value
+                elif dtype == "t":  # single tensor
+                    attr.t.CopyFrom(np_helper.from_array(value))
                 elif dtype in ["strings", "tensors", "graphs", "sparse_tensors"]:
                     # untested / unsupported attribute types
                     # add testcases & appropriate getters before enabling
