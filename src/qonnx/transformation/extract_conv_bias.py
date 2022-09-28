@@ -49,10 +49,8 @@ class ExtractBiasFromConv(Transformation):
                     # Extract bias
                     bias = model.get_initializer(n.input[2])
                     if bias is None:
-                        bias_prod = model.find_producer(n.input[2])
-                        if bias_prod.op_type != "Quant":
-                            warnings.warn(f"Could not extract bias from Conv node {n}")
-                            continue
+                        warnings.warn(f"Could not extract bias from Conv node {n}")
+                        continue
 
                     # Insert bias as Add node behind the Conv node
                     out_shape = model.get_tensor_shape(n.output[0])
@@ -60,8 +58,10 @@ class ExtractBiasFromConv(Transformation):
                     add_shape = [1] * len(out_shape)
                     # ToDo: this must change to "add_shape[-1] = bias.shape[0]" when
                     #  the channels last layout comes around.
-                    add_shape[1] = bias.shape[0]
-                    model.set_initializer(n.input[2], bias.reshape(add_shape))
+                    bias_shape = model.get_tensor_shape(n.input[2])
+                    add_shape[1] = bias_shape[0]
+                    if bias is not None:
+                        model.set_initializer(n.input[2], bias.reshape(add_shape))
 
                     act_add_tensor = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
