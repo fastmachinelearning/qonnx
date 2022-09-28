@@ -49,10 +49,10 @@ class ExtractBiasFromConv(Transformation):
                     # Extract bias
                     bias = model.get_initializer(n.input[2])
                     if bias is None:
-                        warnings.warn(
-                            f"Could not extract bias from Conv node {n}, " f"due to missing static initialization."
-                        )
-                        continue
+                        bias_prod = model.find_producer(n.input[2])
+                        if bias_prod.op_type != "Quant":
+                            warnings.warn(f"Could not extract bias from Conv node {n}")
+                            continue
 
                     # Insert bias as Add node behind the Conv node
                     out_shape = model.get_tensor_shape(n.output[0])

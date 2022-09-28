@@ -27,9 +27,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
+import warnings
 from onnx import TensorProto, helper
 
 from qonnx.transformation.base import Transformation
+from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
 from qonnx.util.basic import get_by_name
 
 
@@ -55,12 +57,16 @@ class LowerConvsToMatMul(Transformation):
     layers to keep the original data layout."""
 
     def apply(self, model):
+        model = model.transform(ExtractBiasFromConv())
         graph = model.graph
         node_ind = 0
         graph_modified = False
         for n in graph.node:
             node_ind += 1
             if n.op_type == "Conv":
+                if len(n.input) == 3:
+                    warnings.warn("Found Conv node with bias, skipping")
+                    continue
                 cnv_input = n.input[0]
                 cnv_output = n.output[0]
                 idt = model.get_tensor_datatype(cnv_input)
