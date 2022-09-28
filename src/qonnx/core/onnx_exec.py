@@ -31,6 +31,7 @@ import copy
 import numpy as np
 import onnx.helper as helper
 import onnxruntime as rt
+import warnings
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
@@ -84,10 +85,10 @@ def execute_node(node, context, graph, return_full_exec_context=False, opset_ver
 
             # use that index to index output_list
             if output_list[list_ind].shape != context[outp].shape:
-                raise Exception(
-                    """Output shapes disagree after node execution:
+                warnings.warn(
+                    """Output shapes disagree after node %s execution:
                     found %s vs expected %s"""
-                    % (str(output_list[list_ind].shape), str(context[outp].shape))
+                    % (str(node), str(output_list[list_ind].shape), str(context[outp].shape))
                 )
             context[outp] = output_list[list_ind]
 
