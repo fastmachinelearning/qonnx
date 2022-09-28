@@ -6,6 +6,14 @@ from .quantizers import get_quant_params
 
 
 def get_qkeras_onnx_handlers(all_quantizers):
+    """Returns the handlers for each kind of layer
+
+    Args:
+        all_quantizers: All the quantizers of the model in dictionary format *check
+
+    Returns:
+        Dictionary containing the handler information for every type of layer
+    """
     return {
         "Conv2D": (conv2d_handler, ["Conv2D", all_quantizers]),
         "MatMul": (dense_handler, ["MatMul", all_quantizers]),
@@ -16,6 +24,13 @@ def get_qkeras_onnx_handlers(all_quantizers):
 
 
 def _extract_node_name(onnx_node, keras_quantizers):
+    """
+
+    Args:
+        onnx_node: The onnx node to get the information from
+        keras_quantizers: The dictionary of all the keras quantizers
+    
+    """
     onnx_name = onnx_node.name
     keras_names = keras_quantizers.keys()
     for keras_name in keras_names:
