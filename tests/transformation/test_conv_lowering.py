@@ -87,7 +87,9 @@ def test_conv_lowering_convmnist():
 @pytest.mark.parametrize("dilations", [[1, 1], [2, 2], [3, 3]])
 # depthwise or channelwise
 @pytest.mark.parametrize("dw", [True, False])
-def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw):
+# conv bias
+@pytest.mark.parametrize("bias", [True, False])
+def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):
     if k_h > ifm_dim_h:
         pytest.skip("Kernel height must be smaller than image height")
     if k_w > ifm_dim_w:
@@ -132,9 +134,12 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
         W = oh.make_tensor_value_info("W", TensorProto.FLOAT, [ofm_ch, ifm_ch, k_h, k_w])
         group = 1
 
+    if bias is True:
+        B = oh.make_tensor_value_info("B", TensorProto.FLOAT, [ofm_ch])
+
     dw_cnv = oh.make_node(
         "Conv",
-        inputs=["inp", "W"],
+        inputs=["inp", "W"] if not bias else ["inp", "W", "B"],
         outputs=["outp"],
         kernel_shape=[k_h, k_w],
         pads=padding,
@@ -147,7 +152,7 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
         name="dw_cnv_graph",
         inputs=[inp],
         outputs=[outp],
-        value_info=[W],
+        value_info=[W] if not bias else [W, B],
     )
 
     model = oh.make_model(graph, producer_name="test_dws_reg_cnv-model")
@@ -161,6 +166,11 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
     else:
         w_tensor = gen_finn_dt_tensor(wdt, [ofm_ch, ifm_ch, k_h, k_w])
 
+    if bias is True:
+        b_tensor = gen_finn_dt_tensor(odt, [ofm_ch])
+        model.set_initializer("B", b_tensor)
+        model.set_tensor_datatype("B", odt)
+
     model.set_initializer("W", w_tensor)
     model = model.transform(InferShapes())
 
@@ -170,6 +180,7 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
     expected = output_dict["outp"]
 
     model = model.transform(LowerConvsToMatMul())
+    assert len(model.get_nodes_by_op_type("Conv")) == 0, "Found Conv nodes after lowering"
     output_dict = oxe.execute_onnx(model, input_dict)
     produced = output_dict["outp"]
     assert (produced == expected).all()
