@@ -77,11 +77,12 @@ class FoldConstants(Transformation):
         self.exclude_op_types = exclude_op_types
 
     def apply(self, model):
-        graph = model.graph
+        opset_version = model.model.opset_import[0].version
         node_ind = 0
         graph_modified = False
         execution_context = model.make_empty_exec_context()
-        for n in graph.node:
+        nodes_to_remove = []
+        for n in model.graph.node:
             node_ind += 1
             node_inp_inits = list(map(lambda x: model.get_initializer(x), n.input))
             node_inp_dyn = list(filter(lambda x: x is None, node_inp_inits))
@@ -92,13 +93,18 @@ class FoldConstants(Transformation):
             exclude = n.op_type in self.exclude_op_types
             if (is_all_constant_inputs or is_const_shape) and not exclude:
                 # this node has no dynamic inputs, only constant ones -- so we can
-                # do constant folding.
-                oxe.execute_node(n, execution_context, graph)
+                # do constant folding. to ensure any missing ValueInfos from initializers
+                # are populated, we 'touch' the shape of all inputs first below.
+                for inp in n.input:
+                    model.get_tensor_shape(inp, fix_missing_init_shape=True)
+                oxe.execute_node(n, execution_context, model.graph, opset_version=opset_version)
                 # use the execution result as an initializer
                 model.set_initializer(node_out, execution_context[node_out])
                 # remove old node
-                graph.node.remove(n)
+                nodes_to_remove.append(n)
                 graph_modified = True
+        for node in nodes_to_remove:
+            model.graph.node.remove(node)
         if graph_modified:
             model = model.transform(InferShapes())
         return (model, graph_modified)
