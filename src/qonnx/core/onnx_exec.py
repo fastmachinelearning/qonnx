@@ -59,6 +59,13 @@ def execute_node(node, context, graph, return_full_exec_context=False, opset_ver
         node_inputs += list(filter(lambda x: x.name in node.input, graph.value_info))
         node_outputs = list(filter(lambda x: x.name in node.output, graph.output))
         node_outputs += list(filter(lambda x: x.name in node.output, graph.value_info))
+        for attr in node.attribute:
+            if attr.type == 5:
+                subgraph = attr.g
+                for subgraph_node in subgraph.node:
+                    subgraph_node_inputs = list(filter(lambda x: x.name in subgraph_node.input, graph.value_info))
+                    new_inps = list(filter(lambda x: x not in node_inputs, subgraph_node_inputs))
+                    node_inputs += new_inps
         node_graph = helper.make_graph(
             nodes=[node],
             name="single-node-exec",
