@@ -68,6 +68,13 @@ def qlayer_handler(ctx, node, name, args):
         dtypes = [ctx.get_dtype(node.output[0])]
         quant_params = get_quant_params(None, quantizers["activation"])
         attr = quant_params["attributes"]
+
+        print(f"quantizers = {quantizers}")
+        print(f"quant_params = {quant_params}")
+        print(f"input_nodes[0] = {input_nodes[0]}")
+        print(f"dtypes[0] = {dtypes[0]}")
+        print(f"attr = {attr}")
+        print(dir(node.output[0]))
         input_nodes = [node.output[0]]
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_activation_quantizer_{key}"

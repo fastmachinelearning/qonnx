@@ -114,6 +114,8 @@ def _strip_qkeras_model(model):
                 k: None if v == "None" else v for k, v in layer_quantizers.items()
             }  # Get rid of 'None' strings
             layer_quantizers["input"] = layer.input.name
+            layer_quantizers["input_shape"] = layer.input.shape
+            layer_quantizers["output_shape"] = layer.output.shape
             quantizers[layer.name] = layer_quantizers
 
         layer_class = tf.keras.layers.__dict__.get(keras_cls_name, None)
