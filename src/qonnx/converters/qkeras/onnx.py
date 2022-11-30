@@ -1,10 +1,9 @@
 import numpy as np
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
-
 from .quantizers import get_quant_params
-
-
+from tf2onnx import constants, utils
+from tf2onnx.late_rewriters import channel_order_rewriters
 def get_qkeras_onnx_handlers(all_quantizers):
     """Returns the handlers for each kind of layer
 
@@ -52,7 +51,6 @@ def qlayer_handler(ctx, node, name, args):
     if not keras_name:
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
-
     if quantizers.get("kernel_quantizer"):
         weights = node.inputs[1].get_tensor_value(as_list=True)
         quant_params = get_quant_params(weights, quantizers["kernel_quantizer"])
@@ -99,7 +97,7 @@ def qlayer_handler(ctx, node, name, args):
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
 
-
+   
 def qact_handler(ctx, node, name, args):
     all_quantizers = args[0]
     keras_name = _extract_node_name(node, all_quantizers)
@@ -126,8 +124,9 @@ def qact_handler(ctx, node, name, args):
             domain="qonnx",
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
-
-
+        ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
+        channel_order_rewriters._to_channel_first_handler(ctx,quant_act_node)
+              
 def conv2d_handler(ctx, node, name, args):
     ConvOp.any_version(11, ctx, node)
     qlayer_handler(ctx, node, name, args)
