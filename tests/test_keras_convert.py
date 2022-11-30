@@ -3,12 +3,8 @@ import pytest
 import numpy as np
 import onnx
 import tensorflow as tf
-
-# from numpy.testing import assert_allclose
-from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary,quantized_tanh
-
-# from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input,Permute
+from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
+from tensorflow.keras.layers import Activation, Flatten, Input
 from tensorflow.keras.models import Model
 
 import qonnx
@@ -219,7 +215,7 @@ def test_qkeras_qconv2d_conversion():
         strides=(2, 2),
         kernel_quantizer=binary(alpha=1.0),
         bias_quantizer=quantized_bits(4, 0, 1),
-    #    activation=quantized_relu(6,2,1),
+        #    activation=quantized_relu(6,2,1),
         kernel_initializer=ini,
         bias_initializer=ini,
         name="conv2d_0_m",
@@ -234,7 +230,7 @@ def test_qkeras_qconv2d_conversion():
         kernel_initializer=ini,
         bias_initializer=ini,
         name="conv2d_1_m",
-   #     activation=quantized_relu(6, 3, 1),
+        #     activation=quantized_relu(6, 3, 1),
     )(x)
     x = QConv2D(
         64,
@@ -245,7 +241,7 @@ def test_qkeras_qconv2d_conversion():
         use_bias=False,  # Lets try this one without bias to see if that trips up the converter
         name="conv2d_2_m",
     )(x)
-#   x = QActivation(quantized_bits(6, 2, 1, alpha=1.0), name="act0_3m")(x)
+    #   x = QActivation(quantized_bits(6, 2, 1, alpha=1.0), name="act0_3m")(x)
     x = QConv2D(
         64,
         (2, 2),
@@ -253,10 +249,10 @@ def test_qkeras_qconv2d_conversion():
         kernel_quantizer=quantized_bits(6, 2, 1, alpha=1.0),
         kernel_initializer=ini,
         use_bias=False,  # Lets try this one without bias to see if that trips up the converter
-   #     activation=quantized_bits(6, 2, 1, alpha=1.0),
+        #     activation=quantized_bits(6, 2, 1, alpha=1.0),
         name="conv2d_3_m",
     )(x)
- #   x = QActivation("quantized_relu(6,2,1)", name="actee0_m")(x)
+    #   x = QActivation("quantized_relu(6,2,1)", name="actee0_m")(x)
     x = Flatten(name="flatten")(x)
     x = QDense(
         10,

@@ -1,9 +1,11 @@
 import numpy as np
+from tf2onnx.late_rewriters import channel_order_rewriters
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
+
 from .quantizers import get_quant_params
-from tf2onnx import constants, utils
-from tf2onnx.late_rewriters import channel_order_rewriters
+
+
 def get_qkeras_onnx_handlers(all_quantizers):
     """Returns the handlers for each kind of layer
 
@@ -28,7 +30,7 @@ def _extract_node_name(onnx_node, keras_quantizers):
     Args:
         onnx_node: The onnx node to get the information from
         keras_quantizers: The dictionary of all the keras quantizers
-    
+
     """
     onnx_name = onnx_node.name
     keras_names = keras_quantizers.keys()
@@ -97,7 +99,7 @@ def qlayer_handler(ctx, node, name, args):
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
 
-   
+
 def qact_handler(ctx, node, name, args):
     all_quantizers = args[0]
     keras_name = _extract_node_name(node, all_quantizers)
@@ -125,8 +127,9 @@ def qact_handler(ctx, node, name, args):
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
         ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
-        channel_order_rewriters._to_channel_first_handler(ctx,quant_act_node)
-              
+        channel_order_rewriters._to_channel_first_handler(ctx, quant_act_node)
+
+
 def conv2d_handler(ctx, node, name, args):
     ConvOp.any_version(11, ctx, node)
     qlayer_handler(ctx, node, name, args)

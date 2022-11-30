@@ -87,6 +87,7 @@ def _is_qkeras_model(model):
     Returns:
         True if the model contains any qkeras layer
     """
+
     def iterate_model(model):
         for layer in model.layers:
             if isinstance(layer, tf.keras.Model):
@@ -110,6 +111,7 @@ def _check_supported_layers(model):
     Returns:
         Exception if an unsupported layer is found in the model
     """
+
     def iterate_model(model):
         for layer in model.layers:
             if isinstance(layer, tf.keras.Model):

@@ -6,8 +6,7 @@ from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 
 def extract_quantizers_from_layer(layer):
-    """
-    """
+    """ """
     layer_class = layer.__class__.__name__
     if layer_class in QKERAS_LAYERS:
         handler = handler_map.get(layer_class, None)
@@ -39,7 +38,7 @@ def _is_keras_quantizer(quant):
 
 def _extract_initializers(layer_cfg):
     """Return the initializers for the layer
-    
+
     Args:
         layer_cfg: The layer configuration
 
