@@ -1,6 +1,7 @@
 name: Run pre-commit
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [ main, dev ]
   push:
