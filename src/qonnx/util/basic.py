@@ -191,7 +191,7 @@ def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
     max_value = max_input * max_weight
     # If either the weight and input datatypes are signed, then the minimum
     # value that their accumulated product can be is -max_value. Else, it's 0.
-    min_value = -max_value if (min(matrix) < 0) or vec_dt.signed() else 0
+    min_value = -max_value if (matrix.min() < 0) or vec_dt.signed() else 0
     return (min_value, max_value)
 
 
