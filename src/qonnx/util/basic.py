@@ -181,7 +181,7 @@ def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
     return ret
 
 
-def calculate_matvec_accumulator_range(matrix, vec_dt):
+def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
     """Calculate the minimum and maximum possible result (accumulator) values
     for a dot product x * A, given matrix A of dims (MW, MH), and vector (1, MW)
     with datatype vec_dt. Returns (acc_min, acc_max).
@@ -189,7 +189,10 @@ def calculate_matvec_accumulator_range(matrix, vec_dt):
     max_weight = abs(matrix).sum(axis=0).max()
     max_input = max(abs(vec_dt.min()), abs(vec_dt.max()))
     max_value = max_input * max_weight
-    return (-max_value, max_value)
+    # If either the weight and input datatypes are signed, then the minimum
+    # value that their accumulated product can be is -max_value. Else, it's 0.
+    min_value = -max_value if (min(matrix) < 0) or vec_dt.signed() else 0
+    return (min_value, max_value)
 
 
 def gen_finn_dt_tensor(finn_dt, tensor_shape):
