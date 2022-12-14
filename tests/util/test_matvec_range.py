@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import pytest
+import numpy as np
 import qonnx.util.basic as util
 from qonnx.core.datatype import DataType
 
@@ -34,6 +35,8 @@ from qonnx.core.datatype import DataType
 for a dot product x * A, given matrix A of dims (MW, MH), and vector (1, MW)
 with datatype vec_dt. Returns (acc_min, acc_max).
 """
+
+np.random.seed(0)
 
 datatypes = [DataType["UINT8"], DataType["INT8"], DataType["UINT3"], \
     DataType["INT3"], DataType["BIPOLAR"], DataType["TERNARY"]]
