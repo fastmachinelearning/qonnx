@@ -35,7 +35,8 @@ for a dot product x * A, given matrix A of dims (MW, MH), and vector (1, MW)
 with datatype vec_dt. Returns (acc_min, acc_max).
 """
 
-datatypes = [DataType["UINT8"], DataType["INT8"], DataType["UINT3"], DataType["INT3"]]
+datatypes = [DataType["UINT8"], DataType["INT8"], DataType["UINT3"], \
+    DataType["INT3"], DataType["BIPOLAR"], DataType["TERNARY"]]
 
 @pytest.mark.parametrize("wdt", datatypes)
 @pytest.mark.parametrize("idt", datatypes)
