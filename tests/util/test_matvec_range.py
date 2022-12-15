@@ -27,7 +27,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import pytest
+
 import numpy as np
+
 import qonnx.util.basic as util
 from qonnx.core.datatype import DataType
 
@@ -38,14 +40,21 @@ with datatype vec_dt. Returns (acc_min, acc_max).
 
 np.random.seed(0)
 
-datatypes = [DataType["UINT8"], DataType["INT8"], DataType["UINT3"], \
-    DataType["INT3"], DataType["BIPOLAR"], DataType["TERNARY"]]
+datatypes = [
+    DataType["UINT8"],
+    DataType["INT8"],
+    DataType["UINT3"],
+    DataType["INT3"],
+    DataType["BIPOLAR"],
+    DataType["TERNARY"],
+]
+
 
 @pytest.mark.parametrize("wdt", datatypes)
 @pytest.mark.parametrize("idt", datatypes)
 @pytest.mark.parametrize("size", [1, 10, 100])
 def test_calculate_matvec_accumulator_range(wdt: DataType, idt: DataType, size: int):
-    weights = util.gen_finn_dt_tensor(wdt, tensor_shape=(size, 1)) # (MW, MH)
+    weights = util.gen_finn_dt_tensor(wdt, tensor_shape=(size, 1))  # (MW, MH)
     acc_min, acc_max = util.calculate_matvec_accumulator_range(weights, idt)
     for _ in range(1000):
         inputs = util.gen_finn_dt_tensor(idt, tensor_shape=(1, size))
