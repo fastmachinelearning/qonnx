@@ -689,4 +689,3 @@ def test_qkeras_qconv2d_conversion_2(quantizers,request):
 
 if __name__ == "__main__":
     pytest.main([__file__])
-
