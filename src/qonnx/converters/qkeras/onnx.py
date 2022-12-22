@@ -5,6 +5,7 @@ from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
 
 from .quantizers import get_quant_params
 
+
 def get_qkeras_onnx_handlers(all_quantizers):
     """Returns the handlers for each kind of layer
 
@@ -161,8 +162,8 @@ def bias_handler(ctx, node, name, args):
 
     if quantizers.get("activation"):
         # removes node if added earlier
-        remove_node_id=node.input[0]
-        remove_node=ctx.get_node_by_output(remove_node_id)
+        remove_node_id = node.input[0]
+        remove_node = ctx.get_node_by_output(remove_node_id)
         ctx.replace_all_inputs(node.input[0], remove_node.input[0], ops=None)
         dtypes = [ctx.get_dtype(node.output[0])]
         quant_params = get_quant_params(None, quantizers["activation"])
@@ -183,6 +184,7 @@ def bias_handler(ctx, node, name, args):
         )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
         ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
+
 
 def relu_handler(ctx, node, name, args):
     DirectOp.version_1(ctx, node)

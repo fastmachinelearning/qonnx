@@ -24,7 +24,7 @@ act_quantizers = [
     quantized_bits(4, 2, 0, alpha=1),
     quantized_bits(2, 2, 1, alpha=1),
     quantized_bits(2, 1, 1, alpha=1),
- #   ternary(alpha=1, threshold=0.5), Not stable
+    #   ternary(alpha=1, threshold=0.5), Not stable
     binary(alpha=1),
 ]
 act_quantizers_ids = list(range(len(act_quantizers)))
@@ -37,7 +37,6 @@ act_quantizers_relu = [
     quantized_relu(6, 2),
 ]
 act_quantizers_relu_ids = list(range(len(act_quantizers_relu)))
-
 
 
 @pytest.mark.parametrize("quantizer", act_quantizers_relu, ids=act_quantizers_relu_ids)
@@ -80,6 +79,7 @@ kb_quantizers = [
     (binary(alpha=1), quantized_bits(4, 4)),
 ]
 kb_quantizers_ids = list(range(len(kb_quantizers)))
+
 
 def test_keras_conv2d_conversion():
     x = x_in = Input((28, 28, 1), name="input")
@@ -140,6 +140,7 @@ def test_keras_dense_conversion():
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
 
+
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qdense_1(quantizers, request):
     kq, bq = quantizers
@@ -172,6 +173,7 @@ def test_qkeras_qdense_1(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qdense_2(quantizers, request):
@@ -213,6 +215,7 @@ def test_qkeras_qdense_2(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qdense_3(quantizers, request):
@@ -257,6 +260,7 @@ def test_qkeras_qdense_3(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
 
+
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
 def test_qkeras_qdense_4(quantizers, request):
     kq, bq = (quantized_bits(4, 0, 1, alpha=1), quantized_bits(8, 0, 1, alpha=1))
@@ -268,7 +272,7 @@ def test_qkeras_qdense_4(quantizers, request):
         32,
         kernel_quantizer=kq,
         bias_quantizer=bq,
-        activation=quantized_bits(8,8, 1, alpha=1.0),
+        activation=quantized_bits(8, 8, 1, alpha=1.0),
         kernel_initializer=k_ini,
         bias_initializer=b_ini,
         name="dense_0",
@@ -287,7 +291,7 @@ def test_qkeras_qdense_4(quantizers, request):
         10,
         kernel_quantizer=kq,
         bias_quantizer=bq,
-        activation=quantized_bits(4,4,0, alpha=1.0),
+        activation=quantized_bits(4, 4, 0, alpha=1.0),
         use_bias=False,
         kernel_initializer=k_ini,
         bias_initializer=b_ini,
@@ -360,6 +364,7 @@ def test_qkeras_qconv2d_1(quantizers, request):
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
 
+
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
 def test_qkeras_qconv2d_2(quantizers, request):
     kq, bq = (quantized_bits(4, 0, 1, alpha=1), quantized_bits(8, 0, 1, alpha=1))
@@ -407,6 +412,7 @@ def test_qkeras_qconv2d_2(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+
 
 @pytest.mark.parametrize("quantizers", act_quantizers, ids=act_quantizers_ids)
 def test_qkeras_qconv2d_3(quantizers, request):
@@ -466,8 +472,9 @@ def test_qkeras_qconv2d_3(quantizers, request):
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
 
+
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
-def test_qkeras_qconv2d_conversion_1(quantizers,request):
+def test_qkeras_qconv2d_conversion_1(quantizers, request):
     kq, bq = quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
@@ -539,7 +546,7 @@ def test_qkeras_qconv2d_conversion_1(quantizers,request):
 
 
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
-def test_qkeras_qconv2d_conversion_2(quantizers,request):
+def test_qkeras_qconv2d_conversion_2(quantizers, request):
     kq, bq = (quantized_bits(4, 4, 0, alpha=1), quantized_bits(8, 8, 0, alpha=1))
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
@@ -603,6 +610,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers,request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+
 
 # quantized_relu should not be used as a layer activation
 # def test_qkeras_broken_1(quantizers, request):
