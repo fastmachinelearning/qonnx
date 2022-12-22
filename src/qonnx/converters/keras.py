@@ -219,7 +219,7 @@ def from_keras(
         keras_model,
         input_signature=input_signature,
         opset=opset,
-        custom_ops=qkeras_op_handlers,
+        custom_ops=custom_ops,
         custom_op_handlers=qkeras_op_handlers,
         custom_rewriter=custom_rewriter,
         inputs_as_nchw=inputs_as_nchw,
