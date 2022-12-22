@@ -46,6 +46,6 @@ def test_topk_insert(k):
     # verify output of top-k
     output_dict_topk = oxe.execute_onnx(model, input_dict)
     output_pysim_topk = output_dict_topk[list(output_dict_topk.keys())[0]]
-    output_pysim_topk = output_pysim_topk.astype(np.int).flatten()
+    output_pysim_topk = output_pysim_topk.astype(int).flatten()
 
     assert np.array_equal(output_golden_topk, output_pysim_topk)
