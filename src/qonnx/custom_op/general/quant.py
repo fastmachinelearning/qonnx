@@ -195,20 +195,12 @@ class Quant(CustomOp):
         zeropt = model.get_initializer(node.input[2])
         bitwidth = model.get_initializer(node.input[3])
         assert scale is not None, "Found unspecified scale for Quant node: " + str(node)
-        assert (
-            zeropt is not None
-        ), "Found unspecified zero point for Quant node: " + str(node)
-        assert (
-            bitwidth is not None
-        ), "Found unspecified bitwidth for Quant node: " + str(node)
+        assert zeropt is not None, "Found unspecified zero point for Quant node: " + str(node)
+        assert bitwidth is not None, "Found unspecified bitwidth for Quant node: " + str(node)
         # extract the bitwidth (assume scalar)
-        assert bitwidth.ndim == 0, "Bitwidth must be scalar for Quant node: " + str(
-            node
-        )
+        assert bitwidth.ndim == 0, "Bitwidth must be scalar for Quant node: " + str(node)
         bitwidth = bitwidth.item()
-        assert (
-            int(bitwidth) == bitwidth
-        ), "Bitwidth must be integer for Quant node: " + str(node)
+        assert int(bitwidth) == bitwidth, "Bitwidth must be integer for Quant node: " + str(node)
         bitwidth = int(bitwidth)
         # determine the FINN DataType
         unit_scale = np.all(scale == 1.0)
