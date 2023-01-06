@@ -36,14 +36,19 @@ from qonnx.custom_op.base import CustomOp
 def min_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
     """Compute the minimum integer representable by a given number of bits.
     Args:
+
         signed (bool): Indicates whether the represented integer is signed or not.
         narrow_range (bool): Indicates whether to narrow the minimum value
         represented by 1.
         bit_width (int): Number of bits available for the representation.
+
     Returns:
+
         int: Maximum unsigned integer that can be represented according to
         the input arguments.
+
     Examples:
+
         >>> min_int(signed=True, narrow_range=True, bit_width=8)
         int(-127)
         >>> min_int(signed=False, narrow_range=True, bit_width=8)
@@ -52,6 +57,7 @@ def min_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
         int(-128)
         >>> min_int(signed=False, narrow_range=False, bit_width=8)
         int(0)
+
     """
     if signed and narrow_range:
         value = -(2 ** (bit_width - 1)) + 1
@@ -65,14 +71,19 @@ def min_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
 def max_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
     """Compute the maximum integer representable by a given number of bits.
     Args:
+
         signed (bool): Indicates whether the represented integer is signed or not.
         narrow_range (bool): Indicates whether to narrow the maximum unsigned value
         represented by 1.
         bit_width (int): Number of bits available for the representation.
+
     Returns:
+
         Tensor: Maximum integer that can be represented according to
         the input arguments.
+
     Examples:
+
         >>> max_int(signed=True, narrow_range=True, bit_width=8)
         int(127)
         >>> max_int(signed=False, narrow_range=True, bit_width=8)
@@ -81,6 +92,7 @@ def max_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
         int(127)
         >>> max_int(signed=False, narrow_range=False, bit_width=8)
         int(255)
+
     """
     if not signed and not narrow_range:
         value = (2**bit_width) - 1
