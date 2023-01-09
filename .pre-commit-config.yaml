@@ -1,7 +1,7 @@
 exclude: '^docs/conf.py'
 
 default_language_version:
-    python: python3.7
+    python: python3.8
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
