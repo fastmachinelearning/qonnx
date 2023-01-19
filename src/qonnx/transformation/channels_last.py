@@ -109,6 +109,9 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # these don't need a transpose.
                     if n.op_type == "BatchNormalization" and i > 0:
                         continue
+                    # Skip Conv bias since it doesn't need a transpose
+                    if n.op_type == "Conv" and i == 2:
+                        continue
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
                     chanFirst_shape = model.get_tensor_shape(inp)
