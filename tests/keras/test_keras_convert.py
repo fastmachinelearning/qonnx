@@ -7,8 +7,8 @@ from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantiz
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
 
-import qonnx
 import qonnx.core.onnx_exec as oxe
+from qonnx.converters import from_keras
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
 
@@ -47,7 +47,7 @@ def test_qkeras_qactivation(quantizer, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qactivation_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -97,7 +97,7 @@ def test_keras_conv2d_conversion():
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_conv2d_conversion")
+    onnx_model, external_storage = from_keras(model, "test_keras_conv2d_conversion")
     onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
 
     assert external_storage is None
@@ -127,7 +127,7 @@ def test_keras_dense_conversion():
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 15)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_keras_dense_conversion")
+    onnx_model, external_storage = from_keras(model, "test_keras_dense_conversion")
     assert external_storage is None
     onnx.save(onnx_model, "model_test_keras_dense_conversion.onnx")
 
@@ -160,7 +160,7 @@ def test_qkeras_qdense_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -203,7 +203,7 @@ def test_qkeras_qdense_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -247,7 +247,7 @@ def test_qkeras_qdense_3(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense3_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -302,7 +302,7 @@ def test_qkeras_qdense_4(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense4_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -350,7 +350,7 @@ def test_qkeras_qconv2d_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -399,7 +399,7 @@ def test_qkeras_qconv2d_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -458,7 +458,7 @@ def test_qkeras_qconv2d_3(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d3_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -532,7 +532,7 @@ def test_qkeras_qconv2d_conversion_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d_conversion1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -599,7 +599,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d_conversion2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -640,7 +640,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
 #     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
 #     y_qkeras = model.predict(x_test)
 
-#     onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=9)
 #     assert external_storage is None
 #     model_path = f"test_qkeras_broken1{request.node.callspec.id}.onnx"
 #     onnx.save(onnx_model, model_path)
@@ -682,7 +682,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
 #     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
 #     y_qkeras = model.predict(x_test)
 
-#     onnx_model, external_storage = qonnx.converters.from_keras(model, "test_qkeras_conversion", opset=9)
+#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=9)
 #     assert external_storage is None
 #     model_path = f"test_qkeras_broken2{request.node.callspec.id}.onnx"
 #     onnx.save(onnx_model, model_path)
