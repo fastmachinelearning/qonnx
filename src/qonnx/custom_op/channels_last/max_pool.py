@@ -94,14 +94,15 @@ class MaxPool(ChannelsLastWrappedOp):
         info_messages.extend(wrapper_info)
 
         # verify number of attributes
-        num_of_attr = 3
-        if len(node.attribute) == num_of_attr:
+        num_of_attr_min = 3
+        num_of_attr_max = 7
+        if (len(node.attribute) >= num_of_attr_min) and len(node.attribute) <= num_of_attr_max:
             info_messages.append("The number of attributes is correct")
         else:
             info_messages.append(
                 """The number of attributes is incorrect,
-            {} should have {} attributes""".format(
-                    node.op_type, num_of_attr
+            {} should have between {} and {} attributes""".format(
+                    node.op_type, num_of_attr_min, num_of_attr_max
                 )
             )
             verification_successful = False
