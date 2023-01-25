@@ -5,6 +5,7 @@ from qonnx.analysis.topology import is_linear
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
 from qonnx.transformation.base import Transformation
+from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
@@ -75,6 +76,7 @@ class ConvertToChannelsLastAndClean(Transformation):
 
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
+        model = model.transform(FoldConstants())
 
         # Check if the model changed
         model_changed = initial_model_string != new_model_string
@@ -414,16 +416,20 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                 # Get the weight initilizer
                                 quant_node = model.find_producer(consumer.input[1])
                                 if quant_node is None:
-                                    continue
-                                if quant_node.op_type == "Quant":
-                                    W = model.get_initializer(quant_node.input[0])
+                                    W = model.get_initializer(consumer.input[1])
                                 else:
-                                    warnings.warn(f"Could not find weight initializer for " f"MatMul: {consumer.name}")
-                                    continue
+                                    if quant_node.op_type == "Quant":
+                                        W = model.get_initializer(quant_node.input[0])
+                                    else:
+                                        warnings.warn(f"Could not find weight initializer for " f"MatMul: {consumer.name}")
+                                        continue
                                 W_new = W.reshape(c, h, w, mh)
                                 W_new = W_new.transpose((1, 2, 0, 3))
                                 W_new = W_new.reshape(mw, mh)
-                                model.set_initializer(quant_node.input[0], W_new)
+                                if quant_node is None:
+                                    model.set_initializer(consumer.input[1], W_new)
+                                else:
+                                    model.set_initializer(quant_node.input[0], W_new)
                                 # remove transpose & flatten nodes
                                 consumer.input[0] = transp_node.input[0]
                                 graph.node.remove(n)
