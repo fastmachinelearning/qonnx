@@ -1,5 +1,4 @@
 import numpy as np
-from google.protobuf.pyext._message import RepeatedScalarContainer
 from onnx import TensorProto, helper
 
 from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
@@ -129,10 +128,10 @@ class Conv(ChannelsLastWrappedOp):
 
         # verify that attributes have the correct datatype.
         try:
-            assert isinstance(self.get_nodeattr("kernel_shape"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("pads"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("strides"), RepeatedScalarContainer)
-            assert isinstance(self.get_nodeattr("dilations"), RepeatedScalarContainer)
+            assert isinstance(self.get_nodeattr("kernel_shape"), list)
+            assert isinstance(self.get_nodeattr("pads"), list)
+            assert isinstance(self.get_nodeattr("strides"), list)
+            assert isinstance(self.get_nodeattr("dilations"), list)
             assert isinstance(self.get_nodeattr("group"), int)
             info_messages.append("All attributes are of the correct type")
         except Exception:
