@@ -4,6 +4,7 @@ from copy import deepcopy
 from onnx import TensorProto, helper
 
 from qonnx.custom_op.base import CustomOp
+from qonnx.util.basic import qonnx_make_model
 
 
 def to_channels_last_args(ndim):
@@ -96,7 +97,7 @@ class ChannelsLastWrappedOp(CustomOp):
         # Execute the intermediate node with onnxruntime,
         # using the transposed inputs / outputs
         intermediate_graph = helper.make_graph([intermediate_node], "test_model", input_tensor_list, output_tensor_list)
-        intermediate_model = helper.make_model(intermediate_graph)
+        intermediate_model = qonnx_make_model(intermediate_graph)
         sess = rt.InferenceSession(intermediate_model.SerializeToString())
         output_list = sess.run(None, input_dict)
         output_onnx = output_list[0]

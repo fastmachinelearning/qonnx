@@ -32,6 +32,7 @@ from onnx import TensorProto
 import qonnx.analysis.topology as ta
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 def test_is_linear_linear():
@@ -39,7 +40,7 @@ def test_is_linear_linear():
     add_param = oh.make_tensor_value_info("add_param", TensorProto.FLOAT, [2])
     mul_param = oh.make_tensor_value_info("mul_param", TensorProto.FLOAT, [2])
     top_out = oh.make_tensor_value_info("top_out", TensorProto.FLOAT, [2])
-    modelproto = oh.make_model(
+    modelproto = qonnx_make_model(
         oh.make_graph(
             name="test",
             inputs=[top_in],
@@ -65,7 +66,7 @@ def test_is_linear_forked_node_output():
     mul0_res = oh.make_tensor_value_info("mul0_res", TensorProto.FLOAT, [2])
     mul1_res = oh.make_tensor_value_info("mul1_res", TensorProto.FLOAT, [2])
     top_out = oh.make_tensor_value_info("top_out", TensorProto.FLOAT, [2])
-    modelproto = oh.make_model(
+    modelproto = qonnx_make_model(
         oh.make_graph(
             name="test",
             inputs=[top_in],

@@ -37,7 +37,7 @@ from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.create_generic_partitions import PartitionFromDict
 from qonnx.transformation.extend_partition import ExtendPartition
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def create_model():
@@ -231,7 +231,7 @@ def create_model():
         ],
     )
 
-    onnx_model = oh.make_model(graph, producer_name="test_model")
+    onnx_model = qonnx_make_model(graph, producer_name="test_model")
     model = ModelWrapper(onnx_model)
 
     mt_weights = np.random.randint(low=-1000, high=1000, size=[6, 256, 15])

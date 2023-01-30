@@ -7,6 +7,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.general.im2col import compute_conv_output_dim
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 def execution_im2col(
@@ -48,7 +49,7 @@ def execution_im2col(
 
     graph = helper.make_graph(nodes=[im2col_node], name="im2col_graph", inputs=[inp], outputs=[outp])
 
-    model = helper.make_model(graph, producer_name="im2col-model")
+    model = qonnx_make_model(graph, producer_name="im2col-model")
     model = ModelWrapper(model)
 
     model.set_tensor_datatype("inp", idt)
@@ -1583,7 +1584,7 @@ def test_im2col_infer_shapes():
         outputs=[outp],
     )
 
-    model = helper.make_model(graph, producer_name="shape-model")
+    model = qonnx_make_model(graph, producer_name="shape-model")
     model = ModelWrapper(model)
 
     model.set_tensor_datatype("inp", idt)

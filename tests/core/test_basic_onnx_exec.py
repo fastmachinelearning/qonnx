@@ -35,7 +35,7 @@ import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def test_mnist_onnx_download_extract_run():
@@ -73,7 +73,7 @@ def test_onnx_exec_internal_rounding():
     mul_node = onnx.helper.make_node("Mul", inputs=["inp0", "inp1"], outputs=["outp"])
     graph = onnx.helper.make_graph(nodes=[mul_node], name="mul_graph", inputs=[inp0, inp1], outputs=[outp])
 
-    model = onnx.helper.make_model(graph, producer_name="mul-model")
+    model = qonnx_make_model(graph, producer_name="mul-model")
     model = ModelWrapper(model)
     idt = DataType["INT2"]
     model.set_tensor_datatype("inp0", idt)

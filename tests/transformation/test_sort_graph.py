@@ -7,6 +7,7 @@ import qonnx.analysis.topology as ta
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.general import SortGraph
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 def make_randomly_sorted_linear_model(num_of_nodes, seed=None):
@@ -28,7 +29,7 @@ def make_randomly_sorted_linear_model(num_of_nodes, seed=None):
 
     nodes = np.random.permutation(nodes)
 
-    modelproto = helper.make_model(
+    modelproto = qonnx_make_model(
         helper.make_graph(
             name="test",
             inputs=[top_in],
@@ -69,7 +70,7 @@ def test_sort_nonlinear_graph():
     for i in range(num_of_params):
         value_info += [helper.make_tensor_value_info("p" + str(i), TensorProto.FLOAT, input_shape)]
 
-    modelproto = helper.make_model(
+    modelproto = qonnx_make_model(
         helper.make_graph(
             name="test",
             inputs=[top_in],
