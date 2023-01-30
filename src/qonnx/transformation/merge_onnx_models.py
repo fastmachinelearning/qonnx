@@ -40,6 +40,7 @@ from qonnx.transformation.general import (
 from qonnx.transformation.infer_data_layouts import InferDataLayouts
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 class MergeONNXModels(Transformation):
@@ -142,7 +143,7 @@ class MergeONNXModels(Transformation):
             value_info=vi_new,
         )
 
-        new_model = helper.make_model(new_graph, producer_name="fuse_model")
+        new_model = qonnx_make_model(new_graph, producer_name="fuse_model")
         new_model = ModelWrapper(new_model)
 
         for i in init_new:

@@ -35,6 +35,7 @@ from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 export_onnx_path = "test_xnorpopcountmatmul.onnx"
 
@@ -47,7 +48,7 @@ def test_xnorpopcountmatmul():
     W = helper.make_tensor_value_info("W", TensorProto.FLOAT, [K, N])
     out = helper.make_tensor_value_info("out", TensorProto.FLOAT, ["x", "y"])
     node_def = helper.make_node("XnorPopcountMatMul", ["x", "W"], ["out"], domain="qonnx.custom_op.general")
-    modelproto = helper.make_model(helper.make_graph([node_def], "test_model", [x], [out], value_info=[W]))
+    modelproto = qonnx_make_model(helper.make_graph([node_def], "test_model", [x], [out], value_info=[W]))
     model = ModelWrapper(modelproto)
     model.set_tensor_datatype("x", DataType["BINARY"])
     model.set_tensor_datatype("W", DataType["BINARY"])

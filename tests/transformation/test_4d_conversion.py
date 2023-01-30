@@ -9,7 +9,7 @@ from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.change_3d_tensors_to_4d import Change3DTo4DTensors
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def generate_random_input(model):
@@ -151,7 +151,7 @@ def create_arbitrary_model(invalid=False):
         outputs=[out1_argmax1],
         value_info=list_of_value_infos,
     )
-    onnx_model = onnx.helper.make_model(graph, producer_name="4d_conversion_test-model")
+    onnx_model = qonnx_make_model(graph, producer_name="4d_conversion_test-model")
     model = ModelWrapper(onnx_model)
     set_all_initializers(model)
 
@@ -258,7 +258,9 @@ def create_arbitrary_model_vgg():
         outputs=[out2_topk1],
         value_info=list_of_value_infos,
     )
-    onnx_model = onnx.helper.make_model(graph, producer_name="4d_conversion_test-model")
+
+    opset_imports = [onnx.helper.make_opsetid("", 11)]
+    onnx_model = qonnx_make_model(graph, producer_name="4d_conversion_test-model", opset_imports=opset_imports)
     model = ModelWrapper(onnx_model)
 
     # Fixed TopK initializer (K=3)

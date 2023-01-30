@@ -40,7 +40,7 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.general import ApplyConfig, ConvertDivToMul, GiveUniqueNodeNames, GiveUniqueParameterTensors
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def test_mul_to_div():
@@ -106,7 +106,7 @@ def test_give_unique_parameter_tensors():
         outputs=[out1],
     )
 
-    onnx_model = onnx.helper.make_model(onnx_graph, producer_name="simple-model")
+    onnx_model = qonnx_make_model(onnx_graph, producer_name="simple-model")
     model = ModelWrapper(onnx_model)
 
     # Set param values

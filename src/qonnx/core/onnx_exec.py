@@ -34,7 +34,7 @@ import onnxruntime as rt
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
-from qonnx.util.basic import get_sanitize_quant_tensors, is_finn_op, sanitize_quant_values
+from qonnx.util.basic import get_sanitize_quant_tensors, is_finn_op, qonnx_make_model, sanitize_quant_values
 
 
 def execute_node(node, context, graph, return_full_exec_context=False, opset_version=9):
@@ -64,7 +64,7 @@ def execute_node(node, context, graph, return_full_exec_context=False, opset_ver
             inputs=node_inputs,
             outputs=node_outputs,
         )
-        node_model = helper.make_model(node_graph)
+        node_model = qonnx_make_model(node_graph)
         node_model.opset_import[0].version = opset_version
         input_dict = dict()
         for inp in node.input:

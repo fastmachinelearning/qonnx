@@ -33,6 +33,7 @@ from pkgutil import get_data
 import qonnx.core.data_layout as DataLayout
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.util.basic import qonnx_make_model
 
 
 def test_modelwrapper():
@@ -97,7 +98,7 @@ def test_modelwrapper_graph_order():
         ],
     )
 
-    onnx_model = onnx.helper.make_model(graph, producer_name="simple-model")
+    onnx_model = qonnx_make_model(graph, producer_name="simple-model")
     model = ModelWrapper(onnx_model)
 
     # test graph order functions
@@ -146,7 +147,7 @@ def test_modelwrapper_detect_forks_n_joins():
         ],
     )
 
-    onnx_model = onnx.helper.make_model(graph, producer_name="simple-model")
+    onnx_model = qonnx_make_model(graph, producer_name="simple-model")
     model = ModelWrapper(onnx_model)
 
     # test
