@@ -2,7 +2,6 @@ import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.fold_constants import FoldConstants
-from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import (
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
@@ -31,7 +30,6 @@ def cleanup_model(model):
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
-        GemmToMatMul(),
         FoldConstants(exclude_op_types=["Quant", "BipolarQuant"]),
         FoldTransposeIntoQuantInit(),
         RemoveUnusedTensors(),
