@@ -57,7 +57,6 @@ from qonnx.util.basic import gen_finn_dt_tensor, get_by_name, qonnx_make_model
 # input dimension
 @pytest.mark.parametrize("idim", [6, 7])
 def test_change_datalayout_quantavgpool(s, k, ibits, obits, signed, c, idim):
-
     n = 1
     odim = compute_pool_output_dim(idim, k, s)
     # determine input QONNX datatype

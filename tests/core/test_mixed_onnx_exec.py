@@ -36,7 +36,6 @@ from qonnx.util.basic import qonnx_make_model
 
 
 def test_execute_mixed_model():
-
     out0 = helper.make_tensor_value_info("out0", TensorProto.FLOAT, [6, 3, 2, 2])
 
     graph_def = helper.make_graph(

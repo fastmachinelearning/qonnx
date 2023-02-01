@@ -47,7 +47,7 @@ from qonnx.transformation.infer_shapes import InferShapes
 
 def compute_bops(inf_cost_dict):
     total_bops = 0.0
-    for (k, v) in inf_cost_dict.items():
+    for k, v in inf_cost_dict.items():
         if k.startswith("op_mac"):
             comps = k.split("_")
             dt1 = DataType[comps[2]]
@@ -58,7 +58,7 @@ def compute_bops(inf_cost_dict):
 
 def compute_mem_bits(inf_cost_dict, filter_string="mem_w"):
     total_mem_bits = 0.0
-    for (k, v) in inf_cost_dict.items():
+    for k, v in inf_cost_dict.items():
         if k.startswith(filter_string):
             comps = k.split("_")
             dt = DataType[comps[2]]

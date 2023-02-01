@@ -45,7 +45,6 @@ def insert_identity_op(model, op, as_first_node, approx):
 @pytest.mark.parametrize("approx", [False, True])
 @pytest.mark.parametrize("as_first_node", [False, True])
 def test_remove_identity_ops(op, as_first_node, approx):
-
     # set up onnx model
     inp = helper.make_tensor_value_info("inp", TensorProto.FLOAT, [1, 4, 1, 1])
     mul = helper.make_tensor_value_info("mul", TensorProto.FLOAT, [])

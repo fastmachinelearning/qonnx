@@ -38,7 +38,6 @@ from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 
 
 def test_infer_data_layouts():
-
     raw_m = get_data("qonnx.data", "onnx/mnist-conv/model.onnx")
     model = ModelWrapper(raw_m)
     model = model.transform(InferShapes())

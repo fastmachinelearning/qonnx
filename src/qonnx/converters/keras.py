@@ -155,7 +155,6 @@ def _strip_qkeras_model(model):
 
 # tests run without this function
 def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
-
     for node_name, quantizers in quantizers_dict.items():
         print(node_name, quantizers)
 
