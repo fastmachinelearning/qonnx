@@ -38,7 +38,7 @@ from qonnx.core.datatype import DataType
 
 def get_preferred_onnx_opset():
     "Return preferred ONNX opset version for QONNX"
-    return 9
+    return 11
 
 
 def qonnx_make_model(graph_proto, **kwargs):
