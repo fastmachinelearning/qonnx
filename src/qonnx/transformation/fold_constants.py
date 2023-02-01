@@ -41,10 +41,12 @@ class FoldConstantsFiltered(Transformation):
         self.match_filter_fxn = match_filter_fxn
 
     def apply(self, model):
+        opset_version = model.model.opset_import[0].version
         graph = model.graph
         node_ind = 0
         graph_modified = False
         execution_context = model.make_empty_exec_context()
+        nodes_to_remove = []
         for n in graph.node:
             node_ind += 1
             node_inp_inits = list(map(lambda x: model.get_initializer(x), n.input))
@@ -57,12 +59,14 @@ class FoldConstantsFiltered(Transformation):
             if (is_all_constant_inputs or is_const_shape) and eligible:
                 # this node has no dynamic inputs, only constant ones -- so we can
                 # do constant folding.
-                oxe.execute_node(n, execution_context, graph)
+                oxe.execute_node(n, execution_context, graph, opset_version=opset_version)
                 # use the execution result as an initializer
                 model.set_initializer(node_out, execution_context[node_out])
                 # remove old node
-                graph.node.remove(n)
+                nodes_to_remove.append(n)
                 graph_modified = True
+        for node in nodes_to_remove:
+            model.graph.node.remove(node)
         if graph_modified:
             model = model.transform(InferShapes())
         return (model, graph_modified)
