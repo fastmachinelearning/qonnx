@@ -39,7 +39,7 @@ from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNode
 from qonnx.transformation.infer_data_layouts import InferDataLayouts
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import gen_finn_dt_tensor, get_by_name
+from qonnx.util.basic import gen_finn_dt_tensor, get_by_name, qonnx_make_model
 
 
 # stride
@@ -85,7 +85,7 @@ def test_change_datalayout_quantavgpool(s, k, ibits, obits, signed, c, idim):
     )
     graph = helper.make_graph(nodes=[node], name="single-quantavgpool", inputs=[inp], outputs=[outp])
 
-    model = helper.make_model(graph)
+    model = qonnx_make_model(graph)
     model = ModelWrapper(model)
     model = model.transform(InferShapes())
     model = model.transform(InferDataTypes())

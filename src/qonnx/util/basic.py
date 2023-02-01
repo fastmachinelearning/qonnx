@@ -31,8 +31,25 @@ import os
 import random
 import string
 import warnings
+from onnx.helper import make_model, make_opsetid
 
 from qonnx.core.datatype import DataType
+
+
+def get_preferred_onnx_opset():
+    "Return preferred ONNX opset version for QONNX"
+    return 11
+
+
+def qonnx_make_model(graph_proto, **kwargs):
+    "Wrapper around ONNX make_model with preferred qonnx opset version"
+    opset_imports = kwargs.pop("opset_imports", None)
+    if opset_imports is None:
+        opset_imports = [make_opsetid("", get_preferred_onnx_opset())]
+        kwargs["opset_imports"] = opset_imports
+    else:
+        kwargs["opset_imports"] = opset_imports
+    return make_model(graph_proto, **kwargs)
 
 
 def is_finn_op(op_type):
@@ -181,31 +198,18 @@ def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
     return ret
 
 
-def calculate_matvec_accumulator_range(matrix, vec_dt):
+def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
     """Calculate the minimum and maximum possible result (accumulator) values
     for a dot product x * A, given matrix A of dims (MW, MH), and vector (1, MW)
     with datatype vec_dt. Returns (acc_min, acc_max).
     """
-    min_weight = matrix.min()
-    max_weight = matrix.max()
-    perceptive_field_elems = matrix.shape[0]
-    min_input = vec_dt.min()
-    max_input = vec_dt.max()
-    # calculate minimum and maximum values of accumulator
-    # assume inputs span the whole range of the input datatype
-    acc_min = perceptive_field_elems * min(
-        min_weight * max_input,
-        min_weight * min_input,
-        max_weight * max_input,
-        max_weight * min_input,
-    )
-    acc_max = perceptive_field_elems * max(
-        min_weight * max_input,
-        min_weight * min_input,
-        max_weight * max_input,
-        max_weight * min_input,
-    )
-    return (acc_min, acc_max)
+    max_weight = abs(matrix).sum(axis=0).max()
+    max_input = max(abs(vec_dt.min()), abs(vec_dt.max()))
+    max_value = max_input * max_weight
+    # If either the weight and input datatypes are signed, then the minimum
+    # value that their accumulated product can be is -max_value. Else, it's 0.
+    min_value = -max_value if (matrix.min() < 0) or vec_dt.signed() else 0
+    return (min_value, max_value)
 
 
 def gen_finn_dt_tensor(finn_dt, tensor_shape):

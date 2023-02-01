@@ -16,14 +16,8 @@ def compute_conv_output_dim(ifm_dim, k, stride, total_pad=0, dilation=1):
     total_pad gives the total amount of padding along the entire axis
     (both sides included).
     """
-    if ifm_dim == 1:
-        # indicates dummy dimension, keep as-is
-        # Also ensure that every call to this function respects the expected
-        # kernel shape and padding
-        assert k == 1 and total_pad == 0, "Unexpected kernel shape and padding for 1D input image"
-        out_dim = 1
-    else:
-        out_dim = int(((ifm_dim + total_pad - dilation * (k - 1) - 1) / stride) + 1)
+
+    out_dim = int(((ifm_dim + total_pad - dilation * (k - 1) - 1) / stride) + 1)
     return out_dim
 
 
@@ -159,22 +153,6 @@ class Im2Col(CustomOp):
         # NHWC (QONNX always converts to NHWC during conv lowering)
         ifm_dim_h = ishape[1]
         ifm_dim_w = ishape[2]
-
-        # check that kernel tensor also respects any existing dummy dimensions
-        if ifm_dim_h == 1:
-            kernel_1d = k_h == 1
-            pad_1d = pad_h == 0
-            assert (
-                kernel_1d and pad_1d
-            ), "Unexpected kernel shape and padding for input image\
-             of dimensions (N, 1, W, C)"
-        if ifm_dim_w == 1:
-            kernel_1d = k_w == 1
-            pad_1d = pad_w == 0
-            assert (
-                kernel_1d and pad_1d
-            ), "Unexpected kernel shape padding for input image\
-             of dimensions (N, H, 1, C)"
 
         ofm_dim_h = compute_conv_output_dim(ifm_dim_h, k_h, stride_h, pad_h, dilation_h)
         ofm_dim_w = compute_conv_output_dim(ifm_dim_w, k_w, stride_w, pad_w, dilation_w)

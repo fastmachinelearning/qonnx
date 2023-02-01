@@ -42,7 +42,7 @@ from qonnx.custom_op.general.im2col import compute_conv_output_dim
 from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def test_conv_lowering_convmnist():
@@ -155,7 +155,7 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
         value_info=[W] if not bias else [W, B],
     )
 
-    model = oh.make_model(graph, producer_name="test_dws_reg_cnv-model")
+    model = qonnx_make_model(graph, producer_name="test_dws_reg_cnv-model")
     model = ModelWrapper(model)
     model.set_tensor_datatype("inp", idt)
     model.set_tensor_datatype("outp", odt)
@@ -269,7 +269,7 @@ def test_non_equal_padding(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, 
         value_info=[W],
     )
 
-    model = oh.make_model(graph, producer_name="dws_cnv-model")
+    model = qonnx_make_model(graph, producer_name="dws_cnv-model")
     model = ModelWrapper(model)
     model.set_tensor_datatype("inp", idt)
     model.set_tensor_datatype("outp", odt)
@@ -317,7 +317,7 @@ def test_conv_lowering_conv_1x1():
 
     value_info = [oh.make_tensor_value_info("p1", TensorProto.FLOAT, conv_param_shape)]
 
-    modelproto = oh.make_model(
+    modelproto = qonnx_make_model(
         oh.make_graph(
             name="test",
             inputs=[top_in],
