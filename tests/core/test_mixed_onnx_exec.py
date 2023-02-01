@@ -32,6 +32,7 @@ from onnx import TensorProto, helper
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 def test_execute_mixed_model():
@@ -56,7 +57,7 @@ def test_execute_mixed_model():
         outputs=[helper.make_tensor_value_info("out1", TensorProto.FLOAT, [6, 3, 2, 2])],
         value_info=[out0],
     )
-    model_def = helper.make_model(graph_def, producer_name="onnx-example")
+    model_def = qonnx_make_model(graph_def, producer_name="onnx-example")
 
     model = ModelWrapper(model_def)
     model = model.transform(InferShapes())

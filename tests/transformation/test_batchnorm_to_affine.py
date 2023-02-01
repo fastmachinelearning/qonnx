@@ -39,7 +39,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 download_url = "https://github.com/onnx/models/raw/main/vision/classification"
 download_url += "/shufflenet/model/shufflenet-9.onnx"
@@ -95,7 +95,7 @@ def test_batchnorm_to_affine_epsilon(epsilon):
         value_info=[s, bias, mean, var],
     )
 
-    onnx_model = onnx.helper.make_model(graph, producer_name="test_batchnorm-model")
+    onnx_model = qonnx_make_model(graph, producer_name="test_batchnorm-model")
     model = ModelWrapper(onnx_model)
 
     model.set_initializer("s", np.array([1, 2, 3]).astype(np.float32))

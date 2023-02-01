@@ -33,6 +33,7 @@ from pkgutil import get_data
 import qonnx.analysis.topology as ta
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 def test_all_tensors_f32():
@@ -40,7 +41,7 @@ def test_all_tensors_f32():
     add_param = oh.make_tensor_value_info("add_param", TensorProto.FLOAT, [2])
     mul_param = oh.make_tensor_value_info("mul_param", TensorProto.FLOAT, [2])
     top_out = oh.make_tensor_value_info("top_out", TensorProto.FLOAT, [2])
-    modelproto = oh.make_model(
+    modelproto = qonnx_make_model(
         oh.make_graph(
             name="test",
             inputs=[top_in],
@@ -61,7 +62,7 @@ def test_all_tensors_f32():
     add_param = oh.make_tensor_value_info("add_param", TensorProto.INT8, [2])
     mul_param = oh.make_tensor_value_info("mul_param", TensorProto.FLOAT, [2])
     top_out = oh.make_tensor_value_info("top_out", TensorProto.FLOAT, [2])
-    modelproto = oh.make_model(
+    modelproto = qonnx_make_model(
         oh.make_graph(
             name="test",
             inputs=[top_in],
@@ -127,7 +128,7 @@ def test_nodes_topologically_sorted():
         ],
     )
 
-    onnx_model = oh.make_model(graph, producer_name="simple-model")
+    onnx_model = qonnx_make_model(graph, producer_name="simple-model")
     model = ModelWrapper(onnx_model)
 
     ret = model.analysis(ta.nodes_topologically_sorted)
@@ -146,7 +147,7 @@ def test_nodes_topologically_sorted():
         ],
     )
 
-    onnx_model = oh.make_model(graph, producer_name="simple-model")
+    onnx_model = qonnx_make_model(graph, producer_name="simple-model")
     model = ModelWrapper(onnx_model)
 
     ret = model.analysis(ta.nodes_topologically_sorted)
