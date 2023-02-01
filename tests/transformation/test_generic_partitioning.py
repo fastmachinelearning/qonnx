@@ -37,6 +37,7 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.create_generic_partitions import PartitionFromDict
 from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNodeNames
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.basic import qonnx_make_model
 
 
 # select example partitioning
@@ -71,7 +72,7 @@ def test_generic_partitioning(p):
         value_info=[a0, a1, a2],
     )
 
-    model = helper.make_model(graph, producer_name="model")
+    model = qonnx_make_model(graph, producer_name="model")
     model = ModelWrapper(model)
     # initialize model
     a0_value = np.random.uniform(low=0, high=1, size=(1)).astype(np.float32)

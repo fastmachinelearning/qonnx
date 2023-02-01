@@ -40,6 +40,7 @@ from qonnx.transformation.infer_data_layouts import InferDataLayouts
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.merge_onnx_models import MergeONNXModels
+from qonnx.util.basic import qonnx_make_model
 
 
 def test_merge_onnx_models():
@@ -72,7 +73,7 @@ def test_merge_onnx_models():
         value_info=[a0, a1],
     )
 
-    model2 = helper.make_model(graph, producer_name="model2")
+    model2 = qonnx_make_model(graph, producer_name="model2")
     model2 = ModelWrapper(model2)
     # initialize model2
     a0_value = np.random.uniform(low=0, high=1, size=(1)).astype(np.float32)

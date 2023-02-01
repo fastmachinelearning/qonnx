@@ -9,7 +9,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.remove import RemoveIdentityOps
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def insert_identity_op(model, op, as_first_node, approx):
@@ -67,7 +67,7 @@ def test_remove_identity_ops(op, as_first_node, approx):
         value_info=[mul, shape, div, matmul],
     )
 
-    model = helper.make_model(graph, producer_name="mulpastconv-model")
+    model = qonnx_make_model(graph, producer_name="mulpastconv-model")
     model = ModelWrapper(model)
     inp_values = gen_finn_dt_tensor(DataType["INT2"], [1, 4, 1, 1])
     mul_values = np.random.uniform(low=0.1, high=0.99, size=(1)).astype(np.float32)

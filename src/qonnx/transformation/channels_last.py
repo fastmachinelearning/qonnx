@@ -27,9 +27,11 @@ class ConvertToChannelsLastAndClean(Transformation):
     Converts data layout dependent nodes to ChannelsLast nodes and inserts transformations.
     Then it tries to eliminate as many transformations as possible and moves the
     still existing ones as far upstream as possible.
+
     :param make_input_channels_last: Also makes the input of the network channels last,
         otherwise a transpose node will be left at the beginning of the network. Defaults to False
     :type make_input_channels_last: bool
+
     """
 
     def __init__(self, make_input_channels_last=False):

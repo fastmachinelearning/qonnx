@@ -33,6 +33,7 @@ from onnx import TensorProto, helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
+from qonnx.util.basic import qonnx_make_model
 
 
 class QuantAvgPool2d(CustomOp):
@@ -130,7 +131,7 @@ class QuantAvgPool2d(CustomOp):
             inputs=[inp],
             outputs=[outp],
         )
-        model_avgpool = helper.make_model(graph_avgpool)
+        model_avgpool = qonnx_make_model(graph_avgpool)
         idict = {node.input[0]: inp_values}
         sess = rt.InferenceSession(model_avgpool.SerializeToString())
         result_temp = sess.run(None, idict)

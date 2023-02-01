@@ -33,6 +33,7 @@ from onnx import TensorProto, helper
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
+from qonnx.util.basic import qonnx_make_model
 
 
 def compute_pool_output_dim(ifm_dim, k, stride, pad=0, ceil_mode=0):
@@ -96,7 +97,7 @@ class MaxPoolNHWC(CustomOp):
         inp_vi = helper.make_tensor_value_info(inp_name, TensorProto.FLOAT, inp.shape)
         out_vi = helper.make_tensor_value_info(out_name, TensorProto.FLOAT, dummy_out.shape)
         tmp_graph = helper.make_graph(nodes=[node], name="tmp_graph", inputs=[inp_vi], outputs=[out_vi])
-        tmp_model = helper.make_model(tmp_graph, producer_name="finn")
+        tmp_model = qonnx_make_model(tmp_graph, producer_name="finn")
         tmp_model = ModelWrapper(tmp_model)
         new_ctx = {inp_name: inp}
         from qonnx.core.onnx_exec import execute_onnx
