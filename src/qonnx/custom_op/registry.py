@@ -28,10 +28,8 @@
 
 import importlib
 
-from qonnx.util.basic import get_preferred_onnx_opset
 
-
-def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset()):
+def getCustomOp(node):
     "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
     op_type = node.op_type
     domain = node.domain
@@ -39,7 +37,7 @@ def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset()):
         opset_module = importlib.import_module(domain)
         assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
         inst_wrapper = opset_module.custom_op[op_type]
-        inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
+        inst = inst_wrapper(node)
         return inst
     except ModuleNotFoundError:
         raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)

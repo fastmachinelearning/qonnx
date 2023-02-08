@@ -30,7 +30,7 @@ import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
 
-from qonnx.util.basic import get_by_name, get_preferred_onnx_opset
+from qonnx.util.basic import get_by_name
 
 
 class CustomOp(ABC):
@@ -38,10 +38,9 @@ class CustomOp(ABC):
     every custom node should have. Some as abstract methods, these have to be
     filled when writing a new custom op node."""
 
-    def __init__(self, onnx_node, onnx_opset_version=get_preferred_onnx_opset()):
+    def __init__(self, onnx_node):
         super().__init__()
         self.onnx_node = onnx_node
-        self.onnx_opset_version = onnx_opset_version
 
     def get_nodeattr_def(self, name):
         """Return 4-tuple (dtype, required, default_val, allowed_values) for attribute

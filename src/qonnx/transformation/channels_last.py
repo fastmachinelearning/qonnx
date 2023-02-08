@@ -5,7 +5,6 @@ from qonnx.analysis.topology import is_linear
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
 from qonnx.transformation.base import Transformation
-from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
@@ -76,7 +75,6 @@ class ConvertToChannelsLastAndClean(Transformation):
 
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
-        model = model.transform(FoldConstants())
 
         # Check if the model changed
         model_changed = initial_model_string != new_model_string
@@ -110,9 +108,6 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # Skip higher "order" inputs of the Batch-Norm,
                     # these don't need a transpose.
                     if n.op_type == "BatchNormalization" and i > 0:
-                        continue
-                    # Skip Conv bias since it doesn't need a transpose
-                    if n.op_type == "Conv" and i == 2:
                         continue
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
@@ -362,10 +357,10 @@ class MoveChanFirstDownstream(Transformation):
 class AbsorbChanFirstIntoMatMul(Transformation):
     """
     Removes a transpose to channels first node if it is in front of a Flatten and
-    MatMul (or Gemm) node.
+    MatMul node.
 
     The channels first transpose is fused into the initializer of the Quant node acting
-    as a weight tensor for the MatMul/Gemm node.
+    as a weight tensor for the MatMul node.
     Reshape nodes with shape [1, -1] are also supported instead of Flatten nodes.
     Independent of whether the flattening operation was performed by a Flatten node
     or a Resphape node, a Flatten node will be reinserted in-front of the MatMul node.
@@ -399,15 +394,8 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                         if list(to_channels_first_args(ndim)) == perms:
                             producer = model.find_producer(transp_node.input[0])
                             consumer = model.find_consumer(n.output[0])
-                            if (consumer is not None) and ((consumer.op_type == "MatMul") or (consumer.op_type == "Gemm")):
-                                # Gemm supports transposes on B, so we need to account for that
-                                b_transposed = False
-                                if consumer.op_type == "Gemm":
-                                    b_transposed = bool(get_by_name(consumer.attribute, "transB"))
-
+                            if (consumer is not None) and (consumer.op_type == "MatMul"):
                                 b_shape = model.get_tensor_shape(consumer.input[1])
-                                if b_transposed:
-                                    b_shape = list(reversed(b_shape))
                                 mw = b_shape[0]
                                 mh = b_shape[1]
                                 if ndim == 4:
@@ -423,26 +411,16 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                 # Get the weight initilizer
                                 quant_node = model.find_producer(consumer.input[1])
                                 if quant_node is None:
-                                    W = model.get_initializer(consumer.input[1])
+                                    continue
+                                if quant_node.op_type == "Quant":
+                                    W = model.get_initializer(quant_node.input[0])
                                 else:
-                                    if quant_node.op_type == "Quant":
-                                        W = model.get_initializer(quant_node.input[0])
-                                    else:
-                                        warnings.warn(
-                                            f"Could not find weight initializer for " f"MatMul/Gemm: {consumer.name}"
-                                        )
-                                        continue
-                                if b_transposed:
-                                    W = W.T
+                                    warnings.warn(f"Could not find weight initializer for " f"MatMul: {consumer.name}")
+                                    continue
                                 W_new = W.reshape(c, h, w, mh)
                                 W_new = W_new.transpose((1, 2, 0, 3))
                                 W_new = W_new.reshape(mw, mh)
-                                if b_transposed:
-                                    W_new = W_new.T
-                                if quant_node is None:
-                                    model.set_initializer(consumer.input[1], W_new)
-                                else:
-                                    model.set_initializer(quant_node.input[0], W_new)
+                                model.set_initializer(quant_node.input[0], W_new)
                                 # remove transpose & flatten nodes
                                 consumer.input[0] = transp_node.input[0]
                                 graph.node.remove(n)

@@ -34,22 +34,16 @@ import onnxruntime as rt
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
-from qonnx.util.basic import (
-    get_preferred_onnx_opset,
-    get_sanitize_quant_tensors,
-    is_finn_op,
-    qonnx_make_model,
-    sanitize_quant_values,
-)
+from qonnx.util.basic import get_sanitize_quant_tensors, is_finn_op, qonnx_make_model, sanitize_quant_values
 
 
-def execute_node(node, context, graph, return_full_exec_context=False, opset_version=get_preferred_onnx_opset()):
+def execute_node(node, context, graph, return_full_exec_context=False, opset_version=9):
     """Executes a single node by using onnxruntime or with a custom function.
 
     Input/output provided via context."""
 
     if is_finn_op(node.domain):
-        ex_cu_node.execute_custom_node(node, context, graph, onnx_opset_version=opset_version)
+        ex_cu_node.execute_custom_node(node, context, graph)
     else:
         # onnxruntime unfortunately does not implement run_node as defined by ONNX,
         # it can only execute entire models -- so we create a model which solely

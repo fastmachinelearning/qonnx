@@ -2,7 +2,6 @@ import numpy as np
 import onnxruntime as rt
 from copy import deepcopy
 from onnx import TensorProto, helper
-from onnx.helper import make_opsetid
 
 from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import qonnx_make_model
@@ -60,11 +59,6 @@ class ChannelsLastWrappedOp(CustomOp):
     def execute_node(self, context, graph):
         node = self.onnx_node
 
-        # Get opset
-        opset_version = self.onnx_opset_version
-        opset_imports = [make_opsetid("", opset_version)]
-        onnx_kwargs = {"opset_imports": opset_imports}
-
         # Create an intermediate node and remove the domain
         # This enables us to use onnxrutime to execute this node.
         intermediate_node = deepcopy(node)
@@ -103,7 +97,7 @@ class ChannelsLastWrappedOp(CustomOp):
         # Execute the intermediate node with onnxruntime,
         # using the transposed inputs / outputs
         intermediate_graph = helper.make_graph([intermediate_node], "test_model", input_tensor_list, output_tensor_list)
-        intermediate_model = qonnx_make_model(intermediate_graph, **onnx_kwargs)
+        intermediate_model = qonnx_make_model(intermediate_graph)
         sess = rt.InferenceSession(intermediate_model.SerializeToString())
         output_list = sess.run(None, input_dict)
         output_onnx = output_list[0]
