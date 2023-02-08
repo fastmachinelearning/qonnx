@@ -46,7 +46,6 @@ except ModuleNotFoundError:
     make_opsetid = None
 
 
-
 def get_preferred_onnx_opset():
     "Return preferred ONNX opset version for QONNX"
     return 11
