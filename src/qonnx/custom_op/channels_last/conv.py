@@ -139,10 +139,10 @@ class Conv(ChannelsLastWrappedOp):
             verification_successful = False
 
         # verify the number of inputs
-        if len(node.input) == 2 or len(node.input) == 3:
+        if len(node.input) == 2:
             info_messages.append("The number of inputs is correct")
         else:
-            info_messages.append("{} needs 2 or 3 data inputs".format(node.op_type))
+            info_messages.append("{} needs 2 data inputs".format(node.op_type))
             verification_successful = False
 
         if not verification_successful:

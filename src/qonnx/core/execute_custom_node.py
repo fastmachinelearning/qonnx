@@ -27,16 +27,15 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import qonnx.custom_op.registry as registry
-from qonnx.util.basic import get_preferred_onnx_opset
 
 
-def execute_custom_node(node, context, graph, onnx_opset_version=get_preferred_onnx_opset()):
+def execute_custom_node(node, context, graph):
     """Call custom implementation to execute a single custom node.
     Input/output provided via context."""
     op_type = node.op_type
     try:
         # lookup op_type in registry of CustomOps
-        inst = registry.getCustomOp(node, onnx_opset_version=onnx_opset_version)
+        inst = registry.getCustomOp(node)
         inst.execute_node(context, graph)
     except KeyError:
         # exception if op_type is not supported
