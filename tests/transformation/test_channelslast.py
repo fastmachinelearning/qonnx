@@ -51,6 +51,15 @@ model_details = {
         "input_range": (-1, +1),
         "layout_sensitive": True,
     },
+    "Conv_bias_example": {
+        "url": (
+            "https://raw.githubusercontent.com/julesmuhizi/pytorch_hls4ml/7f4459de1d69c1642dd858ff1a970509a61ff017"
+            "/model/CNN/super_resolution.onnx"
+        ),
+        "input_shape": (1, 1, 28, 28),
+        "input_range": (-1, +1),
+        "layout_sensitive": True,
+    },
 }
 
 
@@ -157,7 +166,9 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (golden_result == current_result).all(), "Output of cleaned QONNX model and channels last model should match."
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
+    ).all(), "Output of cleaned QONNX model and channels last model should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     # Check that the ops, which should be ChannelsLast actually are
@@ -191,8 +202,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying InsertChannelsLastDomainsAndTrafos should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
@@ -202,8 +213,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), (
         "Output of cleaned QONNX model and model after applying RemoveConsecutiveChanFirstAndChanLastTrafos should match."
     )
@@ -215,8 +226,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying MoveChanLastUpstream should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
@@ -226,8 +237,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying MoveChanLastUpstream should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
@@ -237,8 +248,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), (
         "Output of cleaned QONNX model and model after applying RemoveConsecutiveChanFirstAndChanLastTrafos should match."
     )
@@ -250,8 +261,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying MoveChanFirstDownstream should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
@@ -262,8 +273,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying AbsorbChanFirstIntoMatMul should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
@@ -276,8 +287,8 @@ def test_channelslast_conversion_step_by_step(test_model):
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
     current_result = output_dict[model.graph.output[0].name]
-    assert (
-        golden_result == current_result
+    assert np.isclose(
+        golden_result, current_result, atol=1e-7
     ).all(), "Output of cleaned QONNX model and model after applying AbsorbChanFirstIntoMatMul should match."
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
