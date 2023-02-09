@@ -52,10 +52,7 @@ model_details = {
         "layout_sensitive": True,
     },
     "Conv_bias_example": {
-        "url": (
-            "https://raw.githubusercontent.com/julesmuhizi/pytorch_hls4ml/7f4459de1d69c1642dd858ff1a970509a61ff017"
-            "/model/CNN/super_resolution.onnx"
-        ),
+        "url": "https://zenodo.org/record/7626922/files/super_resolution.onnx",
         "input_shape": (1, 1, 28, 28),
         "input_range": (-1, +1),
         "layout_sensitive": True,
