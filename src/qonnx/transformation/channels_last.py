@@ -193,7 +193,6 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                 perm_1 = get_by_name(n.attribute, "perm")
                 ndim = len(input_shape)
                 if list(to_channels_first_args(ndim)) == perm_1.ints:
-
                     successor_nodes = model.find_direct_successors(n)
                     if successor_nodes is None:
                         continue

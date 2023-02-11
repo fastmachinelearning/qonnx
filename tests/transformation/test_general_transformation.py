@@ -84,7 +84,6 @@ def test_give_unique_node_names():
 
 
 def test_give_unique_parameter_tensors():
-
     # Create model
     input_shape = [4, 4]
     in1 = onnx.helper.make_tensor_value_info("in1", onnx.TensorProto.FLOAT, input_shape)
@@ -150,7 +149,6 @@ def test_give_unique_parameter_tensors():
 
 
 def test_apply_config():
-
     raw_m = get_data("qonnx.data", "onnx/mnist-conv/model.onnx")
     model = ModelWrapper(raw_m)
     model = model.transform(GiveUniqueNodeNames())

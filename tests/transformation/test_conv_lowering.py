@@ -46,7 +46,6 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def test_conv_lowering_convmnist():
-
     # load the onnx model
     raw_m = get_data("qonnx.data", "onnx/mnist-conv/model.onnx")
     model = ModelWrapper(raw_m)
@@ -290,7 +289,6 @@ def test_non_equal_padding(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, 
 
 
 def test_conv_lowering_conv_1x1():
-
     np.random.seed(0)
 
     in_feature_dim_h = 7
