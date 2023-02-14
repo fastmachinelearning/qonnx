@@ -5,10 +5,10 @@ cff-version: 1.2.0
 title: QONNX
 message: 'If you use this software, please cite it as below.'
 type: software
-doi: 10.5281/zenodo.XXXXXXX
+doi: 10.5281/zenodo.7622236
 license: Apache-2.0
-date-released: 2022-XX-XX
-version: X.X.X
+date-released: 2022-06-24
+version: 0.1
 url: "https://github.com/fastmachinelearning/qonnx"
 authors:
   - given-names: Yaman
