@@ -40,7 +40,7 @@ The following quantization-aware training (QAT) frameworks support exporting to 
 
 * [Brevitas](https://github.com/Xilinx/brevitas)
 * [QKeras](https://github.com/google/qkeras) (beta, see [this PR](https://github.com/fastmachinelearning/qonnx/pull/7))
-* HAWQ (coming soon)
+* [HAWQ](https://github.com/Zhen-Dong/HAWQ/tree/main/utils/export)
 * [<your NN quantization framework here? please get in touch!>](https://github.com/fastmachinelearning/qonnx/discussions)
 
 The following NN inference frameworks support importing QONNX models for deployment:
