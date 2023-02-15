@@ -83,6 +83,70 @@ def test_give_unique_node_names():
     assert model.graph.node[11].name == "Add_2"
 
 
+def test_give_unique_node_names_missingshape():
+    # see https://github.com/fastmachinelearning/qonnx/issues/33
+    Add1_node = onnx.helper.make_node("Add", inputs=["in1", "Add_1_param0"], outputs=["sum1"], name="Add_1")
+
+    Add0_node = onnx.helper.make_node(
+        "Add",
+        inputs=["sum1", "Add_0_param0"],
+        outputs=["sum2"],
+        name="Add_0",
+    )
+
+    Add2_node = onnx.helper.make_node(
+        "Add",
+        inputs=["abs1", "abs1"],
+        outputs=["sum3"],
+        name="Add_2",
+    )
+
+    Abs_node = onnx.helper.make_node("Abs", inputs=["sum2"], outputs=["abs1"], name="Abs")
+
+    Round_node = onnx.helper.make_node(
+        "Round",
+        inputs=["sum3"],
+        outputs=["out1"],
+        name="Round",
+    )
+
+    in1 = onnx.helper.make_tensor_value_info("in1", onnx.TensorProto.FLOAT, [4, 4])
+    out1 = onnx.helper.make_tensor_value_info("out1", onnx.TensorProto.FLOAT, [4, 4])
+
+    graph = onnx.helper.make_graph(
+        nodes=[
+            Add1_node,
+            Add0_node,
+            Abs_node,
+            Add2_node,
+            Round_node,
+        ],
+        name="simple_graph",
+        inputs=[in1],
+        outputs=[out1],
+        value_info=[
+            # note: value_info for sum1 explicitly omitted to trigger bug #33
+            # onnx.helper.make_tensor_value_info("sum1", onnx.TensorProto.FLOAT, [4, 4]),
+            onnx.helper.make_tensor_value_info("sum2", onnx.TensorProto.FLOAT, [4, 4]),
+            onnx.helper.make_tensor_value_info("abs1", onnx.TensorProto.FLOAT, [4, 4]),
+            onnx.helper.make_tensor_value_info("sum3", onnx.TensorProto.FLOAT, [4, 4]),
+        ],
+        initializer=[
+            onnx.helper.make_tensor("Add_1_param0", onnx.TensorProto.FLOAT, [4, 4], np.zeros(16).tolist()),
+            onnx.helper.make_tensor("Add_0_param0", onnx.TensorProto.FLOAT, [4, 4], np.zeros(16).tolist()),
+        ],
+    )
+
+    onnx_model = onnx.helper.make_model(graph, producer_name="simple-model")
+    model = ModelWrapper(onnx_model)
+    # sum1 is missing shape so should return False
+    assert model.check_all_tensor_shapes_specified() is False
+    model = model.transform(GiveUniqueNodeNames())
+    assert [x.name for x in model.get_nodes_by_op_type("Add")] == ["Add_0", "Add_1", "Add_2"]
+    assert [x.name for x in model.get_nodes_by_op_type("Abs")] == ["Abs_0"]
+    assert [x.name for x in model.get_nodes_by_op_type("Round")] == ["Round_0"]
+
+
 def test_give_unique_parameter_tensors():
     # Create model
     input_shape = [4, 4]
