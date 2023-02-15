@@ -470,11 +470,14 @@ class ModelWrapper:
         for initializers that are missing theirs."""
         graph = self._model_proto.graph
         ret = True
+        # note the call to get_tensor_shape needs to be first to avoid early stopping here
+        # due to missing tensor shapes
+        # see https://github.com/fastmachinelearning/qonnx/issues/33
         for n in graph.node:
             for i in n.input:
-                ret = ret and (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None)
+                ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
             for o in n.output:
-                ret = ret and (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None)
+                ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret
 
     def get_tensor_fanout(self, tensor_name):
