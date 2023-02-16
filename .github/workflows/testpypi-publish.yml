@@ -1,7 +1,7 @@
 # This workflow will upload a Python Package using Twine when launched
 # For more information see: https://help.github.com/en/actions/language-and-framework-guides/using-python-with-github-actions#publishing-to-package-registries
 
-name: Upload to PyPI
+name: Upload to TestPyPI
 
 on: workflow_dispatch
 
@@ -30,4 +30,4 @@ jobs:
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
       run: |
         python setup.py sdist bdist_wheel
-        twine upload dist/*
+        twine upload --repository testpypi dist/*
