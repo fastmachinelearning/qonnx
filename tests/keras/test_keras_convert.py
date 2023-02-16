@@ -2,6 +2,7 @@ import pytest
 
 import numpy as np
 import onnx
+import os
 import tensorflow as tf
 from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
@@ -111,6 +112,7 @@ def test_keras_conv2d_conversion():
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
+    os.remove("model_test_keras_conv2d_conversion.onnx")
 
 
 def test_keras_dense_conversion():
@@ -139,6 +141,7 @@ def test_keras_dense_conversion():
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
+    os.remove("model_test_keras_dense_conversion.onnx")
 
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
@@ -173,6 +176,7 @@ def test_qkeras_qdense_1(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
@@ -215,6 +219,7 @@ def test_qkeras_qdense_2(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
@@ -259,6 +264,7 @@ def test_qkeras_qdense_3(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
@@ -314,6 +320,7 @@ def test_qkeras_qdense_4(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
@@ -363,6 +370,7 @@ def test_qkeras_qconv2d_1(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
@@ -412,6 +420,7 @@ def test_qkeras_qconv2d_2(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", act_quantizers, ids=act_quantizers_ids)
@@ -471,6 +480,7 @@ def test_qkeras_qconv2d_3(quantizers, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
@@ -543,6 +553,7 @@ def test_qkeras_qconv2d_conversion_1(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 @pytest.mark.parametrize("quantizers", act_quantizers_relu, ids=act_quantizers_relu_ids)
@@ -610,6 +621,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
 
 
 # quantized_relu should not be used as a layer activation
