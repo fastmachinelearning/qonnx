@@ -110,7 +110,7 @@ git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
 virtualenv -p python3.8 venv
 source venv/bin/activate
-pip install -e .[testing]
+pip install -e .[qkeras,testing]
 ```
 
 Run entire test suite, parallelized across CPU cores:
@@ -129,7 +129,7 @@ The QONNX representation has several advantages compared to other alternatives, 
 These include a compact but flexible, single-node quantization representation that avoids operator duplication
 and can support arbitrary precision up to the container datatype limit.
 
-<img align="left" src="docs/qonnx-comparison.png" alt="QONNX comparison table" style="margin-right: 20px" />
+<img align="left" src="https://raw.githubusercontent.com/fastmachinelearning/qonnx/main/docs/qonnx-comparison.png" alt="QONNX comparison table" style="margin-right: 20px" />
 
 ## Community
 
