@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pytest
+
 import numpy as np
 import os
 import urllib.request
@@ -43,7 +45,10 @@ model_details = {
         ),
         "input_shape": (1, 3, 32, 32),
         "input_range": (-1, +1),
-        "layout_sensitive": True,
+        "nonconvertible_quant": 0,
+        "exp_qdq_nodes": 18,
+        # input quantizer doesn't need Clip so 1 less
+        "exp_clip_nodes": 17,
     },
     "FINN-TFC_W2A2": {
         "url": (
@@ -52,7 +57,10 @@ model_details = {
         ),
         "input_shape": (1, 1, 28, 28),
         "input_range": (-1, +1),
-        "layout_sensitive": False,
+        # all Quant nodes convertible to QCDQ
+        "nonconvertible_quant": 0,
+        "exp_qdq_nodes": 8,
+        "exp_clip_nodes": 8,
     },
     "RadioML_VGG10": {
         "url": (
@@ -61,7 +69,11 @@ model_details = {
         ),
         "input_shape": (1, 2, 1024),
         "input_range": (-1, +1),
-        "layout_sensitive": True,
+        # 23 bit bias quant not convertible to QCDQ
+        "nonconvertible_quant": 1,
+        "exp_qdq_nodes": 20,
+        # half the Quants don't need Clip (not signed narrow)
+        "exp_clip_nodes": 10,
     },
 }
 
@@ -89,14 +101,19 @@ def get_golden_in_and_output(model, test_model):
     return input_tensor, golden_result
 
 
-def test_qonnx_to_qcdq():
-    test_model = "FINN-TFC_W2A2"
+@pytest.mark.parametrize("test_model", model_details.keys())
+def test_qonnx_to_qcdq(test_model):
+    test_details = model_details[test_model]
     dl_file = download_model(test_model=test_model)
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
     input_tensor, golden_result = get_golden_in_and_output(model, test_model)
     model = model.transform(QuantToQCDQ())
+    assert len(model.get_nodes_by_op_type("Quant")) == test_details["nonconvertible_quant"]
+    assert len(model.get_nodes_by_op_type("QuantizeLinear")) > 0
+    assert len(model.get_nodes_by_op_type("DequantizeLinear")) > 0
+    assert len(model.get_nodes_by_op_type("Clip")) == test_details["exp_clip_nodes"]
     model = cleanup_model(model)
     input_dict = {model.graph.input[0].name: input_tensor}
     produced_output_dict = oxe.execute_onnx(model, input_dict)
