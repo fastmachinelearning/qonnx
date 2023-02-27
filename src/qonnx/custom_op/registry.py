@@ -31,10 +31,13 @@ import importlib
 from qonnx.util.basic import get_preferred_onnx_opset
 
 
-def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset()):
+def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
     "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
     op_type = node.op_type
     domain = node.domain
+    if brevitas_exception:
+        # transparently resolve Brevitas domain ops to qonnx ones
+        domain = domain.replace("onnx.brevitas", "qonnx.custom_op.general")
     try:
         opset_module = importlib.import_module(domain)
         assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
