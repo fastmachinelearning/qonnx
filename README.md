@@ -101,7 +101,16 @@ Inference cost for CNV_2W2A.onnx
 
 You can read more about the BOPS metric in [this paper](https://www.frontiersin.org/articles/10.3389/frai.2021.676564/full), Section 4.2 Bit Operations.
 
-### Development
+### Convert between different quantization representations
+
+Using the `qonnx-convert` command line utility you can convert from QONNX to QCDQ-style quantization:
+
+`qonnx-convert CNV_2W2A.onnx`
+
+This will convert `Quant` nodes to `QuantizeLinear -> Clip -> DequantizeLinear` nodes where possible.
+Please see the documentation of the `QuantToQCDQ` transformation to learn more about the limitations.
+
+## Development
 
 Install in editable mode in a venv:
 
@@ -110,7 +119,7 @@ git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
 virtualenv -p python3.8 venv
 source venv/bin/activate
-pip install -e .[qkeras,testing]
+pip install -e .[qkeras,testing,docs]
 ```
 
 Run entire test suite, parallelized across CPU cores:
