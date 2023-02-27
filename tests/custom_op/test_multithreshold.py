@@ -99,7 +99,6 @@ def multithreshold_elementwise(v, thresholds, out_scale=None, out_bias=None):
 
 
 def test_multithreshold():
-
     inputs = np.ndarray(
         shape=(6, 3, 2, 2),
         buffer=np.array(

@@ -4,7 +4,7 @@
 [![GitHub Discussions](https://img.shields.io/github/discussions/fastmachinelearning/qonnx)](https://github.com/fastmachinelearning/qonnx/discussions)
 ![Tests](https://github.com/fastmachinelearning/qonnx/actions/workflows/test.yml/badge.svg)
 ![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7622236.svg)](https://doi.org/10.5281/zenodo.7622236)
 
 <img align="left" src="https://xilinx.github.io/finn/img/TFC_1W2A.onnx.png" alt="QONNX example" style="margin-right: 20px" width="200"/>
 
@@ -40,7 +40,7 @@ The following quantization-aware training (QAT) frameworks support exporting to 
 
 * [Brevitas](https://github.com/Xilinx/brevitas)
 * [QKeras](https://github.com/google/qkeras) (beta, see [this PR](https://github.com/fastmachinelearning/qonnx/pull/7))
-* HAWQ (coming soon)
+* [HAWQ](https://github.com/Zhen-Dong/HAWQ/tree/main/utils/export)
 * [<your NN quantization framework here? please get in touch!>](https://github.com/fastmachinelearning/qonnx/discussions)
 
 The following NN inference frameworks support importing QONNX models for deployment:
@@ -110,7 +110,7 @@ git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
 virtualenv -p python3.8 venv
 source venv/bin/activate
-pip install -e .[testing]
+pip install -e .[qkeras,testing]
 ```
 
 Run entire test suite, parallelized across CPU cores:
@@ -129,7 +129,7 @@ The QONNX representation has several advantages compared to other alternatives, 
 These include a compact but flexible, single-node quantization representation that avoids operator duplication
 and can support arbitrary precision up to the container datatype limit.
 
-<img align="left" src="docs/qonnx-comparison.png" alt="QONNX comparison table" style="margin-right: 20px" />
+<img align="left" src="https://raw.githubusercontent.com/fastmachinelearning/qonnx/main/docs/qonnx-comparison.png" alt="QONNX comparison table" style="margin-right: 20px" />
 
 ## Community
 
@@ -144,7 +144,7 @@ The QONNX efforts were started by the FINN and hls4ml communities working togeth
 
 You can read more about QONNX in [this paper](https://arxiv.org/abs/2206.07527). If you find QONNX useful in your work, please consider citing:
 
-```
+```bibtex
 @inproceedings{Pappalardo:2022nxk,
     author = "Pappalardo, Alessandro and Umuroglu, Yaman and Blott, Michaela and Mitrevski, Jovan and Hawks, Ben and Tran, Nhan and Loncar, Vladimir and Summers, Sioni and Borras, Hendrik and Muhizi, Jules and Trahms, Matthew and Hsu, Shih-Chieh Hsu and Hauck, Scott and Duarte, Javier"
     title = "{QONNX: Representing Arbitrary-Precision Quantized Neural Networks}",
@@ -157,16 +157,14 @@ You can read more about QONNX in [this paper](https://arxiv.org/abs/2206.07527).
     year = "2022",
     url = "https://accml.dcs.gla.ac.uk/papers/2022/4thAccML_paper_1(12).pdf"
 }
-```
-```
-@software{umuroglu_2022_XXXXXXX,
+
+@software{yaman_umuroglu_2023_7622236,
   author       = "Umuroglu, Yaman and Borras, Hendrik and Loncar, Vladimir, and Summers, Sioni and Duarte, Javier",
   title        = "fastmachinelearning/qonnx",
-  month        = {6},
+  month        = {06},
   year         = 2022,
   publisher    = {Zenodo},
-  version      = {vX.X.X},
-  doi          = {10.5281/zenodo.XXXXXXX},
+  doi          = {10.5281/zenodo.7622236},
   url          = {https://github.com/fastmachinelearning/qonnx}
 }
 ```

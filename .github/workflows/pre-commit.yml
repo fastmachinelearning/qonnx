@@ -12,6 +12,7 @@ jobs:
     name: Lint PR or Push to DEV
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: [3.8]
 

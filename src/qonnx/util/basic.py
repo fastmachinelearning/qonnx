@@ -31,9 +31,19 @@ import os
 import random
 import string
 import warnings
-from onnx.helper import make_model, make_opsetid
 
 from qonnx.core.datatype import DataType
+
+# TODO solve by moving onnx-dependent fxns to onnx.py
+# finn-examples uses parts of qonnx without having
+# onnx installed and doesn't use this functionality
+# workaround to avoid import errors when onnx isn't
+# installed:
+try:
+    from onnx.helper import make_model, make_opsetid
+except ModuleNotFoundError:
+    make_model = None
+    make_opsetid = None
 
 
 def get_preferred_onnx_opset():

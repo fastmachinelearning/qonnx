@@ -280,7 +280,6 @@ class ApplyConfig(Transformation):
         self.config = config
 
     def apply(self, model):
-
         if isinstance(self.config, dict):
             model_config = self.config
         else:
@@ -292,7 +291,6 @@ class ApplyConfig(Transformation):
 
         # Configure network
         for node_idx, node in enumerate(model.graph.node):
-
             try:
                 node_config = model_config[node.name]
             except KeyError:
