@@ -54,6 +54,7 @@ def _infer_node_datatype(model, node):
         "Squeeze",
         "Unsqueeze",
         "Tile",
+        "Pad",
     ]
     idtypes = list(map(lambda x: model.get_tensor_datatype(x), node.input))
     odtypes = list(map(lambda x: model.get_tensor_datatype(x), node.output))
