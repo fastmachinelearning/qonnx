@@ -30,7 +30,6 @@ import numpy as np
 from onnx import helper
 
 from qonnx.transformation.base import Transformation
-from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
 from qonnx.util.basic import get_by_name
 
 
@@ -84,7 +83,6 @@ class SubPixelToDeconvolution(Transformation):
     with deconvolution layers using the weight shuffle algorithm"""
 
     def apply(self, model):
-        model = model.transform(ExtractBiasFromConv())
         graph = model.graph
         node_ind = 0
         graph_modified = False
