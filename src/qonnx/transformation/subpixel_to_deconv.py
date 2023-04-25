@@ -110,6 +110,9 @@ class SubPixelToDeconvolution(Transformation):
                     ofm_ch = model.get_tensor_shape(n.output[0])[1]  # assume NCHW
                     ifm_dim_h = model.get_tensor_shape(n.input[0])[2]  # assume NCHW
                     ifm_dim_w = model.get_tensor_shape(n.input[0])[3]  # assume NCHW
+                    ofm_dim_h = model.get_tensor_shape(n.output[0])[2]  # assume NCHW
+                    ofm_dim_w = model.get_tensor_shape(n.output[0])[3]
+                    assert (ifm_dim_h == ofm_dim_h) and (ifm_dim_w == ofm_dim_w), "Requires same-padded convolution."
                     dilation_attr = get_by_name(n.attribute, "dilations")
                     if dilation_attr is not None:
                         dilation = dilation_attr.ints
