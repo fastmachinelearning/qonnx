@@ -26,7 +26,11 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pytest
+
 import numpy as np
+import onnx.helper as oh
+from onnx import TensorProto
 from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
@@ -34,7 +38,7 @@ from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.subpixel_to_deconv import SubPixelToDeconvolution
-from qonnx.util.basic import gen_finn_dt_tensor
+from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 np.random.seed(0)
 
@@ -55,3 +59,74 @@ def test_subpixel_to_deconv_espcn():
     assert "DepthToSpace" not in op_types
     produced = oxe.execute_onnx(new_model, input_dict)[oname]
     assert np.isclose(expected, produced, atol=1e-4).all()
+
+
+def create_subpixel_conv_model(
+    in_channels: int, out_channels: int, input_dim: int, kernel_size: int, upscale_factor: int, bias: bool = False
+):
+    assert isinstance(kernel_size, int), "Assuming square kernels, so kernel_size needs to be an int."
+    padding = (kernel_size - 1) // 2
+
+    ifm_ch = in_channels
+    ifm_dim = input_dim
+    ofm_ch = out_channels
+    ofm_dim = upscale_factor * ifm_dim
+
+    cnv = oh.make_node(
+        op_type="Conv",
+        inputs=["inp", "W"] if not bias else ["inp", "W", "B"],
+        outputs=["hid"],
+        kernel_shape=[kernel_size, kernel_size],
+        pads=[padding, padding, padding, padding],
+        strides=[1, 1],
+        group=1,
+        dilations=[1, 1],
+    )
+    d2s = oh.make_node(
+        op_type="DepthToSpace",
+        inputs=["hid"],
+        outputs=["out"],
+        blocksize=upscale_factor,
+    )
+
+    input_shape = [1, ifm_ch, ifm_dim, ifm_dim]
+    output_shape = [1, ofm_ch, ofm_dim, ofm_dim]
+    conv_param_shape = [ofm_ch * pow(upscale_factor, 2), ifm_ch, kernel_size, kernel_size]
+    bias_param_shape = [ofm_ch * pow(upscale_factor, 2)]
+
+    inp = oh.make_tensor_value_info("inp", TensorProto.FLOAT, input_shape)
+    out = oh.make_tensor_value_info("out", TensorProto.FLOAT, output_shape)
+    W_conv = oh.make_tensor_value_info("W", TensorProto.FLOAT, conv_param_shape)
+    B_conv = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_param_shape)
+
+    value_info = [W_conv] if not bias else [W_conv, B_conv]
+
+    graph = oh.make_graph(
+        nodes=[cnv, d2s],
+        name="cnv_graph",
+        inputs=[inp],
+        outputs=[out],
+        value_info=value_info,
+    )
+    modelproto = qonnx_make_model(graph, producer_name="test_model")
+    model = ModelWrapper(modelproto)
+    model = model.transform(InferShapes())
+    model.set_initializer("W", np.random.rand(*conv_param_shape).astype(np.float32))
+    if bias:
+        model.set_initializer("B", np.random.rand(*bias_param_shape).astype(np.float32))
+    return model
+
+
+@pytest.mark.parameterize("kernel_size", [1, 3, 5, 7])
+@pytest.mark.parameterize("upscale_factor", [1, 2, 3, 4])
+def test_subpixel_to_deconv_layer(kernel_size: int, upscale_factor: int):
+    ifm_ch = 2
+    ofm_ch = 3
+    ifm_dim = 4
+    model = create_subpixel_conv_model(ifm_ch, ofm_ch, ifm_dim, kernel_size, upscale_factor)
+
+    new_model = model.transform(SubPixelToDeconvolution())
+
+    input_shape = [1, ifm_ch, ifm_dim, ifm_dim]
+    inp_dict = {"inp": np.random.rand(*input_shape).astype(np.float32)}
+    assert oxe.compare_execution(model, new_model, inp_dict)
