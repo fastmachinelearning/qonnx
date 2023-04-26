@@ -188,6 +188,12 @@ class Quant(CustomOp):
                 finn_dt = DataType["UINT" + str(bit_width)]
         return finn_dt
 
+    def get_scaled_integer_datatype(self, model):
+        bit_width = model.get_initializer(self.onnx_node.input[3])
+        bit_width = int(bit_width)
+        finn_dt = DataType["SCALEDINT<%d>" % (bit_width)]
+        return finn_dt
+
     def get_output_dtype(self, model):
         node = self.onnx_node
         # scale, zero-point and bitwidth must be read from initializers
@@ -209,8 +215,7 @@ class Quant(CustomOp):
         if unit_scale and zero_zeropt:
             finn_dt = self.get_integer_datatype(model)
         else:
-            finn_dt = DataType["FLOAT32"]
-
+            finn_dt = self.get_scaled_integer_datatype(model)
         return finn_dt
 
     def infer_node_datatype(self, model):
