@@ -307,6 +307,42 @@ class FixedPointType(IntType):
         return "FIXED<%d,%d>" % (self.bitwidth(), self.int_bits())
 
 
+class ScaledIntType(IntType):
+    # scaled integer datatype, only intended for
+    # inference cost calculations, many of the
+    # member methods are not implemented
+    def __init__(self, bitwidth):
+        super().__init__(bitwidth=bitwidth, signed=True)
+
+    def min(self):
+        raise Exception("Undefined for ScaledIntType")
+
+    def max(self):
+        raise Exception("Undefined for ScaledIntType")
+
+    def allowed(self, value):
+        raise Exception("Undefined for ScaledIntType")
+
+    def is_integer(self):
+        return False
+
+    def is_fixed_point(self):
+        return False
+
+    def get_hls_datatype_str(self):
+        raise Exception("Undefined for ScaledIntType")
+
+    def to_numpy_dt(self):
+        return np.float32
+
+    def signed(self):
+        "Returns whether this DataType can represent negative numbers."
+        return True
+
+    def get_canonical_name(self):
+        return "SCALEDINT<%d>" % (self.bitwidth())
+
+
 def resolve_datatype(name):
     _special_types = {
         "BINARY": IntType(1, False),
@@ -329,6 +365,12 @@ def resolve_datatype(name):
         bitwidth = int(nums[0].strip())
         intwidth = int(nums[1].strip())
         return FixedPointType(bitwidth, intwidth)
+    elif name.startswith("SCALEDINT"):
+        name = name.replace("SCALEDINT<", "")
+        name = name.replace(">", "")
+        nums = name.split(",")
+        bitwidth = int(nums[0].strip())
+        return ScaledIntType(bitwidth)
     else:
         raise KeyError("Could not resolve DataType " + name)
 
