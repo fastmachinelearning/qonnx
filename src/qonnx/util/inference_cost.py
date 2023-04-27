@@ -88,7 +88,7 @@ def inference_cost(model_filename, *, output_json=None, output_onnx=None, prepro
         model = model.transform(InferShapes())
         model = model.transform(GiveUniqueParameterTensors())
         model = model.transform(InferDataTypes())
-        model = model.transform(FoldConstants())
+        model = model.transform(FoldConstants(exclude_op_types=[]))
         model = model.transform(RemoveUnusedTensors())
         model = model.transform(RemoveStaticGraphInputs())
         model = model.transform(InferDataTypes())
@@ -111,6 +111,8 @@ def inference_cost(model_filename, *, output_json=None, output_onnx=None, prepro
     if output_json is not None:
         with open(output_json, "w") as f:
             json.dump(ret, f, sort_keys=True, indent=2)
+
+    return ret
 
 
 def main():
