@@ -31,6 +31,7 @@ import pytest
 import numpy as np
 import onnx.helper as oh
 from onnx import TensorProto
+from onnx.checker import check_model
 from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
@@ -114,19 +115,15 @@ def create_subpixel_conv_model(
     model.set_initializer("W", np.random.rand(*conv_param_shape).astype(np.float32))
     if bias:
         model.set_initializer("B", np.random.rand(*bias_param_shape).astype(np.float32))
+    check_model(model._model_proto)
     return model
 
 
 @pytest.mark.parameterize("kernel_size", [1, 3, 5, 7])
 @pytest.mark.parameterize("upscale_factor", [1, 2, 3, 4])
 def test_subpixel_to_deconv_layer(kernel_size: int, upscale_factor: int):
-    ifm_ch = 2
-    ofm_ch = 3
-    ifm_dim = 4
-    model = create_subpixel_conv_model(ifm_ch, ofm_ch, ifm_dim, kernel_size, upscale_factor)
-
-    new_model = model.transform(SubPixelToDeconvolution())
-
-    input_shape = [1, ifm_ch, ifm_dim, ifm_dim]
+    model_1 = create_subpixel_conv_model(1, 1, 4, kernel_size, upscale_factor)
+    model_2 = model_1.transform(SubPixelToDeconvolution())
+    input_shape = [1, 1, 4, 4]
     inp_dict = {"inp": np.random.rand(*input_shape).astype(np.float32)}
-    assert oxe.compare_execution(model, new_model, inp_dict)
+    assert oxe.compare_execution(model_1, model_2, inp_dict)
