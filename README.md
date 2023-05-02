@@ -74,7 +74,7 @@ odict = execute_onnx(idict)
 
 ### Calculate inference cost for QONNX model
 
-Using the `qonnx-inference-cost` command line utility:
+Using the `qonnx-inference-cost` command line utility for the [CNV_2W2A example](https://github.com/fastmachinelearning/qonnx_model_zoo/tree/main/models/CIFAR10/Brevitas_FINN_CNV):
 
 `qonnx-inference-cost CNV_2W2A.onnx`
 
@@ -83,18 +83,18 @@ Which will print a inference cost dictionary like the following:
 ```
 Inference cost for CNV_2W2A.onnx
 {
-  "discount_sparsity": true,    # discount MAC counts by layer sparsity (disregard zero-valued MACs)
+  "discount_sparsity": true,    # discount MAC counts by layer sparsity (disregard zero-valued MACs and params)
   # mem_o_X: number of layer outputs with datatype X
-  "mem_o_FLOAT32": 57600.0,     # number of FLOAT32 output elements
-  "mem_o_INT32": 85002.0,       # number of INT32 output elements
+  "mem_o_INT32": 142602.0,       # number of INT32 output elements
   # mem_o_X: number of layer parameters (weights) with datatype X
-  "mem_w_INT2": 1144512.0,      # number of INT2 parameters (weights)
+  "mem_w_INT2": 908033.0,      # number of INT2 parameters (weights)
   # op_mac_X_Y: number of MAC operations, datatype X by datatype Y
-  "op_mac_FLOAT32_INT2": 1555200.0, # number of float32 x int2 MACs
-  "op_mac_INT2_INT2": 57906176.0,   # number of int2 x int2 MACs
-  "total_bops": 331157504.0,        # total number of MACs normalized to bit-ops (BOPS)
+  # scaled integer datatypes have a tensor- or channelwise scale factor
+  "op_mac_SCALEDINT<8>_INT2": 1345500.0, # number of scaled int8 x int2 MACs
+  "op_mac_INT2_INT2": 35615771.0,   # number of int2 x int2 MACs
+  "total_bops": 163991084.0,        # total number of MACs normalized to bit-ops (BOPS)
   "total_mem_o_bits": 4563264.0,    # total number of bits for layer outputs
-  "total_mem_w_bits": 2289024.0,    # total number of bits for layer parameters
+  "total_mem_w_bits": 1816066.0,    # total number of bits for layer parameters
   "unsupported": "set()"
 }
 ```
