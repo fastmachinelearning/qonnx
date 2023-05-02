@@ -67,7 +67,7 @@ def compute_mem_bits(inf_cost_dict, filter_string="mem_w"):
 
 
 def inference_cost(model_filename, *, output_json=None, output_onnx=None, preprocess=True, discount_sparsity=True):
-    """Print the inference cost estimate metric for given ONNX model.
+    """Return the inference cost estimate metric for given ONNX model.
     Supports the Quant op for weight/activation quantization.
 
     :param model_filename: Filename for ONNX model
@@ -79,7 +79,6 @@ def inference_cost(model_filename, *, output_json=None, output_onnx=None, prepro
     :param discount_sparsity: If set, will discount op cost of MAC ops with a
         constant zero weight, and the mem cost of constant zero weights.
     """
-    print("Inference cost for " + model_filename)
     model = ModelWrapper(model_filename)
     if preprocess:
         qnt_nodes = model.get_nodes_by_op_type("Quant")
@@ -106,7 +105,6 @@ def inference_cost(model_filename, *, output_json=None, output_onnx=None, prepro
 
     if "unsupported" in ret:
         ret["unsupported"] = str(ret["unsupported"])
-    print(json.dumps(ret, sort_keys=True, indent=2))
 
     if output_json is not None:
         with open(output_json, "w") as f:
