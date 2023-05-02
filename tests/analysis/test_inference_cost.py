@@ -39,33 +39,82 @@ model_details = {
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
         ),
-        "input_shape": (1, 3, 32, 32),
-        "input_range": (-1, +1),
-        "layout_sensitive": True,
+        "expected_sparse": {
+            "discount_sparsity": True,
+            "mem_o_INT32": 142602.0,
+            "mem_w_INT2": 908033.0,
+            "op_mac_INT2_INT2": 35615771.0,
+            "op_mac_SCALEDINT<8>_INT2": 1345500.0,
+            "total_bops": 163991084.0,
+            "total_mem_o_bits": 4563264.0,
+            "total_mem_w_bits": 1816066.0,
+            "unsupported": "set()",
+        },
+        "expected_dense": {
+            "discount_sparsity": False,
+            "mem_o_INT32": 142602.0,
+            "mem_w_INT2": 1542848.0,
+            "op_mac_INT2_INT2": 57906176.0,
+            "op_mac_SCALEDINT<8>_INT2": 1555200.0,
+            "total_bops": 256507904.0,
+            "total_mem_o_bits": 4563264.0,
+            "total_mem_w_bits": 3085696.0,
+            "unsupported": "set()",
+        },
     },
     "FINN-TFC_W2A2": {
         "url": (
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
         ),
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
-        "layout_sensitive": False,
+        "expected_sparse": {
+            "discount_sparsity": True,
+            "mem_o_INT32": 202.0,
+            "mem_w_INT2": 22355.0,
+            "op_mac_INT2_INT2": 22355.0,
+            "total_bops": 89420.0,
+            "total_mem_o_bits": 6464.0,
+            "total_mem_w_bits": 44710.0,
+            "unsupported": "set()",
+        },
+        "expected_dense": {
+            "discount_sparsity": False,
+            "mem_o_INT32": 202.0,
+            "mem_w_INT2": 59008.0,
+            "op_mac_INT2_INT2": 59008.0,
+            "total_bops": 236032.0,
+            "total_mem_o_bits": 6464.0,
+            "total_mem_w_bits": 118016.0,
+            "unsupported": "set()",
+        },
     },
     "RadioML_VGG10": {
         "url": (
             "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
             "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
         ),
-        "input_shape": (1, 2, 1024),
-        "input_range": (-1, +1),
-        "layout_sensitive": True,
-    },
-    "Conv_bias_example": {
-        "url": "https://zenodo.org/record/7626922/files/super_resolution.onnx",
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
-        "layout_sensitive": True,
+        "expected_sparse": {
+            "discount_sparsity": True,
+            "mem_o_FLOAT32": 24.0,
+            "mem_o_INT32": 130304.0,
+            "mem_w_SCALEDINT<8>": 155617.0,
+            "op_mac_SCALEDINT<8>_SCALEDINT<8>": 12620311.0,
+            "total_bops": 807699904.0,
+            "total_mem_o_bits": 4170496.0,
+            "total_mem_w_bits": 1244936.0,
+            "unsupported": "set()",
+        },
+        "expected_dense": {
+            "discount_sparsity": False,
+            "mem_o_FLOAT32": 24.0,
+            "mem_o_INT32": 130304.0,
+            "mem_w_SCALEDINT<8>": 159104.0,
+            "op_mac_SCALEDINT<8>_SCALEDINT<8>": 12864512.0,
+            "total_bops": 823328768.0,
+            "total_mem_o_bits": 4170496.0,
+            "total_mem_w_bits": 1272832.0,
+            "unsupported": "set()",
+        },
     },
 }
 
@@ -84,7 +133,10 @@ def download_model(test_model):
 
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_inference_cost(test_model):
-    # Download an clean model
     onnx_file = download_model(test_model)
-    ret = inference_cost(onnx_file)
-    assert ret is not None
+    exp_dense = model_details[test_model]["expected_dense"]
+    exp_sparse = model_details[test_model]["expected_sparse"]
+    ret_dense = inference_cost(onnx_file, discount_sparsity=False)
+    assert ret_dense == exp_dense
+    ret_sparse = inference_cost(onnx_file, discount_sparsity=True)
+    assert ret_sparse == exp_sparse
