@@ -283,9 +283,9 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
 
     for tensor_name in node_tensors:
         dtype = model.get_tensor_datatype(tensor_name)
-        # floats don't need sanitization, skip to next
+        # non-integers don't need sanitization, skip to next
         # introduces less quicker runtime
-        if dtype == DataType["FLOAT32"]:
+        if not dtype.is_integer():
             continue
         current_values = execution_context[tensor_name]
         updated_values = current_values
