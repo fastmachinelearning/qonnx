@@ -56,6 +56,7 @@ def test_batchnorm_to_affine_shufflenet():
     iname = model.graph.input[0].name
     oname = model.graph.output[0].name
     ishape = model.get_tensor_shape(iname)
+    np.random.seed(0)
     rand_inp = gen_finn_dt_tensor(DataType["INT8"], ishape)
     input_dict = {iname: rand_inp}
     expected = oxe.execute_onnx(model, input_dict)[oname]
