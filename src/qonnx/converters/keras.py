@@ -250,8 +250,6 @@ def from_keras(
             if tensor.name in q_node_outputs:
                 tensor.type.tensor_type.elem_type = 1
 
-    onnx_model.save(f"tmp_{name}.onnx")
-
     onnx_model = cleanup_model(onnx_model)
     onnx_model.model = add_value_info_for_constants(onnx_model.model)
 

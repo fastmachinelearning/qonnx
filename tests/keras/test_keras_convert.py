@@ -61,6 +61,7 @@ def test_qkeras_qactivation(quantizer, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
+    os.remove(model_path)
 
 
 # pairs of quantizers for kernel and bias
