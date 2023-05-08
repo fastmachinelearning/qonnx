@@ -122,6 +122,7 @@ def create_subpixel_conv_model(
 @pytest.mark.parametrize("kernel_size", [1, 3, 5, 7])
 @pytest.mark.parametrize("upscale_factor", [1, 2, 3, 4])
 def test_subpixel_to_deconv_layer(kernel_size: int, upscale_factor: int):
+    # Create subpixel convolution layer that upsamples a 4x4 image with 1 I/O channel
     model_1 = create_subpixel_conv_model(1, 1, 4, kernel_size, upscale_factor)
     model_2 = model_1.transform(SubPixelToDeconvolution())
     input_shape = [1, 1, 4, 4]
