@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
+import warnings
 from onnx import helper
 
 from qonnx.transformation.base import Transformation
@@ -79,8 +80,9 @@ def _auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_
 
 
 class SubPixelToDeconvolution(Transformation):
-    """Replaces any sub-pixel convolution layers (i.e., convolution + depth2space)
-    with deconvolution layers using the weight shuffle algorithm"""
+    """Replaces sub-pixel convolution layers (i.e., same-padded convolution + depth2space)
+    with deconvolution layers using the weight shuffle algorithm. Currently does not support
+    same-padded convolutions with biases."""
 
     def apply(self, model):
         graph = model.graph
@@ -91,16 +93,24 @@ class SubPixelToDeconvolution(Transformation):
             if n.op_type == "Conv":
                 cnv_input = n.input[0]
                 cnv_output = n.output[0]
-                consumer = model.find_consumer(cnv_output)
+                consumers = model.find_consumers(cnv_output)
+                if len(consumers) > 1 and any([c.op_type == "DepthToSpace" for c in consumers]):
+                    warnings.warn(
+                        "Skipping sub-pixel conv that has same-padded conv with multiple consumers. Not yet supported."
+                    )
+                    continue
+                consumer = consumers[0]
                 # NOTE - currently supports onnx opset 11+, which introduced the
-                # pixel shuffle operator as a depth2space
+                # pixel shuffle operator as a depth2space op_type
                 if consumer is not None and consumer.op_type == "DepthToSpace":
-                    # TODO - converting sub-pixel convolution with bias requires elementwise
-                    #        addition node since the bias needs to be shuffled also
+                    # TODO - converting sub-pixel convolution with bias requires a non-trivial
+                    # elementwise addition node since the bias needs to be shuffled also
                     if len(n.input) == 3:
-                        raise NotImplementedError("Found Conv with bias. Not yet supported.")
+                        warnings.warn("Skipping sub-pixel conv with bias. Not yet supported.")
+                        continue
                     group = get_by_name(n.attribute, "group").i
-                    assert group == 1, f"Currently only supporting groups=1, not {group}."
+                    if group != 1:
+                        warnings.warn("Skipping sub-pixel conv with group > 1. Not yet supported.")
                     weight_name = n.input[1]
                     W_conv = model.get_initializer(weight_name)  # (OC, IC, KH, KW)
                     kshape = get_by_name(n.attribute, "kernel_shape").ints
@@ -110,16 +120,21 @@ class SubPixelToDeconvolution(Transformation):
                     ifm_dim_w = model.get_tensor_shape(n.input[0])[3]  # assume NCHW
                     ofm_dim_h = model.get_tensor_shape(n.output[0])[2]  # assume NCHW
                     ofm_dim_w = model.get_tensor_shape(n.output[0])[3]
-                    assert (ifm_dim_h == ofm_dim_h) and (ifm_dim_w == ofm_dim_w), "Requires same-padded convolution."
+                    if (ifm_dim_h != ofm_dim_h) or (ifm_dim_w != ofm_dim_w):
+                        warnings.warn("Skipping sub-pixel conv, only same-padded convs supported.")
                     dilation_attr = get_by_name(n.attribute, "dilations")
                     if dilation_attr is not None:
                         dilation = dilation_attr.ints
                     else:
                         dilation = [1, 1]  # default value
-                    assert dilation == [1, 1], f"Currently only supporting dilation=[1,1], not {dilation}."
+                    if dilation != [1, 1]:
+                        warnings.warn("Skipping sub-pixel conv, only supporting dilation=[1,1].")
                     # get depth-to-space (i.e., pixel shuffle) op attributes
                     block_size = get_by_name(consumer.attribute, "blocksize").i
-                    assert ofm_ch % block_size == 0, "The output channels and block size need to be evenly divisible."
+                    if ofm_ch % block_size != 0:
+                        warnings.warn(
+                            "Skipping sub-pixel conv, the output channels and block size need to be evenly divisible."
+                        )
                     W_deconv = _weight_shuffle(W_conv, block_size).astype(np.float32)
                     kh_size_deconv = kshape[0] * block_size
                     kw_size_deconv = kshape[1] * block_size
