@@ -275,9 +275,10 @@ class ApplyConfig(Transformation):
 
     """
 
-    def __init__(self, config):
+    def __init__(self, config, node_filter=lambda x: True):
         super().__init__()
         self.config = config
+        self.node_filter = node_filter
 
     def apply(self, model):
         if isinstance(self.config, dict):
@@ -291,6 +292,8 @@ class ApplyConfig(Transformation):
 
         # Configure network
         for node_idx, node in enumerate(model.graph.node):
+            if not self.node_filter(node):
+                continue
             try:
                 node_config = model_config[node.name]
             except KeyError:
