@@ -32,8 +32,34 @@ from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNodeNames
-from qonnx.transformation.infer_datatypes import InferDataTypes
+from qonnx.transformation.infer_datatypes import InferDataTypes, infer_mac_result_dtype
 from qonnx.transformation.infer_shapes import InferShapes
+
+
+def test_infer_mac_dtype_result():
+    # dtype prototypes
+    is32 = DataType["INT32"]
+    iu32 = DataType["UINT32"]
+    f32 = DataType["FLOAT32"]
+    is4 = DataType["INT4"]
+    iu4 = DataType["UINT4"]
+    fx4 = DataType["FIXED<4,2>"]
+    si4 = DataType["SCALEDINT<4>"]
+    si32 = DataType["SCALEDINT<32>"]
+    # test several 2-input (e.g. weights, inputs) cases
+    assert infer_mac_result_dtype([iu4, iu4], False) == iu32
+    assert infer_mac_result_dtype([iu4, is4], False) == is32
+    assert infer_mac_result_dtype([iu4, iu4], True) == is32
+    assert infer_mac_result_dtype([iu4, fx4], False) == si32
+    assert infer_mac_result_dtype([fx4, si4], False) == si32
+    assert infer_mac_result_dtype([is4, si4], False) == si32
+    assert infer_mac_result_dtype([f32, iu4], False) == f32
+    assert infer_mac_result_dtype([f32, si4], False) == f32
+    # test several 3-input (e.g. weights, inputs, biases) cases
+    assert infer_mac_result_dtype([iu4, iu4, iu4], False) == iu32
+    assert infer_mac_result_dtype([iu4, iu4, is4], False) == is32
+    assert infer_mac_result_dtype([is4, iu4, fx4], False) == si32
+    assert infer_mac_result_dtype([is4, iu4, f32], False) == f32
 
 
 def test_infer_datatypes():
