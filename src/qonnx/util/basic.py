@@ -284,7 +284,7 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
     for tensor_name in node_tensors:
         dtype = model.get_tensor_datatype(tensor_name)
         # non-integers don't need sanitization, skip to next
-        # introduces less quicker runtime
+        # introduces less overhead and quicker runtime
         if not dtype.is_integer():
             continue
         current_values = execution_context[tensor_name]
