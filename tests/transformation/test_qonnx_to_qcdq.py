@@ -34,6 +34,7 @@ import urllib.request
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.qcdq_to_qonnx import QCDQToQuant
 from qonnx.transformation.qonnx_to_qcdq import QuantToQCDQ
 from qonnx.util.cleanup import cleanup_model
 
@@ -109,6 +110,7 @@ def test_qonnx_to_qcdq(test_model):
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
     input_tensor, golden_result = get_golden_in_and_output(model, test_model)
+    # test Quant -> QCDQ conversion
     model = model.transform(QuantToQCDQ())
     assert len(model.get_nodes_by_op_type("Quant")) == test_details["nonconvertible_quant"]
     assert len(model.get_nodes_by_op_type("QuantizeLinear")) > 0
@@ -119,4 +121,10 @@ def test_qonnx_to_qcdq(test_model):
     produced_output_dict = oxe.execute_onnx(model, input_dict)
     produced_result = produced_output_dict[model.graph.output[0].name]
     assert np.isclose(golden_result, produced_result).all()
+    # now test QCDQ -> Quant conversion
+    model = model.transform(QCDQToQuant())
+    model = cleanup_model(model)
+    new_output_dict = oxe.execute_onnx(model, input_dict)
+    new_result = new_output_dict[model.graph.output[0].name]
+    assert np.isclose(golden_result, new_result).all()
     os.unlink(dl_file)
