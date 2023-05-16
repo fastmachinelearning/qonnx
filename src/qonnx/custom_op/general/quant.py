@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
-import onnx.helper as helper
+from onnx import TensorProto, helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
@@ -169,8 +169,26 @@ class Quant(CustomOp):
         }
 
     def make_shape_compatible_op(self, model):
-        node = self.onnx_node
-        return helper.make_node("Identity", [node.input[0]], [node.output[0]])
+        """Returns a standard ONNX op which is compatible with this CustomOp
+        for performing shape inference."""
+        # For Quant the output shape should be the same as the input shape.
+        # Get the output shape from the input
+        out_shape = model.get_tensor_shape(self.onnx_node.input[0])
+
+        # implement tensor with correct shape
+        values = np.random.randn(*out_shape).astype(np.float32)
+        return helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=[self.onnx_node.output[0]],
+            value=helper.make_tensor(
+                name="const_tensor",
+                data_type=TensorProto.FLOAT,
+                dims=values.shape,
+                vals=values.flatten().astype(float),
+            ),
+            name=self.onnx_node.name,
+        )
 
     def get_integer_datatype(self, model):
         signed = self.get_nodeattr("signed")
@@ -244,6 +262,8 @@ class Quant(CustomOp):
         # more: https://github.com/numpy/numpy/issues/13105
         if not isinstance(ret, np.ndarray):
             ret = np.asarray(ret, dtype=np.float32)
+        if not ret.dtype == np.float32:
+            ret = ret.astype(np.float32)
         # set context according to output name
         context[node.output[0]] = ret
 
