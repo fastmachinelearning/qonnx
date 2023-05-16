@@ -171,6 +171,12 @@ class Quant(CustomOp):
     def make_shape_compatible_op(self, model):
         """Returns a standard ONNX op which is compatible with this CustomOp
         for performing shape inference."""
+        return helper.make_node(
+            "Cast",
+            inputs=[self.onnx_node.input[0]],
+            outputs=[self.onnx_node.output[0]],
+            to=int(TensorProto.FLOAT),
+        )
         # For Quant the output shape should be the same as the input shape.
         # Get the output shape from the input
         out_shape = model.get_tensor_shape(self.onnx_node.input[0])
