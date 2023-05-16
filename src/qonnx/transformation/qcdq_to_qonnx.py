@@ -56,21 +56,21 @@ def extract_elem_type(elem_type: int) -> Tuple[int, int]:
     return elem_map[elem_type]
 
 
-# contributed by Keshav Gurushankar (@kgurushankar)
+# originally contributed by Keshav Gurushankar (@kgurushankar)
 class QCDQToQuant(Transformation):
     """
     Fuse a chain of nodes, specifically QuantizeLinear+DequantizeLinear back
     into QONNX Quant node.
     This transform finds chains of QuantizeLinear followed by DequantizeLinear
-    created by the Vitis AI Quantizer during the quantization process into a
-    QONNX Quant node.
+    during the quantization process into a QONNX Quant node.
     Input
     -----
-    A model potentially quantized by Vitis AI with QuantizeLinear and
+    A model potentially quantized with QuantizeLinear and
     DequantizeLinear nodes.
     Output
     ------
-    A model with QuantizeLinear and DequantizeLinear nodes re-fused back into brevitas Quant Nodes.
+    A model with QuantizeLinear and DequantizeLinear nodes re-fused back into QONNX
+    Quant nodes.
     """
 
     def __init__(self) -> None:
@@ -96,11 +96,15 @@ class QCDQToQuant(Transformation):
                     # TODO handle zeropt default according to spec
                     continue
                 elif quant_candidates is None and dq_init is not None:
+                    # standalone DequantizeLinear node with initializer
+                    # (e.g. for weight quantization). we can treat this
+                    # as if the QuantizeLinear node has already been
+                    # constant-folded.
                     # read quantized weight dtype for standalone deqnt
                     q_vi = model.get_tensor_valueinfo(dq_inp)
                     (bitwidth, signed) = extract_elem_type(q_vi.type.tensor_type.elem_type)
                     # overwrite DQ initializer with scaled version
-                    scaled_qnt_t = dq_init * dq_scale_v + dq_zeropt_v
+                    scaled_qnt_t = (dq_init - dq_zeropt_v) * dq_scale_v
                     scaled_qnt_t = scaled_qnt_t.astype(np.float32)
                     model.set_initializer(dq_inp, scaled_qnt_t)
                     q_inp = dq_inp
@@ -145,8 +149,8 @@ class QCDQToQuant(Transformation):
                     outputs=[final_out],
                     name=new_q_node_name,
                     domain="qonnx.custom_op.general",
-                    narrow=0,  # QuantizeLinear spec says 0
-                    rounding_mode="ROUND",  # QuantizeLinear spec says Round
+                    narrow=0,  # depends on clip
+                    rounding_mode="ROUND",  # round-to-even
                     signed=signed,
                 )
                 model.graph.node.insert(dequant_node_index, fused_node)
