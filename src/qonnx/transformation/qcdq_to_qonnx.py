@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
 import onnx
 import onnx.numpy_helper
 from typing import Tuple
@@ -55,6 +56,7 @@ def extract_elem_type(elem_type: int) -> Tuple[int, int]:
     return elem_map[elem_type]
 
 
+# contributed by Keshav Gurushankar (@kgurushankar)
 class QCDQToQuant(Transformation):
     """
     Fuse a chain of nodes, specifically QuantizeLinear+DequantizeLinear back
@@ -74,55 +76,81 @@ class QCDQToQuant(Transformation):
     def __init__(self) -> None:
         super().__init__()
 
-    def fuse(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
-        graph = model.graph
-        for n in graph.node:
-            if n.op_type == "DequantizeLinear":
-                quant_candidate = model.find_direct_predecessors(n)[0]
-                if quant_candidate.op_type == "QuantizeLinear":
-                    self.vai_found = True
-                    quant_node = quant_candidate
-                    dequant_node = n
-
-                    dequant_node_index = model.get_node_index(dequant_node)
-
-                    model.graph.node.remove(dequant_node)
-                    model.graph.node.remove(quant_node)
-
-                    value_info = [x for x in graph.value_info if x.name == quant_node.output[0]]
-                    (bitwidth, signed) = extract_elem_type(value_info[0].type.tensor_type.elem_type)
-
-                    initializer_tensor = onnx.helper.make_tensor(
-                        name=f"{n.name}_bitwidth",
-                        data_type=onnx.TensorProto.FLOAT,  # pylint: disable=no-member
-                        dims=(),
-                        vals=[bitwidth],
-                    )
-                    model.graph.initializer.insert(-1, initializer_tensor)
-
-                    # TODO import scale/zeropt tensor names properly
-                    scale_factor, zeropt = "", ""
-
-                    fused_node = onnx.helper.make_node(
-                        "Quant",
-                        inputs=[
-                            quant_node.input[0],
-                            scale_factor,
-                            zeropt,
-                            f"{n.name}_bitwidth",
-                        ],
-                        outputs=[dequant_node.output[0]],
-                        name="Quant_" + str(self.quant_nodes_created),
-                        domain="qonnx.custom_op.general",  # Is this correct?
-                        narrow=0,  # QuantizeLinear spec says 0
-                        rounding_mode="ROUND",  # QuantizeLinear spec says Round
-                        signed=signed,
-                    )
-                    model.graph.node.insert(dequant_node_index, fused_node)
-                    self.quant_nodes_created += 1
-                    return (model, True)
-        return (model, False)
-
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
-        model, retval = self.fuse(model)
-        return (model, retval)
+        graph = model.graph
+        step = 0
+        for node in graph.node:
+            nodes_to_remove = []
+            if node.op_type == "DequantizeLinear":
+                dq_node = node
+                dequant_node_index = model.get_node_index(dq_node)
+                dq_inp, dq_scale, dq_zeropt = dq_node.input
+                quant_candidates = model.find_direct_predecessors(dq_node)
+                dq_init = model.get_initializer(dq_inp)
+                dq_scale_v = model.get_initializer(dq_scale)
+                dq_zeropt_v = model.get_initializer(dq_zeropt)
+                if quant_candidates is None and dq_init is None:
+                    continue
+                if any([x is None for x in [dq_scale_v, dq_zeropt_v]]):
+                    # unknown scale/zeropt for DQ, cannot continue
+                    # TODO handle zeropt default according to spec
+                    continue
+                elif quant_candidates is None and dq_init is not None:
+                    # read quantized weight dtype for standalone deqnt
+                    q_vi = model.get_tensor_valueinfo(dq_inp)
+                    (bitwidth, signed) = extract_elem_type(q_vi.type.tensor_type.elem_type)
+                    # overwrite DQ initializer with scaled version
+                    scaled_qnt_t = dq_init * dq_scale_v + dq_zeropt_v
+                    scaled_qnt_t = scaled_qnt_t.astype(np.float32)
+                    model.set_initializer(dq_inp, scaled_qnt_t)
+                    q_inp = dq_inp
+                    final_out = dq_node.output[0]
+                    scale_factor, zeropt = dq_scale, dq_zeropt
+                    nodes_to_remove.append(dq_node)
+                elif quant_candidates[0].op_type == "QuantizeLinear":
+                    quant_candidate = quant_candidates[0]
+                    q_inp, q_scale, q_zeropt = quant_candidate.input
+                    # check that zeropt/scale tensors are the same
+                    q_scale_v = model.get_initializer(q_scale)
+                    q_zeropt_v = model.get_initializer(q_zeropt)
+                    if any([x is None for x in [q_scale_v, q_zeropt_v]]):
+                        # TODO handle zeropt default
+                        continue
+                    qdq_v_match = (q_scale_v == dq_scale_v).all() and (q_zeropt_v == dq_zeropt_v).all()
+                    qdq_nm_match = (q_scale == dq_scale) and (q_zeropt == dq_zeropt)
+                    if not (qdq_nm_match or qdq_v_match):
+                        continue
+                    quant_node = quant_candidate
+                    final_out = dq_node.output[0]
+                    nodes_to_remove.append(dq_node)
+                    nodes_to_remove.append(quant_node)
+                    value_info = model.get_tensor_valueinfo(quant_node.output[0])
+                    (bitwidth, signed) = extract_elem_type(value_info.type.tensor_type.elem_type)
+                    scale_factor, zeropt = q_scale, q_zeropt
+                else:
+                    # handle all other cases, skip
+                    continue
+                # create new Quant node for suitable cases
+                new_q_node_name = "Quant_" + q_inp
+                bw_tensor_name = f"{new_q_node_name}_bitwidth"
+                model.set_initializer(bw_tensor_name, np.asarray(bitwidth, dtype=np.float32))
+                fused_node = onnx.helper.make_node(
+                    "Quant",
+                    inputs=[
+                        q_inp,
+                        scale_factor,
+                        zeropt,
+                        bw_tensor_name,
+                    ],
+                    outputs=[final_out],
+                    name=new_q_node_name,
+                    domain="qonnx.custom_op.general",
+                    narrow=0,  # QuantizeLinear spec says 0
+                    rounding_mode="ROUND",  # QuantizeLinear spec says Round
+                    signed=signed,
+                )
+                model.graph.node.insert(dequant_node_index, fused_node)
+                for node_to_remove in nodes_to_remove:
+                    model.graph.node.remove(node_to_remove)
+                step += 1
+        return (model, False)
