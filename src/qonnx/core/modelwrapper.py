@@ -249,12 +249,21 @@ class ModelWrapper:
                 # use list return type to keep it consistent with ValueInfo case
                 return list(tensor_init.shape)
 
-    def set_tensor_shape(self, tensor_name, tensor_shape, dtype=TensorProto.FLOAT):
-        """Assigns shape in ValueInfoProto for tensor with given name."""
-        new_vi = oh.make_tensor_value_info(tensor_name, dtype, tensor_shape)
+    def set_tensor_shape(self, tensor_name, tensor_shape, dtype=None):
+        """Assigns shape in ValueInfoProto for tensor with given name. If override_dtype
+        is None, it will try to preserve the existing datatype, otherwise defaults to
+        single-precision float."""
         # call get_tensor_valueinfo to raise a warning for multiple ValueInfoProto cases
-        self.get_tensor_valueinfo(tensor_name)
-        # find what container tis tensor's ValueInfo lives in
+        old_vi = self.get_tensor_valueinfo(tensor_name)
+        # resolve dtype
+        if dtype is None:
+            # try to preserve old dtype
+            if old_vi is None:
+                dtype = TensorProto.FLOAT
+            else:
+                dtype = old_vi.type.tensor_type.elem_type
+        new_vi = oh.make_tensor_value_info(tensor_name, dtype, tensor_shape)
+        # find what container tHis tensor's ValueInfo lives in
         # if not found anywhere, we assume it's a new value_info
         target_container = self.graph.value_info
         if util.get_by_name(self.graph.input, tensor_name) is not None:
