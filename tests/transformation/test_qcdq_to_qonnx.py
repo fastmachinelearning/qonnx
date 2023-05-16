@@ -42,6 +42,7 @@ model_details = {
         "url": ("https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-12-qdq.onnx"),
         "input_shape": (1, 3, 224, 224),
         "input_range": (-1, +1),
+        "exp_q_nodes": 171,
     },
 }
 
@@ -79,14 +80,18 @@ def get_golden_in_and_output(model, test_model):
 
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_qcdq_to_qonnx(test_model):
-    if test_model == "MobileNetv2-w8a8":
-        pytest.xfail("MNv2 known to have off-by-one difference in inputs to Conv_30")
+    test_details = model_details[test_model]
     dl_file = download_model(test_model=test_model)
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
     input_tensor, golden_result = get_golden_in_and_output(model, test_model)
     model = model.transform(QCDQToQuant())
+    assert len(model.get_nodes_by_op_type("Quant")) == test_details["exp_q_nodes"]
+    assert len(model.get_nodes_by_op_type("QuantizeLinear")) == 0
+    assert len(model.get_nodes_by_op_type("DequantizeLinear")) == 0
+    if test_model == "MobileNetv2-w8a8":
+        pytest.xfail("MNv2 known to have off-by-one difference in inputs to Conv_30")
     model = cleanup_model(model)
     input_dict = {model.graph.input[0].name: input_tensor}
     produced_output_dict = oxe.execute_onnx(model, input_dict)
