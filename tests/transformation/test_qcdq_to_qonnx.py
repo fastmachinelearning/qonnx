@@ -72,9 +72,9 @@ def get_golden_in_and_output(model, test_model):
             model.set_tensor_shape(tensor_name, ts)
     model.set_tensor_shape(model.graph.input[0].name, input_shape)
     input_dict = {model.graph.input[0].name: input_tensor}
-    golden_output_dict = oxe.execute_onnx(model, input_dict, True)
+    golden_output_dict = oxe.execute_onnx(model, input_dict)
     golden_result = golden_output_dict[model.graph.output[0].name]
-    return input_tensor, golden_result, golden_output_dict
+    return input_tensor, golden_result
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())
@@ -85,10 +85,10 @@ def test_qcdq_to_qonnx(test_model):
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
-    input_tensor, golden_result, golden_output_dict = get_golden_in_and_output(model, test_model)
+    input_tensor, golden_result = get_golden_in_and_output(model, test_model)
     model = model.transform(QCDQToQuant())
     model = cleanup_model(model)
     input_dict = {model.graph.input[0].name: input_tensor}
-    produced_output_dict = oxe.execute_onnx(model, input_dict, True)
+    produced_output_dict = oxe.execute_onnx(model, input_dict)
     produced_result = produced_output_dict[model.graph.output[0].name]
     assert np.isclose(golden_result, produced_result).all()
