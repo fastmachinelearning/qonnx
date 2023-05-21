@@ -13,7 +13,7 @@ from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 
-def cleanup_model(model):
+def cleanup_model(model, preserve_qnt_ops=True):
     """Execute the transformations for the cleanup function on a model level.
     This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
 
@@ -27,10 +27,14 @@ def cleanup_model(model):
         qnt_nodes = model.get_nodes_by_op_type(q_op_type)
         for qnt_node in qnt_nodes:
             qnt_node.domain = "qonnx.custom_op.general"
+    if preserve_qnt_ops:
+        preserve_qnt_optypes = ["Quant", "BipolarQuant", "QuantizeLinear", "DequantizeLinear"]
+    else:
+        preserve_qnt_optypes = []
     cleanup_transformations = [
         InferShapes(),
         GiveUniqueParameterTensors(),
-        FoldConstants(exclude_op_types=["Quant", "BipolarQuant"]),
+        FoldConstants(exclude_op_types=preserve_qnt_optypes),
         FoldTransposeIntoQuantInit(),
         RemoveUnusedTensors(),
         RemoveStaticGraphInputs(),
