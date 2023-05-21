@@ -103,7 +103,7 @@ def get_golden_in_and_output(model, test_model):
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())
-def test_qonnx_to_qcdq(test_model):
+def test_qonnx_to_qcdq_to_qonnx(test_model):
     test_details = model_details[test_model]
     dl_file = download_model(test_model=test_model)
     assert os.path.isfile(dl_file)
@@ -123,8 +123,11 @@ def test_qonnx_to_qcdq(test_model):
     assert np.isclose(golden_result, produced_result).all()
     # now test QCDQ -> Quant conversion
     model = model.transform(QCDQToQuant())
+    assert len(model.get_nodes_by_op_type("QuantizeLinear")) == 0
+    assert len(model.get_nodes_by_op_type("DequantizeLinear")) == 0
+    assert len(model.get_nodes_by_op_type("Clip")) == 0
     model = cleanup_model(model)
     new_output_dict = oxe.execute_onnx(model, input_dict)
-    new_result = new_output_dict[model.graph.output[0].name]
-    assert np.isclose(golden_result, new_result).all()
+    roundtrip_result = new_output_dict[model.graph.output[0].name]
+    assert np.isclose(golden_result, roundtrip_result).all()
     os.unlink(dl_file)
