@@ -131,7 +131,11 @@ class QuantAvgPool2d(CustomOp):
             inputs=[inp],
             outputs=[outp],
         )
-        model_avgpool = qonnx_make_model(graph_avgpool)
+
+        opset_version = self.onnx_opset_version
+        opset_imports = [helper.make_opsetid("", opset_version)]
+        onnx_kwargs = {"opset_imports": opset_imports}
+        model_avgpool = qonnx_make_model(graph_avgpool, **onnx_kwargs)
         idict = {node.input[0]: inp_values}
         sess = rt.InferenceSession(model_avgpool.SerializeToString())
         result_temp = sess.run(None, idict)
