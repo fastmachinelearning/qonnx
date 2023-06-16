@@ -63,6 +63,14 @@ class MergeONNXModels(Transformation):
         # to avoid mix-ups, start by giving all tensors random names
         pre_model = pre_model.transform(GiveRandomTensorNames())
         post_model = post_model.transform(GiveRandomTensorNames())
+        pre_model_opset = pre_model.model.opset_import[0].version
+        post_model_opset = post_model.model.opset_import[0].version
+        merged_model_opset = max(pre_model_opset, post_model_opset)
+        if pre_model_opset != post_model_opset:
+            warnings.warn(
+                "[MergeONNXModels] opsets for models to merge differ: %d vs %d, output model will use opset %d"
+                % (pre_model_opset, post_model_opset, merged_model_opset)
+            )
 
         # check for dynamic outputs of pre model
         dyn_outp = []
@@ -143,7 +151,9 @@ class MergeONNXModels(Transformation):
             value_info=vi_new,
         )
 
-        new_model = qonnx_make_model(new_graph, producer_name="fuse_model")
+        new_model = qonnx_make_model(
+            new_graph, producer_name="fuse_model", opset_imports=[helper.make_opsetid("", merged_model_opset)]
+        )
         new_model = ModelWrapper(new_model)
 
         for i in init_new:

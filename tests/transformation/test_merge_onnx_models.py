@@ -73,7 +73,8 @@ def test_merge_onnx_models():
         value_info=[a0, a1],
     )
 
-    model2 = qonnx_make_model(graph, producer_name="model2")
+    exp_opset_id = 13
+    model2 = qonnx_make_model(graph, producer_name="model2", opset_imports=[helper.make_opsetid("", exp_opset_id)])
     model2 = ModelWrapper(model2)
     # initialize model2
     a0_value = np.random.uniform(low=0, high=1, size=(1)).astype(np.float32)
@@ -122,3 +123,5 @@ def test_merge_onnx_models():
 
     # check if finn datatype of graph.input[0] is still set to UINT8
     assert model_transformed.get_tensor_datatype("global_in") == DataType["UINT8"]
+    # check that the merged model uses the greater of the two input opsets
+    assert model_transformed.model.opset_import[0].version == exp_opset_id
