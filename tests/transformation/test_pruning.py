@@ -29,7 +29,13 @@
 import numpy as np
 
 from qonnx.transformation.fold_constants import FoldConstants
-from qonnx.transformation.pruning import ApplyMasks, PropagateMasks, RemoveMaskedChannels, remove_masked_tensor_channels
+from qonnx.transformation.pruning import (
+    ApplyMasks,
+    PropagateMasks,
+    PruneChannels,
+    RemoveMaskedChannels,
+    remove_masked_tensor_channels,
+)
 from qonnx.util.test import download_model
 
 
@@ -65,3 +71,12 @@ def test_apply_and_propagate_masks():
     assert tuple(model.get_tensor_shape(mm_nodes[0].input[1])) == (781, 62)
     assert tuple(model.get_tensor_shape(mm_nodes[1].input[0])) == (1, 62)
     assert tuple(model.get_tensor_shape(mm_nodes[1].input[1])) == (62, 64)
+
+
+def test_pruning_utils():
+    model = download_model("MobileNetv1-w4a4", do_cleanup=True, return_modelwrapper=True)
+    # manifest quantized weights as initializers
+    model = model.transform(FoldConstants([]))
+    prune_spec = {"Relu_0_out0": {4, 6, 10, 13, 15, 16, 19, 26, 28}}
+    model = model.transform(PruneChannels(prune_spec))
+    model.save("dbg.onnx")
