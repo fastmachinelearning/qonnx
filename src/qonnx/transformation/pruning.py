@@ -32,8 +32,9 @@ from typing import Dict, Tuple
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
+from qonnx.util.basic import get_by_name
 
-eltwise_ops = ["Add", "Mul", "Sub", "Div", "BatchNormalization", "MultiThreshold", "Quant"]
+eltwise_ops = ["Add", "Mul", "Sub", "Div", "BatchNormalization", "MultiThreshold", "Quant", "Relu"]
 
 
 def ensure_masktype_is_set(mask):
@@ -78,10 +79,17 @@ def update_node_mask(node, masks_in, masks_out):
         ret = set().union(*masks_in).union(*masks_out)
         masks_in = [ret for x in masks_in]
         masks_out = [ret for x in masks_out]
-    elif node.op_type == "MatMul":
+    elif node.op_type in ["MatMul", "Conv"]:
         # input and output are essentially decoupled from
-        # each other by means of the weight. the weight mask
-        # is formulated specially via prefixed strings:
+        # each other by means of the weight (except dwise convs)
+        if node.op_type == "Conv":
+            groups = get_by_name(node.attribute, "group").i
+            # TODO smarter check, other kinds of grouped convs out there..
+            is_depthwise = groups > 1
+        else:
+            is_depthwise = False
+
+        # the weight mask is formulated specially via prefixed strings:
         # iX for input channel X
         # oX for output channel X
         w_mask = masks_in[1]
@@ -93,7 +101,14 @@ def update_node_mask(node, masks_in, masks_out):
         o_mask = masks_out[0]
         mask_in = w_mask_in.union(i_mask)
         mask_out = w_mask_out.union(o_mask)
-        w_mask = {"i%d" % x for x in mask_in}.union({"o%d" % x for x in mask_out})
+        if is_depthwise:
+            # depthwise convs couple i<->o channels directly
+            mask_in = mask_in.union(mask_out)
+            mask_out = mask_in
+            # dw convs to only use output side for weights by convention
+            w_mask = {"o%d" % x for x in mask_out}
+        else:
+            w_mask = {"i%d" % x for x in mask_in}.union({"o%d" % x for x in mask_out})
         masks_in = [mask_in, w_mask]
         masks_out = [mask_out]
     else:
@@ -148,6 +163,7 @@ class RemoveMaskedChannels(Transformation):
                 mask = model.get_tensor_sparsity(ioname)
                 if mask is None or mask == {}:
                     continue
+                # print("[RemoveMaskedChannels] tensor %s mask %s: old shape %s" % (ioname, str(mask), str(io_shp)))
                 if io_t is None:
                     # dynamic input/output, no initializer
                     # compute new shape only
@@ -155,24 +171,41 @@ class RemoveMaskedChannels(Transformation):
                     axis = 1
                     new_shp = remove_masked_tensor_channels(io_shp, mask, axis=axis)
                     model.set_tensor_shape(ioname, new_shp)
-                    # clear sparsity annotation
-                    model.set_tensor_sparsity(ioname, {})
                 else:
                     if node.op_type in ["MatMul"]:
                         i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
                         o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
+                        # for MatMul weights, input axis is 0, output is 1
                         new_t = remove_masked_tensor_channels(io_t, i_mask, axis=0)
                         new_t = remove_masked_tensor_channels(new_t, o_mask, axis=1)
                         model.set_initializer(ioname, new_t)
-                        # clear sparsity annotation
-                        model.set_tensor_sparsity(ioname, {})
+                    elif node.op_type in ["Conv"]:
+                        i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
+                        o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
+                        ifm_w = io_shp[1]
+                        groups = get_by_name(node.attribute, "group").i
+                        assert groups == 1 or ifm_w == 1, "Unknown grouped conv setting"
+                        depthwise = groups > 1
+                        # for dense Conv weights, input (ifm) axis is 1, output (ofm) is 0
+                        ifm_axis = 1
+                        ofm_axis = 0
+                        if depthwise:
+                            # depthwise convs only use the o_mask by convention
+                            new_t = remove_masked_tensor_channels(io_t, o_mask, axis=ofm_axis)
+                        else:
+                            new_t = remove_masked_tensor_channels(io_t, i_mask, axis=ifm_axis)
+                            new_t = remove_masked_tensor_channels(new_t, o_mask, axis=ofm_axis)
+                        model.set_initializer(ioname, new_t)
                     else:
                         # TODO proper axis? assumes NCHW
                         axis = 1 if io_t.ndim >= 2 else 0
                         new_t = remove_masked_tensor_channels(io_t, mask, axis=axis)
                         model.set_initializer(ioname, new_t)
-                        # clear sparsity annotation
-                        model.set_tensor_sparsity(ioname, {})
+                # clear sparsity annotation since it's already handled
+                # leftover annotations here can lead to erronous removal later
+                model.set_tensor_sparsity(ioname, {})
+                new_shp = model.get_tensor_shape(ioname)
+                # print("[RemoveMaskedChannels] tensor %s : new shape %s" % (ioname, str(new_shp)))
                 need_rerun = True
         return (model, need_rerun)
 
@@ -184,6 +217,8 @@ class PruneChannels(Transformation):
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         model = model.transform(ApplyMasks(self.prune_spec))
+        model.save("dbg0.onnx")
         model = model.transform(PropagateMasks())
+        model.save("dbg1.onnx")
         model = model.transform(RemoveMaskedChannels())
         return (model, False)
