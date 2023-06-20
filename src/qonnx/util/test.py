@@ -66,6 +66,14 @@ test_model_details = {
         "input_shape": (1, 1, 28, 28),
         "input_range": (-1, +1),
     },
+    "MobileNetv1-w4a4": {
+        "url": (
+            "https://raw.githubusercontent.com/fastmachinelearning/"
+            "qonnx_model_zoo/main/models/ImageNet/Brevitas_FINN_mobilenet/mobilenet_4W4A.onnx"
+        ),
+        "input_shape": (1, 3, 224, 224),
+        "input_range": (0, 255),
+    },
 }
 
 
