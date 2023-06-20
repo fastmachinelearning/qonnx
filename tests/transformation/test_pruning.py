@@ -26,9 +26,19 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
+
 from qonnx.transformation.fold_constants import FoldConstants
-from qonnx.transformation.pruning import ApplyMasks, PropagateMasks
+from qonnx.transformation.pruning import ApplyMasks, PropagateMasks, RemoveMaskedChannels, remove_masked_tensor_channels
 from qonnx.util.test import download_model
+
+
+def test_remove_masked_tensor_channels():
+    shp = (4, 5, 6)
+    x = np.random.rand(*shp)
+    assert remove_masked_tensor_channels(x, [0, 2], axis=0).shape == (2, 5, 6)
+    assert remove_masked_tensor_channels(x, [3], axis=1).shape == (4, 4, 6)
+    assert remove_masked_tensor_channels(shp, [3], axis=1) == (4, 4, 6)
 
 
 def test_apply_and_propagate_masks():
@@ -50,3 +60,8 @@ def test_apply_and_propagate_masks():
     assert model.get_tensor_sparsity("Mul_0_out0") == {0, 2, 3}
     assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == {"i0", "i2", "i3", "o5", "o6"}
     assert model.get_tensor_sparsity("BatchNormalization_0_out0") == {5, 6}
+    model = model.transform(RemoveMaskedChannels())
+    assert tuple(model.get_tensor_shape(mm_nodes[0].input[0])) == (1, 781)
+    assert tuple(model.get_tensor_shape(mm_nodes[0].input[1])) == (781, 62)
+    assert tuple(model.get_tensor_shape(mm_nodes[1].input[0])) == (1, 62)
+    assert tuple(model.get_tensor_shape(mm_nodes[1].input[1])) == (62, 64)
