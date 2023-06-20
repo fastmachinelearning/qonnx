@@ -32,7 +32,7 @@ from typing import Dict, Tuple
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 
-eltwise_ops = ["Add", "Mul", "Sub", "Div", "BatchNormalization", "MultiThreshold"]
+eltwise_ops = ["Add", "Mul", "Sub", "Div", "BatchNormalization", "MultiThreshold", "Quant"]
 
 
 def ensure_masktype_is_set(mask):
@@ -55,7 +55,7 @@ def update_node_mask(node, masks_in, masks_out):
         # so just take union
         ret = set().union(*masks_in).union(*masks_out)
         masks_in = [ret for x in masks_in]
-        masks_out = [ret for x in masks_in]
+        masks_out = [ret for x in masks_out]
     elif node.op_type == "MatMul":
         # input and output are essentially decoupled from
         # each other by means of the weight. the weight mask
@@ -72,7 +72,7 @@ def update_node_mask(node, masks_in, masks_out):
         mask_in = w_mask_in.union(i_mask)
         mask_out = w_mask_out.union(o_mask)
         w_mask = {"i%d" % x for x in mask_in}.union({"o%d" % x for x in mask_out})
-        masks_in = [masks_in, w_mask]
+        masks_in = [mask_in, w_mask]
         masks_out = [mask_out]
     else:
         warnings.warn("Can't propagate sparsity mask through op_type %s" % node.op_type)
@@ -102,8 +102,10 @@ class PropagateMasks(Transformation):
             node_masks_in = [model.get_tensor_sparsity(x) for x in node.input]
             node_masks_out = [model.get_tensor_sparsity(x) for x in node.output]
             (new_in, new_out) = update_node_mask(node, node_masks_in, node_masks_out)
-            need_rerun |= any(new_in != node_masks_in)
-            need_rerun |= any(new_out != node_masks_out)
+            in_changed = new_in != node_masks_in
+            out_changed = new_out != node_masks_out
+            need_rerun |= in_changed
+            need_rerun |= out_changed
             for inp_name, inp_annot in zip(node.input, new_in):
                 model.set_tensor_sparsity(inp_name, inp_annot)
             for out_name, out_annot in zip(node.output, new_out):
