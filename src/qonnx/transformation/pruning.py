@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
 import warnings
 from typing import Dict, Tuple
 
@@ -44,6 +45,27 @@ def ensure_masktype_is_set(mask):
         return set()
     else:
         raise Exception("Cannot turn %s into set" % str(mask))
+
+
+def remove_masked_tensor_channels(tensor_or_shape, mask, axis):
+    shape_only = False
+    if type(mask) is not list:
+        mask_list = list(mask)
+    else:
+        mask_list = mask
+    if type(tensor_or_shape) in [list, tuple]:
+        shape_only = True
+        tensor_or_shape = np.random.rand(*tensor_or_shape)
+    assert type(tensor_or_shape) is np.ndarray
+    if tensor_or_shape.ndim == 0 or np.prod(tensor_or_shape.shape) == 1:
+        # no pruning for scalar properties
+        ret = tensor_or_shape
+    else:
+        ret = np.delete(tensor_or_shape, mask_list, axis=axis)
+    if shape_only:
+        return ret.shape
+    else:
+        return ret
 
 
 def update_node_mask(node, masks_in, masks_out):
@@ -118,7 +140,41 @@ class RemoveMaskedChannels(Transformation):
         super().__init__()
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
-        return (model, False)
+        need_rerun = False
+        for node in model.graph.node:
+            for ioname in [*node.input, *node.output]:
+                io_t = model.get_initializer(ioname)
+                io_shp = model.get_tensor_shape(ioname)
+                mask = model.get_tensor_sparsity(ioname)
+                if mask is None or mask == {}:
+                    continue
+                if io_t is None:
+                    # dynamic input/output, no initializer
+                    # compute new shape only
+                    # TODO proper axis? assumes NCHW
+                    axis = 1
+                    new_shp = remove_masked_tensor_channels(io_shp, mask, axis=axis)
+                    model.set_tensor_shape(ioname, new_shp)
+                    # clear sparsity annotation
+                    model.set_tensor_sparsity(ioname, {})
+                else:
+                    if node.op_type in ["MatMul"]:
+                        i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
+                        o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
+                        new_t = remove_masked_tensor_channels(io_t, i_mask, axis=0)
+                        new_t = remove_masked_tensor_channels(new_t, o_mask, axis=1)
+                        model.set_initializer(ioname, new_t)
+                        # clear sparsity annotation
+                        model.set_tensor_sparsity(ioname, {})
+                    else:
+                        # TODO proper axis? assumes NCHW
+                        axis = 1 if io_t.ndim >= 2 else 0
+                        new_t = remove_masked_tensor_channels(io_t, mask, axis=axis)
+                        model.set_initializer(ioname, new_t)
+                        # clear sparsity annotation
+                        model.set_tensor_sparsity(ioname, {})
+                need_rerun = True
+        return (model, need_rerun)
 
 
 class PruneChannels(Transformation):
