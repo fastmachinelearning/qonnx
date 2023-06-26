@@ -28,7 +28,10 @@
 
 import numpy as np
 
+from qonnx.core.datatype import DataType
+from qonnx.core.onnx_exec import execute_onnx
 from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.pruning import (
     ApplyMasks,
     PropagateMasks,
@@ -36,7 +39,9 @@ from qonnx.transformation.pruning import (
     RemoveMaskedChannels,
     remove_masked_tensor_channels,
 )
-from qonnx.util.test import download_model
+from qonnx.util.cleanup import cleanup_model
+from qonnx.util.inference_cost import inference_cost
+from qonnx.util.test import download_model, get_golden_in_and_output
 
 
 def test_remove_masked_tensor_channels():
@@ -73,10 +78,35 @@ def test_apply_and_propagate_masks():
     assert tuple(model.get_tensor_shape(mm_nodes[1].input[1])) == (62, 64)
 
 
-def test_pruning_utils():
-    model = download_model("MobileNetv1-w4a4", do_cleanup=True, return_modelwrapper=True)
-    # manifest quantized weights as initializers
-    model = model.transform(FoldConstants([]))
-    prune_spec = {"Relu_0_out0": {4, 6, 10, 13, 15, 16, 19, 26, 28}}
+def test_pruning_mnv1():
+    model = download_model("MobileNetv1-w4a4", return_modelwrapper=True)
+    # mark input as scaled 8-bit to get correct inference cost
+    model.set_tensor_datatype(model.graph.input[0].name, DataType["SCALEDINT<8>"])
+    model = model.transform(InferDataTypes())
+    # do cleanup including folding quantized weights
+    model = cleanup_model(model, False)
+    inp, golden = get_golden_in_and_output("MobileNetv1-w4a4")
+    cost0 = inference_cost(model, discount_sparsity=False)
+    assert cost0["op_mac_SCALEDINT<8>_SCALEDINT<8>"] == 10645344.0
+    assert cost0["mem_w_SCALEDINT<8>"] == 864.0
+    assert cost0["op_mac_SCALEDINT<4>_SCALEDINT<4>"] == 556357408.0
+    assert cost0["mem_w_SCALEDINT<4>"] == 4208224.0
+    prune_spec = {
+        "Quant_0_out0": {4, 6, 10, 13, 15, 16, 19, 26, 28},
+        "Quant_1_out0": {0, 4, 6, 10, 15, 19, 26, 28},
+        "Quant_2_out0": {42},
+        "Quant_3_out0": {42},
+        "Quant_6_out0": {102},
+        "Quant_7_out0": {102},
+    }
+
     model = model.transform(PruneChannels(prune_spec))
-    model.save("dbg.onnx")
+    cost1 = inference_cost(model, discount_sparsity=False)
+    assert cost1["op_mac_SCALEDINT<8>_SCALEDINT<8>"] == 7318674.0
+    assert cost1["mem_w_SCALEDINT<8>"] == 594.0
+    assert cost1["op_mac_SCALEDINT<4>_SCALEDINT<4>"] == 546053216.0
+    assert cost1["mem_w_SCALEDINT<4>"] == 4206942.0
+    iname = model.graph.input[0].name
+    oname = model.graph.output[0].name
+    ret = execute_onnx(model, {iname: inp})[oname]
+    assert np.isclose(golden, ret).all()
