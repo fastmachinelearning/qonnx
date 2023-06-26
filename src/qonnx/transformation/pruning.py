@@ -123,6 +123,16 @@ class ApplyMasks(Transformation):
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         for key, val in self.prune_spec.items():
+            # sanity check: if tensor is a weight tensor for
+            # Conv or MatMul nodes it needs to follow the convention
+            # for indicating input or output channels
+            t_has_init = model.get_initializer(key) is not None
+            t_consumer = model.find_consumer(key)
+            t_fc_cnv = t_consumer is not None and t_consumer.op_type in ["Conv", "MatMul"]
+            t_fc_cnv_w = t_fc_cnv and t_consumer.input[1] == key
+            if t_fc_cnv_w and t_has_init:
+                assert type(val[0]) is str, "Weight masks must be strings"
+                assert val[0].startswith("i") or val[0].startswith("o"), "Weight masks must be formatted iX or oX"
             model.set_tensor_sparsity(key, val)
         return (model, False)
 
@@ -192,6 +202,8 @@ class RemoveMaskedChannels(Transformation):
                         if depthwise:
                             # depthwise convs only use the o_mask by convention
                             new_t = remove_masked_tensor_channels(io_t, o_mask, axis=ofm_axis)
+                            # need to update the group attribute to match new n chans
+                            get_by_name(node.attribute, "group").i = new_t.shape[0]
                         else:
                             new_t = remove_masked_tensor_channels(io_t, i_mask, axis=ifm_axis)
                             new_t = remove_masked_tensor_channels(new_t, o_mask, axis=ofm_axis)
@@ -217,8 +229,6 @@ class PruneChannels(Transformation):
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         model = model.transform(ApplyMasks(self.prune_spec))
-        model.save("dbg0.onnx")
         model = model.transform(PropagateMasks())
-        model.save("dbg1.onnx")
         model = model.transform(RemoveMaskedChannels())
         return (model, False)
