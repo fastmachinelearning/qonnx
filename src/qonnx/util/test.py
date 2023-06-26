@@ -72,7 +72,7 @@ test_model_details = {
             "qonnx_model_zoo/main/models/ImageNet/Brevitas_FINN_mobilenet/mobilenet_4W4A.onnx"
         ),
         "input_shape": (1, 3, 224, 224),
-        "input_range": (0, 255),
+        "input_range": (0, 1),
     },
 }
 
