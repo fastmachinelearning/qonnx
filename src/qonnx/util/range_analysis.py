@@ -28,6 +28,7 @@
 
 import clize
 import numpy as np
+from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
@@ -274,7 +275,7 @@ def range_analysis(
                 stuck_chans[node.output[0]] = list(zip(list_stuck_chans, list_stuck_values))
             range_dict[node.output[0]] = simplify_range(out_range)
         else:
-            print("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_exists), node.op_type, str(op_ok)))
+            warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_exists), node.op_type, str(op_ok)))
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
