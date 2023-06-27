@@ -29,6 +29,7 @@
 import clize
 import itertools
 import numpy as np
+import pprint
 from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -250,7 +251,8 @@ def range_analysis(
     irange="",
     key_filter: str = "",
     report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL,
-    do_cleanup=False
+    do_cleanup=False,
+    prettyprint=False
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -326,6 +328,8 @@ def range_analysis(
             if len(schans_only_zero) > 0:
                 new_ret[tname] = schans_only_zero
         ret = new_ret
+    if prettyprint:
+        ret = pprint.pformat(ret, sort_dicts=False)
     return ret
 
 
