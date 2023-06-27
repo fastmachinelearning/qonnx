@@ -29,17 +29,20 @@
 import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.pruning import PruneChannels
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.range_analysis import range_analysis
 
 
-def prune_stuck_channels(input_filename_or_modelwrapper, *, irange="", output_filename=""):
+def prune_stuck_channels(input_filename_or_modelwrapper, *, irange="0,1", output_filename=""):
     if not isinstance(input_filename_or_modelwrapper, ModelWrapper):
         model = ModelWrapper(input_filename_or_modelwrapper)
     else:
         model = input_filename_or_modelwrapper
-    model = cleanup_model(model)
+    model = cleanup_model(model, preserve_qnt_ops=True)
+    model = model.transform(InferDataTypes())
+    model = cleanup_model(model, preserve_qnt_ops=False)
     stuck_chans = range_analysis(model, irange=irange, key_filter="Quant")
     pruned_model = model.transform(PruneChannels(stuck_chans))
     if output_filename != "":
