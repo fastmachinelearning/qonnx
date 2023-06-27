@@ -36,8 +36,9 @@ model_details_chanlast = {
         "layout_sensitive": True,
     },
 }
-
-model_details = {**test_model_details, **model_details_chanlast}
+# inherit basics for matching testcases from test util
+model_details = {k: v for (k, v) in test_model_details.items() if k in model_details_chanlast.keys()}
+model_details = {**model_details, **model_details_chanlast}
 
 
 def analysis_testing_for_chanlast_domain(model):

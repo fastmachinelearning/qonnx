@@ -104,8 +104,9 @@ model_details_infcost = {
     },
 }
 
-model_details = {**test_model_details, **model_details_infcost}
-del model_details["Conv_bias_example"]
+# inherit basics for matching testcases from test util
+model_details = {k: v for (k, v) in test_model_details.items() if k in model_details_infcost.keys()}
+model_details = {**model_details, **model_details_infcost}
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())

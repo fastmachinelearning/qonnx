@@ -60,8 +60,9 @@ qonnxtoqcdq_details = {
     },
 }
 
-model_details = {**test_model_details, **qonnxtoqcdq_details}
-del model_details["Conv_bias_example"]
+# inherit basics for matching testcases from test util
+model_details = {k: v for (k, v) in test_model_details.items() if k in qonnxtoqcdq_details.keys()}
+model_details = {**model_details, **qonnxtoqcdq_details}
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())
