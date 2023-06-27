@@ -85,7 +85,7 @@ def test_qcdq_to_qonnx(test_model):
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
-    input_tensor, golden_result = get_golden_in_and_output(test_model)
+    input_tensor, golden_result = get_golden_in_and_output(model, test_model)
     model = model.transform(QCDQToQuant())
     assert len(model.get_nodes_by_op_type("Quant")) == test_details["exp_q_nodes"]
     assert len(model.get_nodes_by_op_type("QuantizeLinear")) == 0

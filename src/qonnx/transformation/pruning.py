@@ -131,8 +131,9 @@ class ApplyMasks(Transformation):
             t_fc_cnv = t_consumer is not None and t_consumer.op_type in ["Conv", "MatMul"]
             t_fc_cnv_w = t_fc_cnv and t_consumer.input[1] == key
             if t_fc_cnv_w and t_has_init:
-                assert type(val[0]) is str, "Weight masks must be strings"
-                assert val[0].startswith("i") or val[0].startswith("o"), "Weight masks must be formatted iX or oX"
+                val_check = list(val)[0]
+                assert type(val_check) is str, "Weight masks must be strings"
+                assert val_check.startswith("i") or val_check.startswith("o"), "Weight masks must be formatted iX or oX"
             model.set_tensor_sparsity(key, val)
         return (model, False)
 
