@@ -34,7 +34,9 @@ from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
+from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_datatypes import InferDataTypes
+from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import get_by_name
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.onnx import valueinfo_to_tensor
@@ -251,8 +253,8 @@ def range_analysis(
     irange="",
     key_filter: str = "",
     report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL,
-    do_cleanup=False,
-    prettyprint=False
+    prettyprint=False,
+    do_cleanup=False
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -271,7 +273,11 @@ def range_analysis(
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
-        model = cleanup_model(model, False)
+        model = cleanup_model(model)
+    # call constant folding with no exclusions to get weight initializers
+    # (but not full cleanup, in order to preserve node/tensor naming)
+    model = model.transform(InferShapes())
+    model = model.transform(FoldConstants(exclude_op_types=[]))
     model = model.transform(InferDataTypes())
     range_dict = {}
     stuck_chans = {}
