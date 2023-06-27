@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import clize
+import itertools
 import numpy as np
 from warnings import warn
 
@@ -121,19 +122,10 @@ def calc_conv_range(node, model, range_dict):
     range_dict[oname] = ret
 
 
-def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
-    iname = node.input[0]
-    oname = node.output[0]
-    inp_vi = model.get_tensor_valueinfo(iname)
-    const_inps = [model.get_initializer(x) for x in node.input]
-    assert const_inps[0] is None
-    oname = node.output[0]
-    # create prototype min and max vectors
-    irange = range_dict[iname]
-    ishp = model.get_tensor_shape(iname)
+def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
-    if type(irange[0]) in [float, int, np.float32]:
+    if type(irange[0]) in [float, int, np.float32, np.float64]:
         imin, imax = irange
         proto_min[...] = imin
         proto_max[...] = imax
@@ -149,48 +141,45 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         proto_max = np.moveaxis(proto_max, 0, i_channel_axis)
     else:
         assert False, "Unknown range type"
+    return (proto_min, proto_max)
+
+
+def is_dyn_input(x, model):
+    return model.get_initializer(x) is None and x != ""
+
+
+def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
+    opset_version = model.model.opset_import[0].version
+    oname = node.output[0]
+    dyn_inps = [x for x in node.input if is_dyn_input(x, model)]
+    n_dyn_inp = len(dyn_inps)
+    proto_vectors = []
+    # generate min-max prototype vectors for each dynamic input
+    for inp in dyn_inps:
+        irange = range_dict[inp]
+        ishp = model.get_tensor_shape(inp)
+        inp_vi = model.get_tensor_valueinfo(inp)
+        proto_vectors.append(get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis))
+    # process all combinations of prototype vectors for dynamic inputs
+    running_min = None
+    running_max = None
+    # create context for single-node execution
     ctx = {x: model.get_initializer(x) for x in node.input}
-    ctx[iname] = proto_min
     ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
-    execute_node(node, ctx, model.graph)
-    o_0 = ctx[oname]
-    ctx[iname] = proto_max
-    execute_node(node, ctx, model.graph)
-    o_1 = ctx[oname]
-    axes_to_min = [i for i in range(o_0.ndim)]
+    axes_to_min = [i for i in range(ctx[oname].ndim)]
     axes_to_min.remove(i_channel_axis)
     axes_to_min = tuple(axes_to_min)
-    o0_min = o_0.min(axis=axes_to_min)
-    o0_max = o_0.max(axis=axes_to_min)
-    o1_min = o_1.min(axis=axes_to_min)
-    o1_max = o_1.max(axis=axes_to_min)
-    o_min = np.minimum(o0_min, o1_min).flatten()
-    o_max = np.maximum(o0_max, o1_max).flatten()
-    range_dict[oname] = (o_min, o_max)
-
-
-def calc_eltwiseadd_range(node, model, range_dict):
-    i0range = range_dict[node.input[0]]
-    i1range = range_dict[node.input[1]]
-    cands = []
-    if type(i0range) is tuple and type(i1range) is tuple:
-        for i0 in range(2):
-            for i1 in range(2):
-                cands.append(i0range[i0] + i1range[i1])
-        newmin = min(cands)
-        newmax = max(cands)
-        ret = (newmin, newmax)
-    elif type(i0range) is list and type(i1range) is list:
-        assert len(i0range) == len(i1range), "Range list shape mismatch"
-        ret = []
-        for i in range(len(i1range)):
-            for i0 in range(2):
-                for i1 in range(2):
-                    cands.append(i0range[i0] + i1range[i1])
-            newmin = min(cands)
-            newmax = max(cands)
-            ret.append((newmin, newmax))
-    range_dict[node.output[0]] = ret
+    for inps in itertools.product(*proto_vectors):
+        for i in range(n_dyn_inp):
+            ctx[dyn_inps[i]] = inps[i]
+        execute_node(node, ctx, model.graph, opset_version=opset_version)
+        # grab new output and update running min/max
+        out = ctx[oname]
+        chanwise_min = out.min(axis=axes_to_min).flatten()
+        chanwise_max = out.max(axis=axes_to_min).flatten()
+        running_min = np.minimum(chanwise_min, running_min).flatten() if running_min is not None else chanwise_min
+        running_max = np.maximum(chanwise_max, running_max).flatten() if running_max is not None else chanwise_max
+    range_dict[oname] = (running_min, running_max)
 
 
 def calc_range_outdtype(node, model, range_dict):
@@ -202,7 +191,6 @@ def calc_range_outdtype(node, model, range_dict):
 
 optype_to_range_calc = {
     "Transpose": propagate_range,
-    "Im2Col": propagate_range,
     "MatMul": calc_matmul_range,
     "Conv": calc_conv_range,
     "QuantMaxNorm": calc_range_outdtype,
@@ -220,6 +208,8 @@ optype_to_range_calc = {
     "AveragePool": calc_monotonic_range,
     "Trunc": calc_range_outdtype,
     "MaxPool": calc_monotonic_range,
+    "Resize": calc_monotonic_range,
+    "Upsample": calc_monotonic_range,
 }
 
 
@@ -296,9 +286,11 @@ def range_analysis(
         range_dict[iname] = (range_min, range_max)
 
     for node in model.graph.node:
-        inprange_exists = node.input[0] in range_dict.keys()
+        assert len(node.output) == 1, "Only single-output nodes supported"
+        dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
+        inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
         op_ok = node.op_type in optype_to_range_calc.keys()
-        if inprange_exists and op_ok:
+        if inprange_ok and op_ok:
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]
@@ -309,7 +301,7 @@ def range_analysis(
                 stuck_chans[node.output[0]] = list(zip(list_stuck_chans, list_stuck_values))
             range_dict[node.output[0]] = simplify_range(out_range)
         else:
-            warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_exists), node.op_type, str(op_ok)))
+            warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
