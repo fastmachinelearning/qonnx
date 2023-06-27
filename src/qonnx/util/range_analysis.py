@@ -34,6 +34,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.util.basic import get_by_name
+from qonnx.util.cleanup import cleanup_model
 from qonnx.util.onnx import valueinfo_to_tensor
 
 # walk the graph to deduce range information about each tensor
@@ -70,39 +71,53 @@ def calc_matmul_range(node, model, range_dict):
     imin, imax = irange
     weights = model.get_initializer(wname)
     assert weights is not None, "Uninitialized MatMul weights"
-    is_depthwise = False
-    if node.op_type == "Conv":
-        # do weight reshaping to treat Conv as MatMul
-        # (mh, mw) = (ofm, (ifm x k0 x k1 x ...))
-        conv_ofm = weights.shape[0]
-        weights = weights.reshape(conv_ofm, -1)
-        groups = get_by_name(node.attribute, "group").i
-        # TODO smarter check, other kinds of grouped convs out there..
-        is_depthwise = groups > 1
-    if node.op_type == "MatMul":
-        # util function expects (mh, mw) so transpose
-        weights = weights.transpose()
+    # util function expects (mh, mw) so transpose
+    weights = weights.transpose()
+    if type(imin) is np.ndarray:
+        assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
+    ret = calculate_matvec_accumulator_extremum(weights, imin, imax)
+    range_dict[oname] = ret
+
+
+def calc_conv_range(node, model, range_dict):
+    iname = node.input[0]
+    wname = node.input[1]
+    oname = node.output[0]
+    irange = range_dict[iname]
+    imin, imax = irange
+    weights = model.get_initializer(wname)
+    assert weights is not None, "Uninitialized Conv weights"
+    # do weight reshaping to treat Conv similar to MatMul
+    # (mh, mw) = (ofm, (ifm x k0 x k1 x ...))
+    conv_ofm = weights.shape[0]
+    conv_ifm = weights.shape[1]
+    weights = weights.reshape(conv_ofm, -1)
+    k_total = weights.shape[1] // conv_ifm
+    groups = get_by_name(node.attribute, "group").i
+    # TODO smarter check, other kinds of grouped convs out there..
+    is_depthwise = groups > 1
+    # need to construct specialzed input range vectors for Conv
     if is_depthwise:
-        # need to construct specialzed input range vectors
-        dw_ret_min = []
-        dw_ret_max = []
-        for i in range(conv_ofm):
-            mw = weights.shape[1]
-            w_slice = weights[i, :].reshape(1, mw)
-            if type(imin) is np.ndarray:
-                imin_rep = np.repeat(imin[i], mw)
-                imax_rep = np.repeat(imax[i], mw)
-            else:
-                imin_rep = imin
-                imax_rep = imax
-            dw_ret = calculate_matvec_accumulator_extremum(w_slice, imin_rep, imax_rep)
-            dw_ret_min.append(dw_ret[0].item())
-            dw_ret_max.append(dw_ret[1].item())
-        ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
+        conv_ifm = conv_ofm
+    if type(imin) is np.ndarray:
+        imin_rep = np.repeat(imin, k_total)
+        imax_rep = np.repeat(imax, k_total)
     else:
-        if type(imin) is np.ndarray:
-            assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
-        ret = calculate_matvec_accumulator_extremum(weights, imin, imax)
+        imin_rep = imin
+        imax_rep = imax
+    dw_ret_min = []
+    dw_ret_max = []
+    for i in range(conv_ofm):
+        w_slice = weights[i, :].reshape(1, -1)
+        if is_depthwise and type(imin_rep) is np.ndarray:
+            dw_ret = calculate_matvec_accumulator_extremum(
+                w_slice, imin_rep[i * k_total : (i + 1) * k_total], imax_rep[i * k_total : (i + 1) * k_total]
+            )
+        else:
+            dw_ret = calculate_matvec_accumulator_extremum(w_slice, imin_rep, imax_rep)
+        dw_ret_min.append(dw_ret[0].item())
+        dw_ret_max.append(dw_ret[1].item())
+    ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
     range_dict[oname] = ret
 
 
@@ -189,11 +204,12 @@ optype_to_range_calc = {
     "Transpose": propagate_range,
     "Im2Col": propagate_range,
     "MatMul": calc_matmul_range,
-    "Conv": calc_matmul_range,
+    "Conv": calc_conv_range,
     "QuantMaxNorm": calc_range_outdtype,
     "Flatten": propagate_range,
     "Reshape": propagate_range,
     "Quant": calc_monotonic_range,
+    "BipolarQuant": calc_monotonic_range,
     "Mul": calc_monotonic_range,
     "Sub": calc_monotonic_range,
     "Div": calc_monotonic_range,
@@ -203,6 +219,7 @@ optype_to_range_calc = {
     "Pad": propagate_range,
     "AveragePool": calc_monotonic_range,
     "Trunc": calc_range_outdtype,
+    "MaxPool": calc_monotonic_range,
 }
 
 
@@ -222,11 +239,11 @@ def simplify_range(range):
         return range
 
 
-report_modes = {"range", "only_stuck_channel", "only_zerostuck_channel"}
-
 REPORT_MODE_RANGE = "range"
 REPORT_MODE_STUCKCHANNEL = "stuck_channel"
 REPORT_MODE_ZEROSTUCKCHANNEL = "zerostuck_channel"
+
+report_modes = {REPORT_MODE_RANGE, REPORT_MODE_STUCKCHANNEL, REPORT_MODE_ZEROSTUCKCHANNEL}
 
 report_mode_options = clize.parameters.mapped(
     [
@@ -238,27 +255,44 @@ report_mode_options = clize.parameters.mapped(
 
 
 def range_analysis(
-    onnx_path: str,
+    model_filename_or_wrapper,
     *,
-    irange: str = "",
+    irange="",
     key_filter: str = "",
-    report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL
+    report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL,
+    do_cleanup=False
 ):
-    model = ModelWrapper(onnx_path)
+    assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
+    if isinstance(model_filename_or_wrapper, ModelWrapper):
+        model = model_filename_or_wrapper
+    else:
+        model = ModelWrapper(model_filename_or_wrapper)
+    if isinstance(irange, str):
+        if irange == "":
+            range_min = None
+            range_max = None
+        else:
+            irange = irange.split(",")
+            range_min, range_max = float(irange[0]), float(irange[1])
+    elif isinstance(irange, tuple):
+        range_min, range_max = irange
+    else:
+        assert False, "Unknown irange type"
+    if do_cleanup:
+        model = cleanup_model(model, False)
     model = model.transform(InferDataTypes())
     range_dict = {}
     stuck_chans = {}
 
-    # start by calculating range info for input tensors
+    # start by calculating/annotating range info for input tensors
     for inp in model.graph.input:
         iname = inp.name
-        if irange == "":
+        if range_min is None or range_max is None:
+            # use idt annotation
             idt = model.get_tensor_datatype(iname)
+            assert idt is not None, "Could not infer irange, please specify"
             range_min = idt.min()
             range_max = idt.max()
-        else:
-            irange = irange.split(",")
-            range_min, range_max = float(irange[0]), float(irange[1])
         range_dict[iname] = (range_min, range_max)
 
     for node in model.graph.node:
