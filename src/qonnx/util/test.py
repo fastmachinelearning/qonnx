@@ -43,7 +43,23 @@ test_model_details = {
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
         ),
         "input_shape": (1, 3, 32, 32),
-        "input_range": (-1, +1),
+        "input_range": (0, +1),
+    },
+    "FINN-TFC_W1A1": {
+        "url": (
+            "https://github.com/fastmachinelearning/QONNX_model_zoo/"
+            "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W1A.onnx"
+        ),
+        "input_shape": (1, 1, 28, 28),
+        "input_range": (0, +1),
+    },
+    "FINN-TFC_W1A2": {
+        "url": (
+            "https://github.com/fastmachinelearning/QONNX_model_zoo/"
+            "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W2A.onnx"
+        ),
+        "input_shape": (1, 1, 28, 28),
+        "input_range": (0, +1),
     },
     "FINN-TFC_W2A2": {
         "url": (
@@ -51,7 +67,7 @@ test_model_details = {
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
         ),
         "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
+        "input_range": (0, +1),
     },
     "RadioML_VGG10": {
         "url": (
