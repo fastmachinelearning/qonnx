@@ -28,10 +28,12 @@
 
 import clize
 import numpy as np
-import onnx
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
+from qonnx.transformation.change_batchsize import ChangeBatchSize
+from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.onnx import valueinfo_to_tensor
 
 OUTPUT_MODE_IND = "tensor_index"
 OUTPUT_MODE_NAME = "tensor_name"
@@ -49,9 +51,11 @@ output_mode_options = clize.parameters.mapped(
 def exec_qonnx(
     qonnx_model_file,
     *in_npy,
+    override_batchsize: int = None,
     override_opset: int = None,
     output_prefix: str = "out_",
-    output_mode: output_mode_options = OUTPUT_MODE_NAME
+    output_mode: output_mode_options = OUTPUT_MODE_NAME,
+    argmax_verify_npy: str = None
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -59,9 +63,11 @@ def exec_qonnx(
 
     :param qonnx_model_file: Filename for the input ONNX model
     :param in_npy: List of .npy files to supply as inputs. If not specified, inputs will be set to zero.
+    :param override_batchsize: If specified, override the batch size for the ONNX graph
     :param override_opset: If specified, override the imported ONNX opset to this version.
     :param output_prefix: Prefix for the generated output files.
     :param output_mode: Naming mode for generated output files.
+    :param argmax_verify_npy: If specified, take argmax of output and compare to this file for top-1 accuracy measurement
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -69,27 +75,69 @@ def exec_qonnx(
     model = ModelWrapper(qonnx_model_file)
     if override_opset is not None:
         model.model.opset_import[0].version = override_opset
+    if override_batchsize is not None:
+        model = model.transform(ChangeBatchSize(override_batchsize))
+        model = model.transform(InferShapes())
+        bsize = override_batchsize
+    else:
+        bsize = model.get_tensor_shape(model.graph.input[0].name)[0]
 
-    idict = {}
-    inp_ind = 0
-    for inp in model.graph.input:
-        i_tensor_shape = model.get_tensor_shape(inp.name)
-        if inp_ind < len(in_npy):
-            file_inp = np.load(in_npy[inp_ind])
-            idict[inp.name] = file_inp
-        else:
-            i_dtype_npy = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[inp.type.tensor_type.elem_type]
-            idict[inp.name] = np.zeros(i_tensor_shape, dtype=i_dtype_npy)
-        inp_ind += 1
-    odict = execute_onnx(model, idict)
-    outp_ind = 0
-    for outp in model.graph.output:
-        if output_mode == OUTPUT_MODE_IND:
-            oname = "%d.npy" % outp_ind
-        elif output_mode == OUTPUT_MODE_NAME:
-            oname = outp.name + ".npy"
-        np.save(output_prefix + oname, odict[outp.name])
-        outp_ind += 1
+    ok = 0
+    nok = 0
+    iter = 0
+    dset_size = 0
+    n_dset_iters = 0
+    inp_data = []
+    labels = None
+    if len(in_npy) > 0:
+        # load provided npy files and arrange in batches
+        inp_data = [np.load(x) for x in in_npy]
+        inp_data_reshaped = []
+        for inp in inp_data:
+            dset_size = inp.shape[0]
+            assert dset_size % bsize == 0, "Batch size %d must divide dataset size %d" % (bsize, dset_size)
+            n_dset_iters = dset_size // bsize
+            inp = inp.reshape(n_dset_iters, bsize, *inp.shape[1:])
+            inp_data_reshaped.append(inp)
+        inp_data = inp_data_reshaped
+        if argmax_verify_npy is not None:
+            labels = np.load(argmax_verify_npy)
+            assert labels.shape[0] == dset_size, "Label size must match dataset size"
+            labels = labels.reshape(n_dset_iters, bsize, *labels.shape[1:])
+    else:
+        # create 0-valued tensors of appropriate shape
+        n_dset_iters = 1
+        inp_data = [valueinfo_to_tensor(model.get_tensor_valueinfo(i.name)) for i in model.graph.input]
+        inp_data = [np.expand_dims(x, axis=0) for x in inp_data]
+
+    for iter in range(n_dset_iters):
+        iter_prefix = "batch%d_" % iter
+        idict = {}
+        # supply inputs and execute
+        for inp_ind, inp in enumerate(model.graph.input):
+            idict[inp.name] = inp_data[inp_ind][iter]
+        odict = execute_onnx(model, idict)
+        for out_ind, outp in enumerate(model.graph.output):
+            # save generated outputs
+            if output_mode == OUTPUT_MODE_IND:
+                oname = "%d.npy" % out_ind
+            elif output_mode == OUTPUT_MODE_NAME:
+                oname = outp.name + ".npy"
+            np.save(iter_prefix + output_prefix + oname, odict[outp.name])
+        if argmax_verify_npy:
+            # measure accuracy for output
+            ret = odict[model.graph.output[0].name]
+            ret = np.argmax(ret, axis=-1)
+            ok_batch = np.count_nonzero(ret == labels[iter])
+            nok_batch = bsize - ok_batch
+            ok += ok_batch
+            nok += nok_batch
+            accuracy_batch = ok_batch / bsize
+            accuracy_overall = ok / (ok + nok)
+            print(
+                "Batch [%d/%d]: ok %d nok %d accuracy %f overall %f"
+                % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, accuracy_overall)
+            )
 
 
 def main():
