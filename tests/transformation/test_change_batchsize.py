@@ -11,7 +11,7 @@
 #   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
 #
-# * Neither the name of Xilinx nor the names of its
+# * Neither the name of qonnx nor the names of its
 #   contributors may be used to endorse or promote products derived from
 #   this software without specific prior written permission.
 #
@@ -26,34 +26,34 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.base import Transformation
+import pytest
+
+import numpy as np
+
+import qonnx.core.onnx_exec as oxe
+from qonnx.transformation.change_batchsize import ChangeBatchSize
+from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.onnx import valueinfo_to_tensor
+from qonnx.util.test import download_model, test_model_details
+
+model_details = test_model_details
 
 
-class ChangeBatchSize(Transformation):
-    """Change the batch size dimension to the given value for the entire graph
-    by changing it for the global input/output and removing all intermediate
-    shapes (will need a call to shape inference to restore shapes).
-    Will attempt to handle any Reshape nodes with constant shape parameters by
-    changing the batch size dimension value in the parameter."""
-
-    def __init__(self, bsize):
-        super().__init__()
-        self.bsize = int(bsize)
-
-    def apply(self, model: ModelWrapper):
-        onnx_model = model.model
-        bsize = self.bsize
-        onnx_model.graph.input[0].type.tensor_type.shape.dim[0].dim_value = bsize
-        onnx_model.graph.output[0].type.tensor_type.shape.dim[0].dim_value = bsize
-        while len(onnx_model.graph.value_info) > 0:
-            onnx_model.graph.value_info.remove(onnx_model.graph.value_info[0])
-        reshape_nodes = model.get_nodes_by_op_type("Reshape")
-        for reshape_node in reshape_nodes:
-            rs_param_name = reshape_node.input[1]
-            rs_param = model.get_initializer(rs_param_name)
-            if rs_param is not None:
-                rs_param = rs_param.copy()
-                rs_param[0] = bsize
-                model.set_initializer(rs_param_name, rs_param)
-        return (model, False)
+@pytest.mark.parametrize("test_model", model_details.keys())
+def test_change_batchsize(test_model):
+    test_details = model_details[test_model]
+    batch_size = 10
+    old_ishape = test_details["input_shape"]
+    imin, imax = test_details["input_range"]
+    model = download_model(test_model=test_model, do_cleanup=True, return_modelwrapper=True)
+    iname = model.graph.input[0].name
+    oname = model.graph.output[0].name
+    example_inp = valueinfo_to_tensor(model.get_tensor_valueinfo(iname))
+    assert tuple(model.get_tensor_shape(iname)) == old_ishape
+    model = model.transform(ChangeBatchSize(batch_size))
+    model = model.transform(InferShapes())
+    exp_ishape = (batch_size, *old_ishape[1:])
+    assert tuple(model.get_tensor_shape(iname)) == exp_ishape
+    new_inp = np.random.uniform(imin, imax, exp_ishape).astype(example_inp.dtype)
+    ret = oxe.execute_onnx(model, {iname: new_inp})
+    assert ret[oname].shape[0] == batch_size
