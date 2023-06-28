@@ -28,6 +28,7 @@
 
 import clize
 import numpy as np
+import onnxruntime as rt
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
@@ -100,6 +101,10 @@ def exec_qonnx(
     if save_modified_model is not None:
         model.save(save_modified_model)
 
+    n_custom_nodes = len(model.get_finn_nodes())
+    if n_custom_nodes == 0:
+        print("No custom qonnx nodes found, running in onnxruntime")
+
     ok = 0
     nok = 0
     iter = 0
@@ -135,7 +140,15 @@ def exec_qonnx(
         # supply inputs and execute
         for inp_ind, inp in enumerate(model.graph.input):
             idict[inp.name] = inp_data[inp_ind][iter]
-        odict = execute_onnx(model, idict)
+        if n_custom_nodes > 0:
+            # run node-by-node in qonnx
+            odict = execute_onnx(model, idict)
+        else:
+            # run using onnxruntime
+            sess = rt.InferenceSession(model.model.SerializeToString())
+            output_list = sess.run(None, idict)
+            odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
+
         for out_ind, outp in enumerate(model.graph.output):
             # save generated outputs
             if output_mode == OUTPUT_MODE_IND:
