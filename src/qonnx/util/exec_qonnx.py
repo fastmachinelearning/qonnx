@@ -33,8 +33,26 @@ import onnx
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
 
+OUTPUT_MODE_IND = "tensor_index"
+OUTPUT_MODE_NAME = "tensor_name"
 
-def exec_qonnx(qonnx_model_file, *in_npy, override_opset: int = None, output_prefix: str = "out_"):
+output_modes = {OUTPUT_MODE_IND, OUTPUT_MODE_NAME}
+
+output_mode_options = clize.parameters.mapped(
+    [
+        (OUTPUT_MODE_IND, [OUTPUT_MODE_IND], "Output files named by index"),
+        (OUTPUT_MODE_NAME, [OUTPUT_MODE_NAME], "Output files named by tensor"),
+    ]
+)
+
+
+def exec_qonnx(
+    qonnx_model_file,
+    *in_npy,
+    override_opset: int = None,
+    output_prefix: str = "out_",
+    output_mode: output_mode_options = OUTPUT_MODE_NAME
+):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
     The input model have been previously cleaned by the cleanup transformation or commandline tool.
@@ -43,7 +61,9 @@ def exec_qonnx(qonnx_model_file, *in_npy, override_opset: int = None, output_pre
     :param in_npy: List of .npy files to supply as inputs. If not specified, inputs will be set to zero.
     :param override_opset: If specified, override the imported ONNX opset to this version.
     :param output_prefix: Prefix for the generated output files.
+    :param output_mode: Naming mode for generated output files.
     """
+    assert output_mode in output_modes, "Unrecognized output mode"
 
     # Execute transformation
     model = ModelWrapper(qonnx_model_file)
@@ -53,17 +73,22 @@ def exec_qonnx(qonnx_model_file, *in_npy, override_opset: int = None, output_pre
     idict = {}
     inp_ind = 0
     for inp in model.graph.input:
+        i_tensor_shape = model.get_tensor_shape(inp.name)
         if inp_ind < len(in_npy):
-            idict[inp.name] = np.load(in_npy[inp_ind])
+            file_inp = np.load(in_npy[inp_ind])
+            idict[inp.name] = file_inp
         else:
-            i_tensor_shape = model.get_tensor_shape(inp.name)
             i_dtype_npy = onnx.mapping.TENSOR_TYPE_TO_NP_TYPE[inp.type.tensor_type.elem_type]
             idict[inp.name] = np.zeros(i_tensor_shape, dtype=i_dtype_npy)
         inp_ind += 1
     odict = execute_onnx(model, idict)
     outp_ind = 0
     for outp in model.graph.output:
-        np.save(output_prefix + "%d.npy" % outp_ind, odict[outp.name])
+        if output_mode == OUTPUT_MODE_IND:
+            oname = "%d.npy" % outp_ind
+        elif output_mode == OUTPUT_MODE_NAME:
+            oname = outp.name + ".npy"
+        np.save(output_prefix + oname, odict[outp.name])
         outp_ind += 1
 
 
