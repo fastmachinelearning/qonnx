@@ -25,9 +25,10 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+import clize
 import numpy as np
 import os
-import urllib
+import urllib.request
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
@@ -38,6 +39,7 @@ from qonnx.util.cleanup import cleanup
 
 test_model_details = {
     "FINN-CNV_W2A2": {
+        "description": "2-bit VGG-10-like CNN on CIFAR-10",
         "url": (
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
@@ -46,6 +48,7 @@ test_model_details = {
         "input_range": (0, +1),
     },
     "FINN-TFC_W1A1": {
+        "description": "1-bit tiny MLP on MNIST",
         "url": (
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W1A.onnx"
@@ -54,6 +57,7 @@ test_model_details = {
         "input_range": (0, +1),
     },
     "FINN-TFC_W1A2": {
+        "description": "1/2-bit tiny MLP on MNIST",
         "url": (
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W2A.onnx"
@@ -62,6 +66,7 @@ test_model_details = {
         "input_range": (0, +1),
     },
     "FINN-TFC_W2A2": {
+        "description": "2-bit tiny MLP on MNIST",
         "url": (
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
@@ -70,6 +75,7 @@ test_model_details = {
         "input_range": (0, +1),
     },
     "RadioML_VGG10": {
+        "description": "8-bit VGG-10-like CNN on RadioML 2018",
         "url": (
             "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
             "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
@@ -78,11 +84,13 @@ test_model_details = {
         "input_range": (-1, +1),
     },
     "Conv_bias_example": {
+        "description": "",
         "url": "https://zenodo.org/record/7626922/files/super_resolution.onnx",
         "input_shape": (1, 1, 28, 28),
         "input_range": (-1, +1),
     },
     "MobileNetv1-w4a4": {
+        "description": "4-bit MobileNet-v1 on ImageNet",
         "url": (
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "qonnx_model_zoo/main/models/ImageNet/Brevitas_FINN_mobilenet/mobilenet_4W4A.onnx"
@@ -93,10 +101,14 @@ test_model_details = {
 }
 
 
-def download_model(test_model, do_cleanup=False, return_modelwrapper=False):
+test_model_keys = clize.parameters.mapped(
+    [(x, [x], test_model_details[x]["description"]) for x in test_model_details.keys()]
+)
+
+
+def download_model(test_model: test_model_keys, *, dl_dir="/tmp", do_cleanup=False, return_modelwrapper=False):
     qonnx_url = test_model_details[test_model]["url"]
     # download test data
-    dl_dir = "/tmp"
     dl_file = dl_dir + f"/{test_model}.onnx"
     ret = dl_file
     if not os.path.isfile(dl_file):
@@ -109,6 +121,10 @@ def download_model(test_model, do_cleanup=False, return_modelwrapper=False):
     if return_modelwrapper:
         ret = ModelWrapper(ret)
     return ret
+
+
+def qonnx_download_model():
+    clize.run(download_model)
 
 
 def get_golden_in_and_output(test_model):
