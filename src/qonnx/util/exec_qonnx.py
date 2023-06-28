@@ -32,6 +32,8 @@ import numpy as np
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
 from qonnx.transformation.change_batchsize import ChangeBatchSize
+from qonnx.transformation.expose_intermediate import ExposeIntermediateTensorsPatternList
+from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.onnx import valueinfo_to_tensor
 
@@ -53,9 +55,11 @@ def exec_qonnx(
     *in_npy,
     override_batchsize: int = None,
     override_opset: int = None,
+    expose_intermediates: str = None,
     output_prefix: str = "out_",
     output_mode: output_mode_options = OUTPUT_MODE_NAME,
-    argmax_verify_npy: str = None
+    argmax_verify_npy: str = None,
+    save_modified_model: str = None
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -65,9 +69,13 @@ def exec_qonnx(
     :param in_npy: List of .npy files to supply as inputs. If not specified, inputs will be set to zero.
     :param override_batchsize: If specified, override the batch size for the ONNX graph
     :param override_opset: If specified, override the imported ONNX opset to this version.
+    :param expose_intermediates: Comma-separated list of tensor name patterns.
+        Matched patterns will expose intermediate outputs as top-level outputs.
     :param output_prefix: Prefix for the generated output files.
     :param output_mode: Naming mode for generated output files.
     :param argmax_verify_npy: If specified, take argmax of output and compare to this file for top-1 accuracy measurement
+    :param save_modified_model: If specified, save the modified model
+        (after batchsize changes or exposed intermediate tensors) with this filename
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -75,12 +83,22 @@ def exec_qonnx(
     model = ModelWrapper(qonnx_model_file)
     if override_opset is not None:
         model.model.opset_import[0].version = override_opset
+
     if override_batchsize is not None:
         model = model.transform(ChangeBatchSize(override_batchsize))
         model = model.transform(InferShapes())
         bsize = override_batchsize
     else:
         bsize = model.get_tensor_shape(model.graph.input[0].name)[0]
+
+    if expose_intermediates is not None:
+        pattern_list = expose_intermediates.split(",")
+        pattern_list = [x.strip() for x in pattern_list]
+        model = model.transform(FoldConstants(exclude_op_types=[]))
+        model = model.transform(ExposeIntermediateTensorsPatternList(pattern_list, dynamic_only=True))
+
+    if save_modified_model is not None:
+        model.save(save_modified_model)
 
     ok = 0
     nok = 0
@@ -111,8 +129,9 @@ def exec_qonnx(
         inp_data = [np.expand_dims(x, axis=0) for x in inp_data]
 
     for iter in range(n_dset_iters):
-        iter_prefix = "batch%d_" % iter
+        iter_suffix = "_batch%d" % iter
         idict = {}
+        print("Batch [%d/%d]: running" % (iter + 1, n_dset_iters))
         # supply inputs and execute
         for inp_ind, inp in enumerate(model.graph.input):
             idict[inp.name] = inp_data[inp_ind][iter]
@@ -120,10 +139,10 @@ def exec_qonnx(
         for out_ind, outp in enumerate(model.graph.output):
             # save generated outputs
             if output_mode == OUTPUT_MODE_IND:
-                oname = "%d.npy" % out_ind
+                oname = "%d" % out_ind
             elif output_mode == OUTPUT_MODE_NAME:
-                oname = outp.name + ".npy"
-            np.save(iter_prefix + output_prefix + oname, odict[outp.name])
+                oname = outp.name
+            np.save(output_prefix + oname + iter_suffix + ".npy", odict[outp.name])
         if argmax_verify_npy:
             # measure accuracy for output
             ret = odict[model.graph.output[0].name]
