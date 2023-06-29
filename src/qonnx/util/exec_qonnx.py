@@ -160,14 +160,14 @@ def exec_qonnx(
             sess = rt.InferenceSession(model.model.SerializeToString())
             output_list = sess.run(None, idict)
             odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
-
-        for out_ind, outp in enumerate(model.graph.output):
-            # save generated outputs
-            if output_mode == OUTPUT_MODE_IND:
-                oname = "%d" % out_ind
-            elif output_mode == OUTPUT_MODE_NAME:
-                oname = outp.name
-            np.save(output_prefix + oname + iter_suffix + ".npy", odict[outp.name])
+        if not output_nosave:
+            for out_ind, outp in enumerate(model.graph.output):
+                # save generated outputs
+                if output_mode == OUTPUT_MODE_IND:
+                    oname = "%d" % out_ind
+                elif output_mode == OUTPUT_MODE_NAME:
+                    oname = outp.name
+                np.save(output_prefix + oname + iter_suffix + ".npy", odict[outp.name])
         if argmax_verify_npy:
             # measure accuracy for output
             ret = odict[model.graph.output[0].name]
