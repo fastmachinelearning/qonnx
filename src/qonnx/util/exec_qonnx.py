@@ -60,7 +60,10 @@ def exec_qonnx(
     output_prefix: str = "out_",
     output_mode: output_mode_options = OUTPUT_MODE_NAME,
     argmax_verify_npy: str = None,
-    save_modified_model: str = None
+    save_modified_model: str = None,
+    pix2float=False,
+    maxiters: int = None,
+    output_nosave=False
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -77,6 +80,9 @@ def exec_qonnx(
     :param argmax_verify_npy: If specified, take argmax of output and compare to this file for top-1 accuracy measurement
     :param save_modified_model: If specified, save the modified model
         (after batchsize changes or exposed intermediate tensors) with this filename
+    :param pix2float: If specified, do uint8 [0,255] -> fp32 [0,1] mapping for input
+    :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
+    :param output_nosave: If specified, do not save output tensors to files
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -133,13 +139,19 @@ def exec_qonnx(
         inp_data = [valueinfo_to_tensor(model.get_tensor_valueinfo(i.name)) for i in model.graph.input]
         inp_data = [np.expand_dims(x, axis=0) for x in inp_data]
 
+    if maxiters is not None:
+        n_dset_iters = min(n_dset_iters, maxiters)
+
     for iter in range(n_dset_iters):
         iter_suffix = "_batch%d" % iter
         idict = {}
         print("Batch [%d/%d]: running" % (iter + 1, n_dset_iters))
         # supply inputs and execute
         for inp_ind, inp in enumerate(model.graph.input):
-            idict[inp.name] = inp_data[inp_ind][iter]
+            if pix2float:
+                idict[inp.name] = (inp_data[inp_ind][iter] / 255.0).astype(np.float32)
+            else:
+                idict[inp.name] = inp_data[inp_ind][iter]
         if n_custom_nodes > 0:
             # run node-by-node in qonnx
             odict = execute_onnx(model, idict)
