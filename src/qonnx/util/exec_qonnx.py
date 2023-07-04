@@ -62,6 +62,7 @@ def exec_qonnx(
     argmax_verify_npy: str = None,
     save_modified_model: str = None,
     pix2float=False,
+    zerocenter=False,
     maxiters: int = None,
     output_nosave=False
 ):
@@ -81,6 +82,7 @@ def exec_qonnx(
     :param save_modified_model: If specified, save the modified model
         (after batchsize changes or exposed intermediate tensors) with this filename
     :param pix2float: If specified, do uint8 [0,255] -> fp32 [0,1] mapping for input
+    :param zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
     :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
     :param output_nosave: If specified, do not save output tensors to files
     """
@@ -150,6 +152,8 @@ def exec_qonnx(
         for inp_ind, inp in enumerate(model.graph.input):
             if pix2float:
                 idict[inp.name] = (inp_data[inp_ind][iter] / 255.0).astype(np.float32)
+                if zerocenter:
+                    idict[inp.name] = (2 * idict[inp.name] - 1.0).astype(np.float32)
             else:
                 idict[inp.name] = inp_data[inp_ind][iter]
         if n_custom_nodes > 0:
