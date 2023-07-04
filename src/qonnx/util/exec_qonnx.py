@@ -61,8 +61,8 @@ def exec_qonnx(
     output_mode: output_mode_options = OUTPUT_MODE_NAME,
     argmax_verify_npy: str = None,
     save_modified_model: str = None,
-    pix2float=False,
-    zerocenter=False,
+    input_pix2float=False,
+    input_zerocenter=False,
     maxiters: int = None,
     output_nosave=False
 ):
@@ -81,8 +81,8 @@ def exec_qonnx(
     :param argmax_verify_npy: If specified, take argmax of output and compare to this file for top-1 accuracy measurement
     :param save_modified_model: If specified, save the modified model
         (after batchsize changes or exposed intermediate tensors) with this filename
-    :param pix2float: If specified, do uint8 [0,255] -> fp32 [0,1] mapping for input
-    :param zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
+    :param input_pix2float: If specified, do uint8 [0,255] -> fp32 [0,1] mapping for input
+    :param input_zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
     :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
     :param output_nosave: If specified, do not save output tensors to files
     """
@@ -150,9 +150,9 @@ def exec_qonnx(
         print("Batch [%d/%d]: running" % (iter + 1, n_dset_iters))
         # supply inputs and execute
         for inp_ind, inp in enumerate(model.graph.input):
-            if pix2float:
+            if input_pix2float:
                 idict[inp.name] = (inp_data[inp_ind][iter] / 255.0).astype(np.float32)
-                if zerocenter:
+                if input_zerocenter:
                     idict[inp.name] = (2 * idict[inp.name] - 1.0).astype(np.float32)
             else:
                 idict[inp.name] = inp_data[inp_ind][iter]
