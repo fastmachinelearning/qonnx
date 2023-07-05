@@ -12,7 +12,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 
 <dl>
 <dt><tt>rounding_mode</tt> : string (default is "FLOOR")</dt>
-<dd>Defines how rounding should be applied during truncation. Currently available modes are: "ROUND", "CEIL" and "FLOOR". Here "ROUND" implies a round-to-even operation.</dd>
+<dd>Defines how rounding should be applied during truncation. Currently available modes are: "ROUND", "CEIL" and "FLOOR". Here "ROUND" implies a round-to-even operation. Lowercase variants for the rounding mode string are also supported: "round", "ceil", "floor".</dd>
 </dl>
 
 #### Inputs

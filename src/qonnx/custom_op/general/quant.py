@@ -134,14 +134,15 @@ def quant(inp_tensor, scale, zeropt, bitwidth, signed, narrow, rounding_mode):
 def resolve_rounding_mode(mode_string):
     """Resolve the rounding mode string of Quant and Trunc ops
     to the corresponding numpy functions."""
-    if mode_string == "ROUND":
+    normalized_mode_string = mode_string.upper()
+    if normalized_mode_string == "ROUND":
         return np.round
-    elif mode_string == "CEIL":
+    elif normalized_mode_string == "CEIL":
         return np.ceil
-    elif mode_string == "FLOOR":
+    elif normalized_mode_string == "FLOOR":
         return np.floor
     else:
-        raise ValueError(f"Could not resolve rounding mode called: {mode_string}")
+        raise ValueError(f"Could not resolve rounding mode called: {normalized_mode_string}")
 
 
 class Quant(CustomOp):
