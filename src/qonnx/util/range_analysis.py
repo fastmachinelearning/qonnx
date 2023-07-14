@@ -67,6 +67,39 @@ def propagate_range(node, model, range_dict):
         range_dict[oname] = node_irange
 
 
+def calc_gemm_range(node, model, range_dict):
+    alpha = get_by_name(node.attribute, "alpha").f
+    beta = get_by_name(node.attribute, "beta").f
+    transA = get_by_name(node.attribute, "transA").i
+    transB = get_by_name(node.attribute, "transB").i
+    assert (not transA) and transB
+    iname = node.input[0]
+    wname = node.input[1]
+    bname = None
+    if len(node.input) > 2:
+        bname = node.input[2]
+    oname = node.output[0]
+
+    irange = range_dict[iname]
+    imin, imax = irange
+    weights = model.get_initializer(wname)
+    assert weights is not None, "Uninitialized Gemm weights"
+    if type(imin) is np.ndarray:
+        assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
+    pmin, pmax = calculate_matvec_accumulator_extremum(weights, imin, imax)
+    # apply Gemm scale factors to matrix multiply output
+    pmin *= alpha
+    pmax *= alpha
+    # if there is a bias, apply it to the range
+    if bname is not None:
+        bias = model.get_initializer(bname)
+        assert bias is not None, "Uninitialized Gemm bias"
+        pmin += beta * bias
+        pmax += beta * bias
+    ret = (pmin, pmax)
+    range_dict[oname] = ret
+
+
 def calc_matmul_range(node, model, range_dict):
     iname = node.input[0]
     wname = node.input[1]
@@ -213,6 +246,8 @@ optype_to_range_calc = {
     "MaxPool": calc_monotonic_range,
     "Resize": calc_monotonic_range,
     "Upsample": calc_monotonic_range,
+    "GlobalAveragePool": calc_monotonic_range,
+    "Gemm": calc_gemm_range,
 }
 
 
