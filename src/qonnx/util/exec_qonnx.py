@@ -29,6 +29,7 @@
 import clize
 import numpy as np
 import onnxruntime as rt
+from tqdm import tqdm
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
@@ -144,10 +145,13 @@ def exec_qonnx(
     if maxiters is not None:
         n_dset_iters = min(n_dset_iters, maxiters)
 
-    for iter in range(n_dset_iters):
+    pbar = tqdm(range(n_dset_iters))
+
+    for iter in pbar:
         iter_suffix = "_batch%d" % iter
         idict = {}
-        print("Batch [%d/%d]: running" % (iter + 1, n_dset_iters))
+        if not argmax_verify_npy:
+            pbar.set_description("Batch [%d/%d]: running" % (iter + 1, n_dset_iters))
         # supply inputs and execute
         for inp_ind, inp in enumerate(model.graph.input):
             if input_pix2float:
@@ -182,7 +186,7 @@ def exec_qonnx(
             nok += nok_batch
             accuracy_batch = ok_batch / bsize
             accuracy_overall = ok / (ok + nok)
-            print(
+            pbar.set_description(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
