@@ -183,8 +183,8 @@ def exec_qonnx(
             accuracy_batch = ok_batch / bsize
             accuracy_overall = ok / (ok + nok)
             print(
-                "Batch [%d/%d]: ok %d nok %d accuracy %f overall %f"
-                % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, accuracy_overall)
+                "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
+                % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
 
 
