@@ -29,23 +29,37 @@
 import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.qcdq_to_qonnx import QCDQToQuant
 from qonnx.transformation.qonnx_to_qcdq import QuantToQCDQ
 
+CONVERT_MODE_QCDQ = "qcdq"
+CONVERT_MODE_QUANT = "quant"
 
-def convert(input_model_file, output_style: str = "qcdq", output_file: str = None):
+convert_modes = {CONVERT_MODE_QCDQ, CONVERT_MODE_QUANT}
+
+convert_mode_options = clize.parameters.mapped(
+    [
+        (CONVERT_MODE_QCDQ, [CONVERT_MODE_QCDQ], "Convert from Quant to QCDQ"),
+        (CONVERT_MODE_QUANT, [CONVERT_MODE_QUANT], "Convert from QCDQ to Quant"),
+    ]
+)
+
+
+def convert(input_model_file, *, output_style: convert_mode_options, output_file: str = None):
     """Convert an ONNX file from one style of quantization to another, where possible.
-    Currently, the input model must be QONNX (Quant nodes) and only QCDQ is supported
-    as the conversion target. Please see the documentation on the QuantToQCDQ
-    transformation to learn more about the particular limitations.
+    Please see the documentation on the QuantToQCDQ and QCDQToQuant
+    transformations to learn more about the particular limitations.
 
     :param input_model_file: Filename for the input ONNX model.
-    :param output_style: Quantization style for the output. Currently only 'qcdq'
+    :param output_style: Quantization style for the output.
     :param output_file: If specified, write the output ONNX model to this filename.
         Otherwise, will default to the input file with an _output_style suffix.
     """
     model = ModelWrapper(input_model_file)
-    if output_style == "qcdq":
+    if output_style == CONVERT_MODE_QCDQ:
         model = model.transform(QuantToQCDQ())
+    elif output_style == CONVERT_MODE_QUANT:
+        model = model.transform(QCDQToQuant())
     else:
         print("Unknown output_style for conversion: %s" % output_style)
         exit(-1)
