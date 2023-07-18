@@ -70,8 +70,16 @@ def propagate_range(node, model, range_dict):
 def calc_gemm_range(node, model, range_dict):
     alpha = get_by_name(node.attribute, "alpha").f
     beta = get_by_name(node.attribute, "beta").f
-    transA = get_by_name(node.attribute, "transA").i
-    transB = get_by_name(node.attribute, "transB").i
+    transA = get_by_name(node.attribute, "transA")
+    if transA is not None:
+        transA = transA.i
+    else:
+        transA = 0
+    transB = get_by_name(node.attribute, "transB")
+    if transB is not None:
+        transB = transB.i
+    else:
+        transB = 1
     assert (not transA) and transB
     iname = node.input[0]
     wname = node.input[1]
@@ -161,7 +169,7 @@ def calc_conv_range(node, model, range_dict):
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
-    if type(irange[0]) in [float, int, np.float32, np.float64]:
+    if type(irange[0]) in [float, int, np.float32, np.float64, np.uint8, np.int8]:
         imin, imax = irange
         proto_min[...] = imin
         proto_max[...] = imax
@@ -248,6 +256,8 @@ optype_to_range_calc = {
     "Upsample": calc_monotonic_range,
     "GlobalAveragePool": calc_monotonic_range,
     "Gemm": calc_gemm_range,
+    "QuantizeLinear": calc_monotonic_range,
+    "DequantizeLinear": calc_monotonic_range,
 }
 
 
@@ -329,11 +339,11 @@ def range_analysis(
         range_dict[iname] = (range_min, range_max)
 
     for node in model.graph.node:
-        assert len(node.output) == 1, "Only single-output nodes supported"
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
+        outcount_ok = len(node.output) == 1
         op_ok = node.op_type in optype_to_range_calc.keys()
-        if inprange_ok and op_ok:
+        if inprange_ok and op_ok and outcount_ok:
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]
