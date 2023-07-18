@@ -127,7 +127,7 @@ class QuantToQCDQ(Transformation):
                 bitwidth = int(bitwidth_t)
                 range_min = min_int(signed, narrow, bitwidth)
                 range_max = max_int(signed, narrow, bitwidth)
-                if signed and narrow:
+                if (signed and narrow) or (bitwidth < 8):
                     new_clip_oname = model.make_new_valueinfo_name()
                     new_clip_vi = oh.make_tensor_value_info(new_clip_oname, new_dtype, ishape)
                     graph.value_info.append(new_clip_vi)
