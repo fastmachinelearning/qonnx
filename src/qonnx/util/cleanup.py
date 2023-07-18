@@ -56,8 +56,7 @@ def cleanup(in_file, *, preserve_qnt_ops=True, out_file=None, override_batchsize
     """Execute a set of graph transformations to clean-up the given ONNX file.
 
     :param in_file: Filename for the input ONNX model
-    :param preserve_qnt_ops (default True): If set, do not const-fold quantization operators
-        (to preserve weight quantizer information)
+    :param preserve_qnt_ops: Preserve weight quantization operators
     :param out_file: If set, filename for the output ONNX model. Set to in_file with _clean
         suffix otherwise.
     :param override_batchsize: If specified, override the batch size for the ONNX graph

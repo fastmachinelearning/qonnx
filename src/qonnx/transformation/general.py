@@ -27,11 +27,42 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
+import numpy as np
 import warnings
+from onnx import mapping
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
 from qonnx.transformation.base import Transformation
+
+
+class MovePadAttributeToTensor(Transformation):
+    "Move padding info from attribute into input tensor for Pad nodes."
+
+    def apply(self, model):
+        run_again = False
+        pad_nodes = model.get_nodes_by_op_type("Pad")
+        for pad_node in pad_nodes:
+            pads = util.get_by_name(pad_node.attribute, "pads")
+            if pads is not None:
+                assert len(pad_node.input) == 1
+                pads_t = np.asarray(pads.ints)
+                new_pad_name = model.make_new_valueinfo_name()
+                model.set_initializer(new_pad_name, pads_t)
+                pad_node.input.append(new_pad_name)
+                pad_node.attribute.remove(pads)
+            padval = util.get_by_name(pad_node.attribute, "value")
+            if padval is not None:
+                # non-float types will need type correction here
+                input_vi = model.get_tensor_valueinfo(pad_node.input[0])
+                pad_dtype = mapping.TENSOR_TYPE_TO_NP_TYPE[input_vi.type.tensor_type.elem_type]
+                padval_t = np.asarray(padval.f, pad_dtype)
+                new_padval_name = model.make_new_valueinfo_name()
+                model.set_initializer(new_padval_name, padval_t)
+                pad_node.input.append(new_padval_name)
+                pad_node.attribute.remove(padval)
+
+        return (model, run_again)
 
 
 class RemoveUnusedTensors(Transformation):
