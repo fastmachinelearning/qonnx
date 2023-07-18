@@ -1,7 +1,6 @@
 import pytest
 
 import numpy as np
-import urllib.request
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
@@ -20,72 +19,26 @@ from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 from qonnx.util.basic import is_finn_op
-from qonnx.util.cleanup import cleanup
+from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 from qonnx.util.to_channels_last import to_channels_last
 
-model_details = {
+model_details_chanlast = {
     "FINN-CNV_W2A2": {
-        "url": (
-            "https://raw.githubusercontent.com/fastmachinelearning/"
-            "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
-        ),
-        "input_shape": (1, 3, 32, 32),
-        "input_range": (-1, +1),
         "layout_sensitive": True,
     },
     "FINN-TFC_W2A2": {
-        "url": (
-            "https://github.com/fastmachinelearning/QONNX_model_zoo/"
-            "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
-        ),
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
         "layout_sensitive": False,
     },
     "RadioML_VGG10": {
-        "url": (
-            "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
-            "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
-        ),
-        "input_shape": (1, 2, 1024),
-        "input_range": (-1, +1),
         "layout_sensitive": True,
     },
     "Conv_bias_example": {
-        "url": "https://zenodo.org/record/7626922/files/super_resolution.onnx",
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
         "layout_sensitive": True,
     },
 }
-
-
-def download_model(test_model):
-    qonnx_url = model_details[test_model]["url"]
-    # download test data
-    dl_dir = "/tmp"
-    dl_file = dl_dir + f"/{test_model}.onnx"
-    urllib.request.urlretrieve(qonnx_url, dl_file)
-    # run cleanup with default settings
-    out_file = dl_dir + f"/{test_model}_clean.onnx"
-    cleanup(dl_file, out_file=out_file)
-    return out_file
-
-
-def get_golden_in_and_output(onnx_file, test_model):
-    rng = np.random.RandomState(42)
-    input_shape = model_details[test_model]["input_shape"]
-    (low, high) = model_details[test_model]["input_range"]
-    size = np.prod(np.asarray(input_shape))
-    input_tensor = rng.uniform(low=low, high=high, size=size)
-    input_tensor = input_tensor.astype(np.float32)
-    input_tensor = input_tensor.reshape(input_shape)
-    model = ModelWrapper(onnx_file)
-    input_dict = {model.graph.input[0].name: input_tensor}
-    golden_output_dict = oxe.execute_onnx(model, input_dict)
-    golden_result = golden_output_dict[model.graph.output[0].name]
-
-    return input_tensor, golden_result
+# inherit basics for matching testcases from test util
+model_details = {k: v for (k, v) in test_model_details.items() if k in model_details_chanlast.keys()}
+model_details = {**model_details, **model_details_chanlast}
 
 
 def analysis_testing_for_chanlast_domain(model):
@@ -148,8 +101,8 @@ def analysis_first_node_is_transpose(model):
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
     # Download an clean model
-    onnx_file = download_model(test_model)
-    input_tensor, golden_result = get_golden_in_and_output(onnx_file, test_model)
+    onnx_file = download_model(test_model, do_cleanup=True)
+    input_tensor, golden_result = get_golden_in_and_output(test_model)
 
     # Execute transformation
     qonnx_all_trafos = onnx_file.split(".onnx")[0] + "_all_nhwc_trafos_test.onnx"
@@ -185,8 +138,8 @@ def test_channelslast_conversion_end2end(test_model, make_input_channels_last):
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_channelslast_conversion_step_by_step(test_model):
     # Download an clean model
-    onnx_file = download_model(test_model)
-    input_tensor, golden_result = get_golden_in_and_output(onnx_file, test_model)
+    onnx_file = download_model(test_model, do_cleanup=True)
+    input_tensor, golden_result = get_golden_in_and_output(test_model)
 
     # Execute transformation
     model = ModelWrapper(onnx_file)

@@ -66,11 +66,13 @@ def compute_mem_bits(inf_cost_dict, filter_string="mem_w"):
     return total_mem_bits
 
 
-def inference_cost(model_filename, *, output_json=None, output_onnx=None, preprocess=True, discount_sparsity=True):
+def inference_cost(
+    model_filename_or_wrapper, *, output_json=None, output_onnx=None, preprocess=True, discount_sparsity=True
+):
     """Return the inference cost estimate metric for given ONNX model.
     Supports the Quant op for weight/activation quantization.
 
-    :param model_filename: Filename for ONNX model
+    :param model_filename_or_wrapper: Filename or ModelWrapper for ONNX model
     :param output_json: Optional JSON filename to save the inference cost dict
     :param output_onnx: Optional ONNX filename to save the final model after any
         preprocessing
@@ -79,7 +81,10 @@ def inference_cost(model_filename, *, output_json=None, output_onnx=None, prepro
     :param discount_sparsity: If set, will discount op cost of MAC ops with a
         constant zero weight, and the mem cost of constant zero weights.
     """
-    model = ModelWrapper(model_filename)
+    if isinstance(model_filename_or_wrapper, ModelWrapper):
+        model = model_filename_or_wrapper
+    else:
+        model = ModelWrapper(model_filename_or_wrapper)
     if preprocess:
         qnt_nodes = model.get_nodes_by_op_type("Quant")
         for qnt_node in qnt_nodes:

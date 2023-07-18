@@ -28,17 +28,11 @@
 
 import pytest
 
-import urllib.request
-
-from qonnx.util.cleanup import cleanup
 from qonnx.util.inference_cost import inference_cost
+from qonnx.util.test import download_model, test_model_details
 
-model_details = {
+model_details_infcost = {
     "FINN-CNV_W2A2": {
-        "url": (
-            "https://raw.githubusercontent.com/fastmachinelearning/"
-            "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
-        ),
         "expected_sparse": {
             "op_mac_SCALEDINT<8>_INT2": 1345500.0,
             "mem_w_INT2": 908033.0,
@@ -65,10 +59,6 @@ model_details = {
         },
     },
     "FINN-TFC_W2A2": {
-        "url": (
-            "https://github.com/fastmachinelearning/QONNX_model_zoo/"
-            "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
-        ),
         "expected_sparse": {
             "discount_sparsity": True,
             "mem_o_INT32": 202.0,
@@ -91,10 +81,6 @@ model_details = {
         },
     },
     "RadioML_VGG10": {
-        "url": (
-            "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
-            "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
-        ),
         "expected_sparse": {
             "op_mac_SCALEDINT<8>_SCALEDINT<8>": 12620311.0,
             "mem_w_SCALEDINT<8>": 155617.0,
@@ -118,22 +104,14 @@ model_details = {
     },
 }
 
-
-def download_model(test_model):
-    qonnx_url = model_details[test_model]["url"]
-    # download test data
-    dl_dir = "/tmp"
-    dl_file = dl_dir + f"/{test_model}.onnx"
-    urllib.request.urlretrieve(qonnx_url, dl_file)
-    # run cleanup with default settings
-    out_file = dl_dir + f"/{test_model}_clean.onnx"
-    cleanup(dl_file, out_file=out_file)
-    return out_file
+# inherit basics for matching testcases from test util
+model_details = {k: v for (k, v) in test_model_details.items() if k in model_details_infcost.keys()}
+model_details = {**model_details, **model_details_infcost}
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_inference_cost(test_model):
-    onnx_file = download_model(test_model)
+    onnx_file = download_model(test_model, do_cleanup=True)
     exp_dense = model_details[test_model]["expected_dense"]
     exp_sparse = model_details[test_model]["expected_sparse"]
     ret_dense = inference_cost(onnx_file, discount_sparsity=False)
