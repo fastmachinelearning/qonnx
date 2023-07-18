@@ -62,7 +62,7 @@ qonnxtoqcdq_details = {
         # 18 bit bias quant not convertible to QCDQ
         "nonconvertible_quant": 1,
         "exp_qdq_nodes": 55,
-        "exp_clip_nodes": 28,
+        "exp_clip_nodes": 55,
     },
 }
 
@@ -73,8 +73,6 @@ model_details = {**model_details, **qonnxtoqcdq_details}
 
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_qonnx_to_qcdq_to_qonnx(test_model):
-    if test_model == "MobileNetv1-w4a4":
-        pytest.xfail("Known problem in MNv1 conversion")
     test_details = model_details[test_model]
     dl_file = download_model(test_model=test_model)
     assert os.path.isfile(dl_file)
