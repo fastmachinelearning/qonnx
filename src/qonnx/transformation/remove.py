@@ -29,10 +29,31 @@
 
 import numpy as np
 
+from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import get_by_name
 
+class RemoveUnusedNodes(Transformation):
+    """Remove nodes which do not contribute to any top-level output in the graph,
+    either directly or indirectly."""
+
+    def apply(self, model: ModelWrapper):
+        run_again = False
+        graph_top_outputs = {x.name for x in model.graph.output}
+        for node in model.graph.node:
+            successors = model.find_direct_successors(node)
+            node_outputs = {x for x in node.output}
+            node_top_outputs = graph_top_outputs.intersection(node_outputs)
+            if (successors is None) and (len(node_top_outputs) == 0):
+                # found node with dangling output, remove
+                model.graph.node.remove(node)
+                run_again = True
+                # remove only one node at a time to avoid potential problems 
+                # with protobuf container (model.graph.node)
+                break
+
+        return (model, run_again)
 
 def remove_node_and_rewire(model, node):
     producer = model.find_producer(node.input[0])
