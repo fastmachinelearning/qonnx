@@ -5,6 +5,8 @@
 ![Tests](https://github.com/fastmachinelearning/qonnx/actions/workflows/test.yml/badge.svg)
 ![Code style](https://img.shields.io/badge/code%20style-black-000000.svg)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7622236.svg)](https://doi.org/10.5281/zenodo.7622236)
+[![PyPI version](https://badge.fury.io/py/qonnx.svg)](https://badge.fury.io/py/qonnx)
+[![Downloads](https://static.pepy.tech/personalized-badge/qonnx?period=total&units=international_system&left_color=grey&right_color=orange&left_text=Downloads)](https://pepy.tech/project/qonnx)
 
 <img align="left" src="https://xilinx.github.io/finn/img/TFC_1W2A.onnx.png" alt="QONNX example" style="margin-right: 20px" width="200"/>
 

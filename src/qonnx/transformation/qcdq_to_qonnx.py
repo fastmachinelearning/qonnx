@@ -34,6 +34,7 @@ from typing import Tuple
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
+from qonnx.util.basic import get_by_name
 
 
 def extract_elem_type(elem_type: int, clip_range=None) -> Tuple[int, int, bool]:
@@ -169,6 +170,17 @@ class QCDQToQuant(Transformation):
                 else:
                     # handle all other cases, skip
                     continue
+                axis = get_by_name(dq_node.attribute, "axis")
+                # fix scale factor for Quant (different shape expectations wrt broadcasting)
+                if not (axis is None):
+                    axis_i = axis.i
+                    ishape = model.get_tensor_shape(dq_inp)
+                    desired_shp = [1] * len(ishape)
+                    desired_shp[axis_i] = dq_scale_v.shape[0]
+                    dq_scale_v = dq_scale_v.reshape(desired_shp)
+                    dq_zeropt_v = dq_zeropt_v.reshape(desired_shp)
+                    model.set_initializer(scale_factor, dq_scale_v)
+                    model.set_initializer(zeropt, dq_zeropt_v)
                 # create new Quant node for suitable cases
                 new_q_node_name = "Quant_" + q_inp
                 bw_tensor_name = f"{new_q_node_name}_bitwidth"

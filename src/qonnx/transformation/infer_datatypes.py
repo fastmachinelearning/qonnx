@@ -74,6 +74,7 @@ def _infer_node_datatype(model, node):
         "Unsqueeze",
         "Tile",
         "Pad",
+        "Concat",
     ]
     mac_like_optypes = ["MatMul", "Gemm", "Conv", "Add", "Sub", "Mul"]
     idtypes = list(map(lambda x: model.get_tensor_datatype(x), node.input))

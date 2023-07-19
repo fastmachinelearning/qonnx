@@ -58,6 +58,12 @@ qonnxtoqcdq_details = {
         # half the Quants don't need Clip (not signed narrow)
         "exp_clip_nodes": 10,
     },
+    "MobileNetv1-w4a4": {
+        # 18 bit bias quant not convertible to QCDQ
+        "nonconvertible_quant": 1,
+        "exp_qdq_nodes": 55,
+        "exp_clip_nodes": 55,
+    },
 }
 
 # inherit basics for matching testcases from test util

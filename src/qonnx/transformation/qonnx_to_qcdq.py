@@ -35,7 +35,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.general.quant import max_int, min_int
 from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.base import Transformation
-from qonnx.transformation.general import RemoveUnusedTensors
+from qonnx.transformation.general import MovePadAttributeToTensor, RemoveUnusedTensors
 
 
 class QuantToQCDQ(Transformation):
@@ -74,7 +74,7 @@ class QuantToQCDQ(Transformation):
                 if zeropt_t is None or zeropt_t != 0:
                     warn("Zeropoint is undefined or nonzero, skipping " + node.name)
                     continue
-                if scale_t is None or (scale_t.ndim not in [0, 1]):
+                if scale_t is None or (scale_t.squeeze().ndim not in [0, 1]):
                     warn("Scale is undefined or non-0/1D, skipping " + node.name)
                     continue
                 if bitwidth_tname is None or bitwidth_t.ndim != 0:
@@ -87,20 +87,38 @@ class QuantToQCDQ(Transformation):
                     warn("Rounding mode is not ROUND, skipping " + node.name)
                     continue
                 graph_modified = True
+                # QuantizeLinear wants 1D scale so squeeze
+                q_scale = model.get_initializer(scale_tname)
+                q_scale_new = q_scale.squeeze()
+                model.set_initializer(scale_tname, q_scale_new)
+                # resolve the scale factor axis
+                if q_scale_new.ndim == 1:
+                    qnt_axis = q_scale.shape.index(q_scale_new.shape[0])
+                else:
+                    qnt_axis = None
                 # create new zeropoint tensor with appropriate dtype
                 new_dtype = TensorProto.INT8 if signed else TensorProto.UINT8
                 new_dtype_np = np.int8 if signed else np.uint8
                 new_zeropt_name = model.make_new_valueinfo_name()
                 new_zeropt_vi = oh.make_tensor_value_info(new_zeropt_name, new_dtype, scale_t.shape)
-                new_zeropt_t = np.asarray(0, dtype=new_dtype_np)
+                new_zeropt_t = np.zeros_like(q_scale_new, dtype=new_dtype_np)
                 graph.value_info.append(new_zeropt_vi)
                 model.set_initializer(new_zeropt_name, new_zeropt_t)
                 new_qout_name = model.make_new_valueinfo_name()
                 ishape = model.get_tensor_shape(inp_tname)
                 new_qout_vi = oh.make_tensor_value_info(new_qout_name, new_dtype, ishape)
                 graph.value_info.append(new_qout_vi)
+                n_ql = len(model.get_nodes_by_op_type("QuantizeLinear"))
+                n_cl = len(model.get_nodes_by_op_type("Clip"))
+                n_dql = len(model.get_nodes_by_op_type("DequantizeLinear"))
                 # create the QuantizeLinear node
-                new_node_qnt = oh.make_node("QuantizeLinear", [inp_tname, scale_tname, new_zeropt_name], [new_qout_name])
+                new_node_qnt = oh.make_node(
+                    "QuantizeLinear",
+                    [inp_tname, scale_tname, new_zeropt_name],
+                    [new_qout_name],
+                    name="QuantizeLinear_%d" % (n_ql + 1),
+                    axis=qnt_axis,
+                )
                 graph.node.insert(model.get_node_index(last_node) + 1, new_node_qnt)
                 last_out_tname = new_qout_name
                 last_node = new_node_qnt
@@ -109,7 +127,7 @@ class QuantToQCDQ(Transformation):
                 bitwidth = int(bitwidth_t)
                 range_min = min_int(signed, narrow, bitwidth)
                 range_max = max_int(signed, narrow, bitwidth)
-                if signed and narrow:
+                if (signed and narrow) or (bitwidth < 8):
                     new_clip_oname = model.make_new_valueinfo_name()
                     new_clip_vi = oh.make_tensor_value_info(new_clip_oname, new_dtype, ishape)
                     graph.value_info.append(new_clip_vi)
@@ -121,13 +139,19 @@ class QuantToQCDQ(Transformation):
                     new_clip_max = model.make_new_valueinfo_name()
                     new_clip_max_t = np.asarray(range_max, dtype=new_dtype_np)
                     model.set_initializer(new_clip_max, new_clip_max_t)
-                    new_node_clip = oh.make_node("Clip", [last_out_tname, new_clip_min, new_clip_max], [new_clip_oname])
+                    new_node_clip = oh.make_node(
+                        "Clip", [last_out_tname, new_clip_min, new_clip_max], [new_clip_oname], name="Clip_%d" % (n_cl + 1)
+                    )
                     last_out_tname = new_clip_oname
                     graph.node.insert(model.get_node_index(last_node) + 1, new_node_clip)
                     last_node = new_node_clip
                 # finally add the DequantizeLinear node
                 new_node_deqnt = oh.make_node(
-                    "DequantizeLinear", [last_out_tname, scale_tname, new_zeropt_name], [out_tname]
+                    "DequantizeLinear",
+                    [last_out_tname, scale_tname, new_zeropt_name],
+                    [out_tname],
+                    name="DequantizeLinear_%d" % (n_dql + 1),
+                    axis=qnt_axis,
                 )
                 graph.node.insert(model.get_node_index(last_node) + 1, new_node_deqnt)
                 last_node = new_node_deqnt
@@ -146,5 +170,7 @@ class QuantToQCDQ(Transformation):
                 )
                 warn("Forcing opset version %s upgrade to ensure valid ONNX" % clip_min_opset)
                 model.model.opset_import[0].version = clip_min_opset
+                # ensure new Pad node requirements are respected
+                model = model.transform(MovePadAttributeToTensor())
 
         return (model, graph_modified)
