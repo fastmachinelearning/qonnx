@@ -34,6 +34,7 @@ from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import get_by_name
 
+
 class RemoveUnusedNodes(Transformation):
     """Remove nodes which do not contribute to any top-level output in the graph,
     either directly or indirectly."""
@@ -49,11 +50,12 @@ class RemoveUnusedNodes(Transformation):
                 # found node with dangling output, remove
                 model.graph.node.remove(node)
                 run_again = True
-                # remove only one node at a time to avoid potential problems 
+                # remove only one node at a time to avoid potential problems
                 # with protobuf container (model.graph.node)
                 break
 
         return (model, run_again)
+
 
 def remove_node_and_rewire(model, node):
     producer = model.find_producer(node.input[0])
