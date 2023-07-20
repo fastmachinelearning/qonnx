@@ -47,6 +47,24 @@ test_model_details = {
         "input_shape": (1, 3, 32, 32),
         "input_range": (0, +1),
     },
+    "FINN-CNV_W1A2": {
+        "description": "1/2-bit VGG-10-like CNN on CIFAR-10",
+        "url": (
+            "https://raw.githubusercontent.com/fastmachinelearning/"
+            "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_1W2A.onnx"
+        ),
+        "input_shape": (1, 3, 32, 32),
+        "input_range": (0, +1),
+    },
+    "FINN-CNV_W1A1": {
+        "description": "1-bit VGG-10-like CNN on CIFAR-10",
+        "url": (
+            "https://raw.githubusercontent.com/fastmachinelearning/"
+            "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_1W1A.onnx"
+        ),
+        "input_shape": (1, 3, 32, 32),
+        "input_range": (0, +1),
+    },
     "FINN-TFC_W1A1": {
         "description": "1-bit tiny MLP on MNIST",
         "url": (
