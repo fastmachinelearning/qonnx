@@ -92,11 +92,15 @@ class FoldConstants(Transformation):
             node_inp_dyn = list(filter(lambda x: x is None, node_inp_inits))
             node_out = n.output[0]
             is_all_constant_inputs = len(node_inp_dyn) == 0
-            ishape = model.get_tensor_shape(n.input[0])
-            is_const_shape = (n.op_type == "Shape") and (ishape is not None)
+            if len(n.input) > 0:
+                ishape = model.get_tensor_shape(n.input[0])
+                is_const_shape = (n.op_type == "Shape") and (ishape is not None)
+                is_no_input = False
+            else:
+                is_no_input = True
             exclude = n.op_type in self.exclude_op_types
-            if (is_all_constant_inputs or is_const_shape) and not exclude:
-                # this node has no dynamic inputs, only constant ones -- so we can
+            if (is_all_constant_inputs or is_const_shape or is_no_input) and not exclude:
+                # this node has no (dynamic) inputs, only constant ones -- so we can
                 # do constant folding. to ensure any missing ValueInfos from initializers
                 # are populated, we 'touch' the shape of all inputs first below.
                 for inp in n.input:
