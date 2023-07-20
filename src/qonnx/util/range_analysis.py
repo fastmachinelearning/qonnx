@@ -138,7 +138,12 @@ def calc_conv_range(node, model, range_dict):
     conv_ifm = weights.shape[1]
     weights = weights.reshape(conv_ofm, -1)
     k_total = weights.shape[1] // conv_ifm
-    groups = get_by_name(node.attribute, "group").i
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
     # TODO smarter check, other kinds of grouped convs out there..
     is_depthwise = groups > 1
     # need to construct specialzed input range vectors for Conv
@@ -258,6 +263,9 @@ optype_to_range_calc = {
     "Gemm": calc_gemm_range,
     "QuantizeLinear": calc_monotonic_range,
     "DequantizeLinear": calc_monotonic_range,
+    "Clip": calc_monotonic_range,
+    "Sigmoid": calc_monotonic_range,
+    "Concat": calc_monotonic_range,
 }
 
 
@@ -297,7 +305,7 @@ def range_analysis(
     *,
     irange="",
     key_filter: str = "",
-    report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL,
+    report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
     prettyprint=False,
     do_cleanup=False
 ):
