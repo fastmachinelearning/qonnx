@@ -29,29 +29,34 @@
 import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.pruning import PruneChannels
-from qonnx.util.cleanup import cleanup_model
-from qonnx.util.range_analysis import range_analysis
 
 
-def prune_stuck_channels(input_filename_or_modelwrapper, *, irange="0,1", output_filename=""):
+def prune_channels(input_filename_or_modelwrapper, prunespec_filename_or_dict, *, output_filename=""):
     if not isinstance(input_filename_or_modelwrapper, ModelWrapper):
         model = ModelWrapper(input_filename_or_modelwrapper)
     else:
         model = input_filename_or_modelwrapper
-    model = cleanup_model(model, preserve_qnt_ops=True)
-    model = model.transform(InferDataTypes())
-    model = cleanup_model(model, preserve_qnt_ops=False)
-    stuck_chans = range_analysis(model, irange=irange, key_filter="Quant")
-    pruned_model = model.transform(PruneChannels(stuck_chans))
+    if not isinstance(prunespec_filename_or_dict, dict):
+        with open(prunespec_filename_or_dict) as f:
+            prunespec_dict = dict(eval(f.read()))
+    else:
+        prunespec_dict = prunespec_filename_or_dict
+    # (key, val) pairs where key is the tensor name,
+    # val can be either a set or [(chan_id, val), ...]
+    # canonicalize pruning spec to sets
+    for key, val in prunespec_dict.items():
+        if isinstance(val, list):
+            val_as_set = {x[0] for x in val}
+            prunespec_dict[key] = val_as_set
+    pruned_model = model.transform(PruneChannels(prunespec_dict))
     if output_filename != "":
         pruned_model.save(output_filename)
     return pruned_model
 
 
 def main():
-    clize.run(prune_stuck_channels)
+    clize.run(prune_channels)
 
 
 if __name__ == "__main__":
