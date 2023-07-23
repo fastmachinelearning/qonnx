@@ -45,25 +45,29 @@ from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 
 
-def compute_bops(inf_cost_dict):
+def compute_bops_and_macs(inf_cost_dict):
     total_bops = 0.0
+    total_macs = 0.0
     for k, v in inf_cost_dict.items():
         if k.startswith("op_mac"):
             comps = k.split("_")
             dt1 = DataType[comps[2]]
             dt2 = DataType[comps[3]]
             total_bops += dt1.bitwidth() * dt2.bitwidth() * v
-    return total_bops
+            total_macs += v
+    return total_bops, total_macs
 
 
-def compute_mem_bits(inf_cost_dict, filter_string="mem_w"):
+def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
     total_mem_bits = 0.0
+    total_mem_elems = 0.0
     for k, v in inf_cost_dict.items():
         if k.startswith(filter_string):
             comps = k.split("_")
             dt = DataType[comps[2]]
             total_mem_bits += dt.bitwidth() * v
-    return total_mem_bits
+            total_mem_elems += v
+    return total_mem_bits, total_mem_elems
 
 
 def inference_cost(
@@ -101,12 +105,15 @@ def inference_cost(
     if output_onnx is not None:
         model.save(output_onnx)
     ret = model.analysis(lambda x: infca.inference_cost(x, discount_sparsity))
-    bops = compute_bops(ret)
-    mem_w_bits = compute_mem_bits(ret, "mem_w")
-    mem_o_bits = compute_mem_bits(ret, "mem_o")
+    bops, macs = compute_bops_and_macs(ret)
+    mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(ret, "mem_w")
+    mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(ret, "mem_o")
     ret["total_bops"] = bops
+    ret["total_macs"] = macs
     ret["total_mem_w_bits"] = mem_w_bits
+    ret["total_mem_w_elems"] = mem_w_elems
     ret["total_mem_o_bits"] = mem_o_bits
+    ret["total_mem_o_elems"] = mem_o_elems
 
     if "unsupported" in ret:
         ret["unsupported"] = str(ret["unsupported"])

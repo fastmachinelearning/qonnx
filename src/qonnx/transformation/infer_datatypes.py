@@ -29,6 +29,7 @@
 import qonnx.custom_op.registry as registry
 from qonnx.core.datatype import DataType, ScaledIntType
 from qonnx.transformation.base import Transformation
+from qonnx.transformation.qcdq_to_qonnx import extract_elem_type
 from qonnx.util.basic import get_by_name, is_finn_op
 
 
@@ -75,6 +76,7 @@ def _infer_node_datatype(model, node):
         "Tile",
         "Pad",
         "Concat",
+        "Clip",
     ]
     mac_like_optypes = ["MatMul", "Gemm", "Conv", "Add", "Sub", "Mul"]
     idtypes = list(map(lambda x: model.get_tensor_datatype(x), node.input))
@@ -111,6 +113,19 @@ def _infer_node_datatype(model, node):
             # set output dtype = input dtype
             idtype = model.get_tensor_datatype(node.input[0])
             model.set_tensor_datatype(node.output[0], idtype)
+        elif node.op_type == "QuantizeLinear":
+            # retrieve from output tensor dtype
+            ovi = model.get_tensor_valueinfo(node.output[0])
+            (bitwidth, signed, _) = extract_elem_type(ovi.type.tensor_type.elem_type)
+            prefix = "INT" if signed else "UINT"
+            ret = DataType["%s%d" % (prefix, bitwidth)]
+            model.set_tensor_datatype(node.output[0], ret)
+        elif node.op_type == "DequantizeLinear":
+            # retrieve from input tensor dtype
+            ivi = model.get_tensor_valueinfo(node.input[0])
+            (bitwidth, signed, _) = extract_elem_type(ivi.type.tensor_type.elem_type)
+            ret = DataType["SCALEDINT<%d>" % (bitwidth)]
+            model.set_tensor_datatype(node.output[0], ret)
         else:
             # unknown, assume node produces float32 outputs
             for o in node.output:
