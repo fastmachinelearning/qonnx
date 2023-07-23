@@ -149,6 +149,10 @@ class PropagateMasks(Transformation):
         for node in model.graph.node:
             node_masks_in = [model.get_tensor_sparsity(x) for x in node.input]
             node_masks_out = [model.get_tensor_sparsity(x) for x in node.output]
+            # ensure all mask types are considered as sets
+            # otherwise we end up comparing None and set()
+            node_masks_in = [ensure_masktype_is_set(x) for x in node_masks_in]
+            node_masks_out = [ensure_masktype_is_set(x) for x in node_masks_out]
             (new_in, new_out) = update_node_mask(node, node_masks_in, node_masks_out)
             in_changed = new_in != node_masks_in
             out_changed = new_out != node_masks_out
@@ -229,6 +233,18 @@ class PruneChannels(Transformation):
         self.prune_spec = prune_spec
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
+        # check for known patterns that break the pruning transformation
+        conv_nodes = model.get_nodes_by_op_type("Conv")
+        matmul_nodes = model.get_nodes_by_op_type("MatMul")
+        convs_with_bias = [x for x in conv_nodes if len(x.input) == 3]
+        if len(convs_with_bias) > 0:
+            assert False, "Please extract bias from Conv nodes: %s" % str([x.name for x in convs_with_bias])
+        dotprod_nodes = conv_nodes + matmul_nodes
+        dotprod_nodes_dyn_w = [x for x in dotprod_nodes if model.get_initializer(x.input[1]) is None]
+        if len(dotprod_nodes_dyn_w) > 0:
+            assert False, "Please ensure MatMul and Conv nodes have static weights: " + str(
+                [x.name for x in dotprod_nodes_dyn_w]
+            )
         model = model.transform(ApplyMasks(self.prune_spec))
         model = model.transform(PropagateMasks())
         model = model.transform(RemoveMaskedChannels())
