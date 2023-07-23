@@ -2,6 +2,7 @@ import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.change_batchsize import ChangeBatchSize
+from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import (
     GiveReadableTensorNames,
@@ -14,7 +15,7 @@ from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
 
-def cleanup_model(model, preserve_qnt_ops=True, override_batchsize=None):
+def cleanup_model(model, preserve_qnt_ops=True, override_batchsize=None, extract_conv_bias=False):
     """Execute the transformations for the cleanup function on a model level.
     This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
 
@@ -45,6 +46,10 @@ def cleanup_model(model, preserve_qnt_ops=True, override_batchsize=None):
     for t in cleanup_transformations:
         model = model.transform(t)
 
+    if extract_conv_bias:
+        model = model.transform(ExtractBiasFromConv())
+        model = model.transform(InferShapes())
+
     if override_batchsize is not None:
         model = model.transform(ChangeBatchSize(override_batchsize))
         model = model.transform(InferShapes())
@@ -52,7 +57,7 @@ def cleanup_model(model, preserve_qnt_ops=True, override_batchsize=None):
     return model
 
 
-def cleanup(in_file, *, preserve_qnt_ops=True, out_file=None, override_batchsize: int = None):
+def cleanup(in_file, *, out_file=None, preserve_qnt_ops=True, override_batchsize: int = None, extract_conv_bias=False):
     """Execute a set of graph transformations to clean-up the given ONNX file.
 
     :param in_file: Filename for the input ONNX model
@@ -60,10 +65,13 @@ def cleanup(in_file, *, preserve_qnt_ops=True, out_file=None, override_batchsize
     :param out_file: If set, filename for the output ONNX model. Set to in_file with _clean
         suffix otherwise.
     :param override_batchsize: If specified, override the batch size for the ONNX graph
+    :param separate_conv_bias: If specified, separate Conv bias into its own Add node
     """
 
     model = ModelWrapper(in_file)
-    model = cleanup_model(model, preserve_qnt_ops=preserve_qnt_ops, override_batchsize=override_batchsize)
+    model = cleanup_model(
+        model, preserve_qnt_ops=preserve_qnt_ops, override_batchsize=override_batchsize, extract_conv_bias=extract_conv_bias
+    )
     if out_file is None:
         out_file = in_file.replace(".onnx", "_clean.onnx")
     model.save(out_file)
