@@ -34,7 +34,17 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 from qonnx.util.basic import get_by_name
 
-eltwise_ops = ["Add", "Mul", "Sub", "Div", "BatchNormalization", "MultiThreshold", "Quant", "Relu"]
+# these ops propagate sparsity masks both forward and backward
+# (e.g. a sparse channel on the input creates a sparse channel
+# on the output, and vice versa)
+# note on Quant and MultiThreshold: only bias-free (no zeropoint)
+# versions of these ops are bidirectional
+eltwise_ops_bidirectional = ["Mul", "Div", "MultiThreshold", "Quant", "Relu"]
+
+# these ops propagate sparsity masks only backward, not forward
+# (e.g. a sparse channel on the output creates a sparse channel
+# on the input, but not vice versa)
+eltwise_ops_bwdonly = ["Add", "Sub", "BatchNormalization"]
 
 
 def ensure_masktype_is_set(mask):
@@ -73,12 +83,16 @@ def update_node_mask(node, masks_in, masks_out):
     masks_in = [ensure_masktype_is_set(x) for x in masks_in]
     masks_out = [ensure_masktype_is_set(x) for x in masks_out]
 
-    if node.op_type in eltwise_ops:
+    if node.op_type in eltwise_ops_bidirectional:
         # any i/o can mask any/all other i/o
         # so just take union
         ret = set().union(*masks_in).union(*masks_out)
         masks_in = [ret for x in masks_in]
         masks_out = [ret for x in masks_out]
+    elif node.op_type in eltwise_ops_bwdonly:
+        # output can mask input but not other way around
+        ret = set().union(*masks_in).union(*masks_out)
+        masks_in = [ret for x in masks_in]
     elif node.op_type in ["MatMul", "Conv"]:
         # input and output are essentially decoupled from
         # each other by means of the weight (except dwise convs)
