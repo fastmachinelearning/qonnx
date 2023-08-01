@@ -44,8 +44,8 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 np.random.seed(0)
 
 
-def test_subpixel_to_deconv_espcn():
-    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/model.onnx")
+def test_subpixel_to_deconv_float_espcn():
+    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/float_model.onnx")
     model = ModelWrapper(raw_m)
     model = model.transform(InferShapes())
     iname = model.graph.input[0].name
@@ -57,9 +57,9 @@ def test_subpixel_to_deconv_espcn():
     new_model = model.transform(SubPixelToDeconvolution())
     # check that there are no DepthToSpace ops left
     op_types = list(map(lambda x: x.op_type, new_model.graph.node))
-    assert "DepthToSpace" not in op_types
+    assert "DepthToSpace" not in op_types, "Error: the DepthToSpace nodes would be removed."
     produced = oxe.execute_onnx(new_model, input_dict)[oname]
-    assert np.isclose(expected, produced, atol=1e-4).all()
+    assert np.isclose(expected, produced, atol=1e-4).all(), "Error: expected output does not match the produced output."
 
 
 def create_subpixel_conv_model(
