@@ -210,7 +210,7 @@ class SubPixelToDeconvolution(Transformation):
                     if weight_prod is not None:
                         W_deconv_init = q_w_name
                     model.set_initializer(W_deconv_init, W_deconv)
-                    model.set_tensor_shape(W_deconv_init, list(W_deconv.shape))
+                    model.set_tensor_shape(weight_name, list(W_deconv.shape))
                     graph.node.insert(node_ind, deconv_node)
                     # remove old nodes
                     graph.node.remove(n)
