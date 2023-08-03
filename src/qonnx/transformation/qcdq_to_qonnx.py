@@ -185,6 +185,9 @@ class QCDQToQuant(Transformation):
                 new_q_node_name = "Quant_" + q_inp
                 bw_tensor_name = f"{new_q_node_name}_bitwidth"
                 model.set_initializer(bw_tensor_name, np.asarray(bitwidth, dtype=np.float32))
+                # for the zeropoint, see if we can simplify back to scalar
+                if (dq_zeropt_v == 0).all():
+                    model.set_initializer(zeropt, np.asarray(0, dtype=np.float32))
                 fused_node = onnx.helper.make_node(
                     "Quant",
                     inputs=[
