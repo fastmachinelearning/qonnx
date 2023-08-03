@@ -65,7 +65,9 @@ def exec_qonnx(
     input_pix2float=False,
     input_zerocenter=False,
     maxiters: int = None,
-    output_nosave=False
+    output_nosave=False,
+    ort_libpath: str = None,
+    force_ort=False
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -86,6 +88,8 @@ def exec_qonnx(
     :param input_zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
     :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
     :param output_nosave: If specified, do not save output tensors to files
+    :param ort_libpath: If specified, pass library path to onnxruntime session
+    :param force_ort: If specified, force onnxruntime execution instead of qonnx node-by-node
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -160,12 +164,16 @@ def exec_qonnx(
                     idict[inp.name] = (2 * idict[inp.name] - 1.0).astype(np.float32)
             else:
                 idict[inp.name] = inp_data[inp_ind][iter]
-        if n_custom_nodes > 0:
+        if (n_custom_nodes > 0) and (not force_ort):
             # run node-by-node in qonnx
             odict = execute_onnx(model, idict)
         else:
             # run using onnxruntime
-            sess = rt.InferenceSession(model.model.SerializeToString())
+            so = None
+            if ort_libpath is not None:
+                so = rt.SessionOptions()
+                so.register_custom_ops_library(ort_libpath)
+            sess = rt.InferenceSession(model.model.SerializeToString(), so)
             output_list = sess.run(None, idict)
             odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
         if not output_nosave:
