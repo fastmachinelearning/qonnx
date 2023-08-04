@@ -29,7 +29,9 @@
 import pytest
 
 import numpy as np
+import onnx
 import onnx.helper as oh
+import onnx.numpy_helper as nph
 from onnx import TensorProto
 from onnx.checker import check_model
 from pkgutil import get_data
@@ -44,8 +46,8 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 np.random.seed(0)
 
 
-def test_subpixel_to_deconv_espcn():
-    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/model.onnx")
+def test_subpixel_to_deconv_float_espcn():
+    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/float_model.onnx")
     model = ModelWrapper(raw_m)
     model = model.transform(InferShapes())
     iname = model.graph.input[0].name
@@ -57,9 +59,39 @@ def test_subpixel_to_deconv_espcn():
     new_model = model.transform(SubPixelToDeconvolution())
     # check that there are no DepthToSpace ops left
     op_types = list(map(lambda x: x.op_type, new_model.graph.node))
-    assert "DepthToSpace" not in op_types
+    assert "DepthToSpace" not in op_types, "Error: the DepthToSpace nodes would be removed."
     produced = oxe.execute_onnx(new_model, input_dict)[oname]
-    assert np.isclose(expected, produced, atol=1e-4).all()
+    assert np.isclose(expected, produced, atol=1e-4).all(), "Error: expected output does not match the produced output."
+
+
+def test_subpixel_to_deconv_quant_espcn():
+    # get raw quantized model with reference input
+    raw_i = get_data("qonnx.data", "onnx/bsd300x3-espcn/test_data/input_0.pb")
+    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/quant_model.onnx")
+    # create model from the onnx file and infer the shapes
+    model = ModelWrapper(raw_m)
+    model = model.transform(InferShapes())
+    iname = model.graph.input[0].name
+    oname = model.graph.output[0].name
+    ishape = model.get_tensor_shape(iname)
+    # load the reference input tensor
+    input_tensor = onnx.load_tensor_from_string(raw_i)
+    input_tensor = nph.to_array(input_tensor)
+    assert list(input_tensor.shape) == ishape, "Error: reference input doesn't match loaded model."
+    input_dict = {iname: input_tensor}
+    # get the output from the sub-pixel convolution model
+    output_subpixel_conv = oxe.execute_onnx(model, input_dict)[oname]
+    # translate the sub-pixel convolution to the deconvolution
+    new_model = model.transform(SubPixelToDeconvolution())
+    new_model = new_model.transform(InferShapes())
+    # check that there are no DepthToSpace ops left
+    op_types = list(map(lambda x: x.op_type, new_model.graph.node))
+    assert "DepthToSpace" not in op_types, "Error: the DepthToSpace nodes would be removed."
+    # get the output from the deconvolution model
+    output_deconv = oxe.execute_onnx(new_model, input_dict)[oname]
+    assert np.isclose(
+        output_deconv, output_subpixel_conv, atol=1 / 255.0, rtol=1 / 255.0
+    ).all(), "Error: expected output does not match the produced output."
 
 
 def create_subpixel_conv_model(
