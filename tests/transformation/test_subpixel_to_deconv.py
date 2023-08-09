@@ -83,7 +83,6 @@ def test_subpixel_to_deconv_quant_espcn():
     output_subpixel_conv = oxe.execute_onnx(model, input_dict)[oname]
     # translate the sub-pixel convolution to the deconvolution
     new_model = model.transform(SubPixelToDeconvolution())
-    new_model = new_model.transform(InferShapes())
     # check that there are no DepthToSpace ops left
     op_types = list(map(lambda x: x.op_type, new_model.graph.node))
     assert "DepthToSpace" not in op_types, "Error: the DepthToSpace nodes would be removed."
