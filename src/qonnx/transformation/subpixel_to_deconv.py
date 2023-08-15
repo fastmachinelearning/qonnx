@@ -205,6 +205,8 @@ class SubPixelToDeconvolution(Transformation):
                         kernel_shape=[kh_size_deconv, kw_size_deconv],
                         strides=[block_size, block_size],
                         pads=deconv_pad,
+                        group=group,
+                        dilations=dilation,
                     )
                     W_deconv_init = weight_name
                     if weight_prod is not None:
