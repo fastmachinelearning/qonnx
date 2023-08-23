@@ -39,12 +39,30 @@ from qonnx.util.basic import get_by_name
 # on the output, and vice versa)
 # note on Quant and MultiThreshold: only bias-free (no zeropoint)
 # versions of these ops are bidirectional
-eltwise_ops_bidirectional = ["Mul", "Div", "MultiThreshold", "Quant", "Relu"]
+eltwise_ops_bidirectional = [
+    "Mul",
+    "Div",
+    "MultiThreshold",
+    "Quant",
+    "QuantizeLinear",
+    "DequantizeLinear",
+    "Clip",
+    "Relu",
+    "MaxPool",
+]
 
 # these ops propagate sparsity masks only backward, not forward
 # (e.g. a sparse channel on the output creates a sparse channel
 # on the input, but not vice versa)
 eltwise_ops_bwdonly = ["Add", "Sub", "BatchNormalization"]
+
+
+# enable incorrect pruning of Add-like nodes, useful for getting
+# pruned model compute cost estimates
+allow_add_exception = True
+if allow_add_exception:
+    eltwise_ops_bidirectional += eltwise_ops_bwdonly
+    eltwise_ops_bwdonly = []
 
 
 def ensure_masktype_is_set(mask):
@@ -97,7 +115,11 @@ def update_node_mask(node, masks_in, masks_out):
         # input and output are essentially decoupled from
         # each other by means of the weight (except dwise convs)
         if node.op_type == "Conv":
-            groups = get_by_name(node.attribute, "group").i
+            groups = get_by_name(node.attribute, "group")
+            if groups is not None:
+                groups = groups.i
+            else:
+                groups = 1
             # TODO smarter check, other kinds of grouped convs out there..
             is_depthwise = groups > 1
         else:
@@ -212,7 +234,11 @@ class RemoveMaskedChannels(Transformation):
                         i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
                         o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
                         ifm_w = io_shp[1]
-                        groups = get_by_name(node.attribute, "group").i
+                        groups = get_by_name(node.attribute, "group")
+                        if groups is not None:
+                            groups = groups.i
+                        else:
+                            groups = 1
                         assert groups == 1 or ifm_w == 1, "Unknown grouped conv setting"
                         depthwise = groups > 1
                         # for dense Conv weights, input (ifm) axis is 1, output (ofm) is 0
