@@ -57,20 +57,20 @@ def test_apply_and_propagate_masks():
     # manifest quantized weights as initializers
     model = model.transform(FoldConstants([]))
     mm_nodes = model.get_nodes_by_op_type("MatMul")
-    # mark channels 0 and 3 from tensor Mul_0_out0
+    # mark channels 0 and 3 in axis 1 for tensor Mul_0_out0
     # and channel 6 for the input to the 2nd MatMul as well as
     # channel 2 of input and 5 of output from the matmul weight
     # to be pruned
-    prune_spec = {"Mul_0_out0": {0, 3}, mm_nodes[0].input[1]: {"i2", "o5"}, mm_nodes[1].input[0]: {6}}
+    prune_spec = {"Mul_0_out0": {1: {0, 3}}, mm_nodes[0].input[1]: {0: {2}, 1: {5}}, mm_nodes[1].input[0]: {1: {6}}}
     model = model.transform(ApplyMasks(prune_spec))
     assert model.get_tensor_sparsity("Mul_0_out0") == prune_spec["Mul_0_out0"]
     assert model.get_tensor_sparsity(mm_nodes[1].input[0]) == prune_spec[mm_nodes[1].input[0]]
     assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == prune_spec[mm_nodes[0].input[1]]
     # now apply the propagation
     model = model.transform(PropagateMasks())
-    assert model.get_tensor_sparsity("Mul_0_out0") == {0, 2, 3}
-    assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == {"i0", "i2", "i3", "o5", "o6"}
-    assert model.get_tensor_sparsity("BatchNormalization_0_out0") == {5, 6}
+    assert model.get_tensor_sparsity("Mul_0_out0") == {1: {0, 2, 3}}
+    assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == {0: {5, 6}, 1: {0, 2, 3}}
+    assert model.get_tensor_sparsity("BatchNormalization_0_out0") == {1: {5, 6}}
     model = model.transform(RemoveMaskedChannels())
     assert tuple(model.get_tensor_shape(mm_nodes[0].input[0])) == (1, 781)
     assert tuple(model.get_tensor_shape(mm_nodes[0].input[1])) == (781, 62)

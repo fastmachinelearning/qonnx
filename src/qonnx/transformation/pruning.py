@@ -28,6 +28,8 @@
 
 import numpy as np
 import warnings
+from copy import deepcopy
+from functools import reduce
 from typing import Dict, Tuple
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -60,15 +62,25 @@ eltwise_ops_bwdonly = ["Add", "Sub", "BatchNormalization"]
 # and will be handled by update_node_mask
 
 
-def ensure_masktype_is_set(mask):
-    if type(mask) is set:
+def ensure_masktype_is_dict(mask):
+    if isinstance(mask, dict):
         # all good, return as is
         return mask
     if mask is None:
-        # use empty set instead of no sparsity mask (None)
-        return set()
+        # use empty dict instead of no sparsity mask (None)
+        return dict()
     else:
-        raise Exception("Cannot turn %s into set" % str(mask))
+        raise Exception("Cannot turn %s into dict" % str(mask))
+
+
+def merge_dicts_of_sets(dict1, dict2):
+    ret = deepcopy(dict1)
+    for key, val in dict2.items():
+        if key in ret.keys():
+            ret[key].update(val)
+        else:
+            ret[key] = val
+    return ret
 
 
 def remove_masked_tensor_channels(tensor_or_shape, mask, axis):
@@ -93,8 +105,8 @@ def remove_masked_tensor_channels(tensor_or_shape, mask, axis):
 
 
 def update_node_mask(node, masks_in, masks_out, lossy=True):
-    masks_in = [ensure_masktype_is_set(x) for x in masks_in]
-    masks_out = [ensure_masktype_is_set(x) for x in masks_out]
+    masks_in = [ensure_masktype_is_dict(x) for x in masks_in]
+    masks_out = [ensure_masktype_is_dict(x) for x in masks_out]
 
     if lossy:
         # when in lossy mode, allow propagation sparsity masks
@@ -105,12 +117,15 @@ def update_node_mask(node, masks_in, masks_out, lossy=True):
     if node.op_type in update_bidirectional:
         # any i/o can mask any/all other i/o
         # so just take union
-        ret = set().union(*masks_in).union(*masks_out)
+        all_masks = [*masks_in] + [*masks_out]
+        ret = reduce(merge_dicts_of_sets, all_masks)
+        # duplicate the result for each node input and output
         masks_in = [ret for x in masks_in]
         masks_out = [ret for x in masks_out]
     elif node.op_type in update_bwdonly:
         # output can mask input but not other way around
-        ret = set().union(*masks_in).union(*masks_out)
+        all_masks = [*masks_in] + [*masks_out]
+        ret = reduce(merge_dicts_of_sets, all_masks)
         masks_in = [ret for x in masks_in]
     elif node.op_type in ["MatMul", "Conv"]:
         # input and output are essentially decoupled from
@@ -131,11 +146,14 @@ def update_node_mask(node, masks_in, masks_out, lossy=True):
         # oX for output channel X
         w_mask = masks_in[1]
         # convert back to two distinct int sets to be able to use union etc set ops
-        w_mask_in = {int(x.replace("i", "")) for x in w_mask if x.startswith("i")}
-        w_mask_out = {int(x.replace("o", "")) for x in w_mask if x.startswith("o")}
+        w_axis_in = 1
+        w_axis_out = 0
+        w_mask_in = w_mask.get(w_axis_in, set())
+        w_mask_out = w_mask.get(w_axis_out, set())
         # take union with i/o masks to update
-        i_mask = masks_in[0]
-        o_mask = masks_out[0]
+        conv_io_chan_axis = 1
+        i_mask = masks_in[0].get(conv_io_chan_axis, set())
+        o_mask = masks_out[0].get(conv_io_chan_axis, set())
         mask_in = w_mask_in.union(i_mask)
         mask_out = w_mask_out.union(o_mask)
         if is_depthwise:
@@ -143,11 +161,12 @@ def update_node_mask(node, masks_in, masks_out, lossy=True):
             mask_in = mask_in.union(mask_out)
             mask_out = mask_in
             # dw convs to only use output side for weights by convention
-            w_mask = {"o%d" % x for x in mask_out}
+            w_mask[w_axis_out] = mask_out
         else:
-            w_mask = {"i%d" % x for x in mask_in}.union({"o%d" % x for x in mask_out})
-        masks_in = [mask_in, w_mask]
-        masks_out = [mask_out]
+            w_mask[w_axis_out] = mask_out
+            w_mask[w_axis_in] = mask_in
+        masks_in = [{conv_io_chan_axis: mask_in}, w_mask]
+        masks_out = [{conv_io_chan_axis: mask_out}]
     else:
         warnings.warn("Can't propagate sparsity mask through op_type %s" % node.op_type)
     return (masks_in, masks_out)
@@ -159,18 +178,15 @@ class ApplyMasks(Transformation):
         self.prune_spec = prune_spec
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
+        # sanity check:
+        # - prune spec must be a dict
+        assert isinstance(self.prune_spec, dict)
         for key, val in self.prune_spec.items():
-            # sanity check: if tensor is a weight tensor for
-            # Conv or MatMul nodes it needs to follow the convention
-            # for indicating input or output channels
-            t_has_init = model.get_initializer(key) is not None
-            t_consumer = model.find_consumer(key)
-            t_fc_cnv = t_consumer is not None and t_consumer.op_type in ["Conv", "MatMul"]
-            t_fc_cnv_w = t_fc_cnv and t_consumer.input[1] == key
-            if t_fc_cnv_w and t_has_init:
-                val_check = list(val)[0]
-                assert type(val_check) is str, "Weight masks must be strings"
-                assert val_check.startswith("i") or val_check.startswith("o"), "Weight masks must be formatted iX or oX"
+            # sanity check:
+            # - prune spec keys must be strings (tensor names)
+            assert isinstance(key, str)
+            # - prune spec vals must also be dicts
+            assert isinstance(val, dict)
             model.set_tensor_sparsity(key, val)
         return (model, False)
 
@@ -188,9 +204,9 @@ class PropagateMasks(Transformation):
             node_masks_in = [model.get_tensor_sparsity(x) for x in node.input]
             node_masks_out = [model.get_tensor_sparsity(x) for x in node.output]
             # ensure all mask types are considered as sets
-            # otherwise we end up comparing None and set()
-            node_masks_in = [ensure_masktype_is_set(x) for x in node_masks_in]
-            node_masks_out = [ensure_masktype_is_set(x) for x in node_masks_out]
+            # otherwise we end up comparing None and dict()
+            node_masks_in = [ensure_masktype_is_dict(x) for x in node_masks_in]
+            node_masks_out = [ensure_masktype_is_dict(x) for x in node_masks_out]
             (new_in, new_out) = update_node_mask(node, node_masks_in, node_masks_out)
             in_changed = new_in != node_masks_in
             out_changed = new_out != node_masks_out
