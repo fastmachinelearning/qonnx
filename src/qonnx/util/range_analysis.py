@@ -244,7 +244,7 @@ optype_to_range_calc = {
     "Conv": calc_conv_range,
     "QuantMaxNorm": calc_range_outdtype,
     "Flatten": propagate_range,
-    "Reshape": propagate_range,
+    "Reshape": calc_monotonic_range,
     "Quant": calc_monotonic_range,
     "BipolarQuant": calc_monotonic_range,
     "Mul": calc_monotonic_range,
