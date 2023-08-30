@@ -67,7 +67,8 @@ def exec_qonnx(
     maxiters: int = None,
     output_nosave=False,
     ort_libpath: str = None,
-    force_ort=False
+    force_ort=False,
+    tqdm_pos: int = 0
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -90,6 +91,7 @@ def exec_qonnx(
     :param output_nosave: If specified, do not save output tensors to files
     :param ort_libpath: If specified, pass library path to onnxruntime session
     :param force_ort: If specified, force onnxruntime execution instead of qonnx node-by-node
+    :param tqdm_pos: Pass as position argument to tqdm progress par
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -149,7 +151,7 @@ def exec_qonnx(
     if maxiters is not None:
         n_dset_iters = min(n_dset_iters, maxiters)
 
-    pbar = tqdm(range(n_dset_iters))
+    pbar = tqdm(range(n_dset_iters), position=tqdm_pos)
 
     for iter in pbar:
         iter_suffix = "_batch%d" % iter
@@ -195,9 +197,11 @@ def exec_qonnx(
             accuracy_batch = ok_batch / bsize
             accuracy_overall = ok / (ok + nok)
             pbar.set_description(
-                "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
-                % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
+                "(Exp #%d) Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
+                % (tqdm_pos, iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
+    if argmax_verify_npy:
+        return (ok, nok, accuracy_overall)
 
 
 def main():
