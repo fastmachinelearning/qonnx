@@ -29,29 +29,33 @@
 import clize
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.pruning import PruneChannels
-from qonnx.util.cleanup import cleanup_model
-from qonnx.util.range_analysis import range_analysis
 
 
-def prune_stuck_channels(input_filename_or_modelwrapper, *, irange="0,1", output_filename=""):
-    if not isinstance(input_filename_or_modelwrapper, ModelWrapper):
-        model = ModelWrapper(input_filename_or_modelwrapper)
-    else:
-        model = input_filename_or_modelwrapper
-    model = cleanup_model(model, preserve_qnt_ops=True)
-    model = model.transform(InferDataTypes())
-    model = cleanup_model(model, preserve_qnt_ops=False)
-    stuck_chans = range_analysis(model, irange=irange, key_filter="Quant")
-    pruned_model = model.transform(PruneChannels(stuck_chans))
-    if output_filename != "":
-        pruned_model.save(output_filename)
-    return pruned_model
+def prune_channels(input_filename, prunespec_filename, *, lossy=True, output_filename=""):
+    """
+    Prune channels from specified tensors and their dependencies from a model.
+    The model must have already been cleaned up by qonnx-cleanup, including the
+    --extract-conv-bias=True --preserve-qnt-ops=False options.
+
+    :param input_filename: Filename for the input ONNX model
+    :param prunespec_filename: Filename for the pruning specification, formatted as a Python dict
+        formatted as {tensor_name : {axis : {channels}}}. See test_pruning.py for examples.
+    :param lossy: Whether to perform lossy pruning, see the PruneChannels transformation for description.
+    :param output_filename: If specified, write the resulting pruned model to this filename. Otherwise,
+        the input_filename will be used with a _pruned suffix.
+    """
+    model = ModelWrapper(input_filename)
+    with open(prunespec_filename) as f:
+        prunespec_dict = dict(eval(f.read()))
+    pruned_model = model.transform(PruneChannels(prunespec_dict, lossy))
+    if output_filename == "":
+        output_filename = input_filename.replace(".onnx", "_pruned.onnx")
+    pruned_model.save(output_filename)
 
 
 def main():
-    clize.run(prune_stuck_channels)
+    clize.run(prune_channels)
 
 
 if __name__ == "__main__":

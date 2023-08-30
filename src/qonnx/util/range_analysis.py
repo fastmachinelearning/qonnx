@@ -67,6 +67,47 @@ def propagate_range(node, model, range_dict):
         range_dict[oname] = node_irange
 
 
+def calc_gemm_range(node, model, range_dict):
+    alpha = get_by_name(node.attribute, "alpha").f
+    beta = get_by_name(node.attribute, "beta").f
+    transA = get_by_name(node.attribute, "transA")
+    if transA is not None:
+        transA = transA.i
+    else:
+        transA = 0
+    transB = get_by_name(node.attribute, "transB")
+    if transB is not None:
+        transB = transB.i
+    else:
+        transB = 1
+    assert (not transA) and transB
+    iname = node.input[0]
+    wname = node.input[1]
+    bname = None
+    if len(node.input) > 2:
+        bname = node.input[2]
+    oname = node.output[0]
+
+    irange = range_dict[iname]
+    imin, imax = irange
+    weights = model.get_initializer(wname)
+    assert weights is not None, "Uninitialized Gemm weights"
+    if type(imin) is np.ndarray:
+        assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
+    pmin, pmax = calculate_matvec_accumulator_extremum(weights, imin, imax)
+    # apply Gemm scale factors to matrix multiply output
+    pmin *= alpha
+    pmax *= alpha
+    # if there is a bias, apply it to the range
+    if bname is not None:
+        bias = model.get_initializer(bname)
+        assert bias is not None, "Uninitialized Gemm bias"
+        pmin += beta * bias
+        pmax += beta * bias
+    ret = (pmin, pmax)
+    range_dict[oname] = ret
+
+
 def calc_matmul_range(node, model, range_dict):
     iname = node.input[0]
     wname = node.input[1]
@@ -86,6 +127,7 @@ def calc_matmul_range(node, model, range_dict):
 def calc_conv_range(node, model, range_dict):
     iname = node.input[0]
     wname = node.input[1]
+    assert len(node.input) == 2, "Found unsupported Conv with bias"
     oname = node.output[0]
     irange = range_dict[iname]
     imin, imax = irange
@@ -97,7 +139,12 @@ def calc_conv_range(node, model, range_dict):
     conv_ifm = weights.shape[1]
     weights = weights.reshape(conv_ofm, -1)
     k_total = weights.shape[1] // conv_ifm
-    groups = get_by_name(node.attribute, "group").i
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
     # TODO smarter check, other kinds of grouped convs out there..
     is_depthwise = groups > 1
     # need to construct specialzed input range vectors for Conv
@@ -128,7 +175,7 @@ def calc_conv_range(node, model, range_dict):
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
-    if type(irange[0]) in [float, int, np.float32, np.float64]:
+    if type(irange[0]) in [float, int, np.float32, np.float64, np.uint8, np.int8]:
         imin, imax = irange
         proto_min[...] = imin
         proto_max[...] = imax
@@ -213,6 +260,13 @@ optype_to_range_calc = {
     "MaxPool": calc_monotonic_range,
     "Resize": calc_monotonic_range,
     "Upsample": calc_monotonic_range,
+    "GlobalAveragePool": calc_monotonic_range,
+    "Gemm": calc_gemm_range,
+    "QuantizeLinear": calc_monotonic_range,
+    "DequantizeLinear": calc_monotonic_range,
+    "Clip": calc_monotonic_range,
+    "Sigmoid": calc_monotonic_range,
+    "Concat": calc_monotonic_range,
 }
 
 
@@ -252,7 +306,7 @@ def range_analysis(
     *,
     irange="",
     key_filter: str = "",
-    report_mode: report_mode_options = REPORT_MODE_ZEROSTUCKCHANNEL,
+    report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
     prettyprint=False,
     do_cleanup=False
 ):
@@ -294,11 +348,11 @@ def range_analysis(
         range_dict[iname] = (range_min, range_max)
 
     for node in model.graph.node:
-        assert len(node.output) == 1, "Only single-output nodes supported"
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
+        outcount_ok = len(node.output) == 1
         op_ok = node.op_type in optype_to_range_calc.keys()
-        if inprange_ok and op_ok:
+        if inprange_ok and op_ok and outcount_ok:
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]
