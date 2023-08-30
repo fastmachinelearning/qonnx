@@ -176,6 +176,10 @@ def update_node_mask(node, masks_in, masks_out, lossy=True):
 
 
 class ApplyMasks(Transformation):
+    """Apply the given sparsity masks in prune_spec to the appropriately named
+    tensors in the model. These masks are only annotations, no actual pruning
+    is performed at this stage."""
+
     def __init__(self, prune_spec: Dict) -> None:
         super().__init__()
         self.prune_spec = prune_spec
@@ -195,6 +199,11 @@ class ApplyMasks(Transformation):
 
 
 class PropagateMasks(Transformation):
+    """Propagate the sparsity masks in the network to relevant upstream and
+    downstream layers. Some inital sparsity masks must have been applied
+    either manually or with the ApplyMasks transformation. Note that not all
+    layer types are supported; see the update_node_mask function for details."""
+
     def __init__(self, lossy: bool = True) -> None:
         super().__init__()
         self.lossy = lossy
@@ -223,6 +232,11 @@ class PropagateMasks(Transformation):
 
 
 class RemoveMaskedChannels(Transformation):
+    """Remove channels indicated by sparsity masks on the model. The sparsity
+    mask annotations will be removed after they have been processed for each
+    tensor. Does not perform any shape consistency checking and may result in
+    a broken graph."""
+
     def __init__(self, lossy: bool = True) -> None:
         super().__init__()
         self.lossy = lossy
@@ -305,6 +319,19 @@ class RemoveMaskedChannels(Transformation):
 
 
 class PruneChannels(Transformation):
+    """
+    Prune channels from specified tensors and their dependencies from a model, as
+    specified by the dictionary given in prune_spec.
+    This dictionary must be formatted as {tensor_name : {axis : {channels}}}.
+    See test_pruning.py for examples.
+    If lossy is True, the transformation will aggresively prune all relevant
+    upstream/downstream layers around the specified tensors. This is good for
+    maintaining the consistency of layer shapes, but may introduce a larger accuracy
+    penalty. If lossy is False, the pruning will be more conservative to preserve the
+    numerical ranges (e.g. biases won't be pruned in the downstream layers) but this
+    may lead to inconsistent shapes in the network.
+    """
+
     def __init__(self, prune_spec: Dict, lossy: bool = True) -> None:
         super().__init__()
         self.prune_spec = prune_spec

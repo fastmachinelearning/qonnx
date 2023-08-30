@@ -33,6 +33,18 @@ from qonnx.transformation.pruning import PruneChannels
 
 
 def prune_channels(input_filename, prunespec_filename, *, lossy=True, output_filename=""):
+    """
+    Prune channels from specified tensors and their dependencies from a model.
+    The model must have already been cleaned up by qonnx-cleanup, including the
+    --extract-conv-bias=True --preserve-qnt-ops=False options.
+
+    :param input_filename: Filename for the input ONNX model
+    :param prunespec_filename: Filename for the pruning specification, formatted as a Python dict
+        formatted as {tensor_name : {axis : {channels}}}. See test_pruning.py for examples.
+    :param lossy: Whether to perform lossy pruning, see the PruneChannels transformation for description.
+    :param output_filename: If specified, write the resulting pruned model to this filename. Otherwise,
+        the input_filename will be used with a _pruned suffix.
+    """
     model = ModelWrapper(input_filename)
     with open(prunespec_filename) as f:
         prunespec_dict = dict(eval(f.read()))
