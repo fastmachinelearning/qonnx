@@ -56,13 +56,8 @@ eltwise_ops_bidirectional = [
 # on the input, but not vice versa)
 eltwise_ops_bwdonly = ["Add", "Sub", "BatchNormalization"]
 
-
-# enable incorrect pruning of Add-like nodes, useful for getting
-# pruned model compute cost estimates
-allow_add_exception = True
-if allow_add_exception:
-    eltwise_ops_bidirectional += eltwise_ops_bwdonly
-    eltwise_ops_bwdonly = []
+# other ops (MatMul, Conv) have more specialized behavior
+# and will be handled by update_node_mask
 
 
 def ensure_masktype_is_set(mask):
@@ -97,17 +92,23 @@ def remove_masked_tensor_channels(tensor_or_shape, mask, axis):
         return ret
 
 
-def update_node_mask(node, masks_in, masks_out):
+def update_node_mask(node, masks_in, masks_out, lossy=True):
     masks_in = [ensure_masktype_is_set(x) for x in masks_in]
     masks_out = [ensure_masktype_is_set(x) for x in masks_out]
 
-    if node.op_type in eltwise_ops_bidirectional:
+    if lossy:
+        # when in lossy mode, allow propagation sparsity masks
+        # in both directions (e.g. Add nodes will also get pruned)
+        update_bidirectional = eltwise_ops_bidirectional + eltwise_ops_bwdonly
+        update_bwdonly = []
+
+    if node.op_type in update_bidirectional:
         # any i/o can mask any/all other i/o
         # so just take union
         ret = set().union(*masks_in).union(*masks_out)
         masks_in = [ret for x in masks_in]
         masks_out = [ret for x in masks_out]
-    elif node.op_type in eltwise_ops_bwdonly:
+    elif node.op_type in update_bwdonly:
         # output can mask input but not other way around
         ret = set().union(*masks_in).union(*masks_out)
         masks_in = [ret for x in masks_in]
@@ -175,8 +176,9 @@ class ApplyMasks(Transformation):
 
 
 class PropagateMasks(Transformation):
-    def __init__(self) -> None:
+    def __init__(self, lossy: bool = True) -> None:
         super().__init__()
+        self.lossy = lossy
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         need_rerun = False
@@ -202,8 +204,9 @@ class PropagateMasks(Transformation):
 
 
 class RemoveMaskedChannels(Transformation):
-    def __init__(self) -> None:
+    def __init__(self, lossy: bool = True) -> None:
         super().__init__()
+        self.lossy = lossy
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         need_rerun = False
@@ -268,9 +271,12 @@ class RemoveMaskedChannels(Transformation):
 
 
 class PruneChannels(Transformation):
-    def __init__(self, prune_spec: Dict) -> None:
+    def __init__(self, prune_spec: Dict, lossy: bool = True) -> None:
         super().__init__()
         self.prune_spec = prune_spec
+        self.lossy = lossy
+        if not lossy:
+            warnings.warn("The current implementation for lossless channel pruning will fail for some topologies")
 
     def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
         # check for known patterns that break the pruning transformation
@@ -290,6 +296,6 @@ class PruneChannels(Transformation):
                 + str([x.name for x in dotprod_nodes_dyn_w])
             )
         model = model.transform(ApplyMasks(self.prune_spec))
-        model = model.transform(PropagateMasks())
-        model = model.transform(RemoveMaskedChannels())
+        model = model.transform(PropagateMasks(self.lossy))
+        model = model.transform(RemoveMaskedChannels(self.lossy))
         return (model, False)

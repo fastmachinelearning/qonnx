@@ -32,7 +32,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.pruning import PruneChannels
 
 
-def prune_channels(input_filename_or_modelwrapper, prunespec_filename_or_dict, *, output_filename=""):
+def prune_channels(input_filename_or_modelwrapper, prunespec_filename_or_dict, *, lossy=True, output_filename=""):
     if not isinstance(input_filename_or_modelwrapper, ModelWrapper):
         model = ModelWrapper(input_filename_or_modelwrapper)
     else:
@@ -49,7 +49,7 @@ def prune_channels(input_filename_or_modelwrapper, prunespec_filename_or_dict, *
         if isinstance(val, list):
             val_as_set = {x[0] for x in val}
             prunespec_dict[key] = val_as_set
-    pruned_model = model.transform(PruneChannels(prunespec_dict))
+    pruned_model = model.transform(PruneChannels(prunespec_dict, lossy))
     if output_filename != "":
         pruned_model.save(output_filename)
     return pruned_model
