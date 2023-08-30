@@ -32,27 +32,14 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.pruning import PruneChannels
 
 
-def prune_channels(input_filename_or_modelwrapper, prunespec_filename_or_dict, *, lossy=True, output_filename=""):
-    if not isinstance(input_filename_or_modelwrapper, ModelWrapper):
-        model = ModelWrapper(input_filename_or_modelwrapper)
-    else:
-        model = input_filename_or_modelwrapper
-    if not isinstance(prunespec_filename_or_dict, dict):
-        with open(prunespec_filename_or_dict) as f:
-            prunespec_dict = dict(eval(f.read()))
-    else:
-        prunespec_dict = prunespec_filename_or_dict
-    # (key, val) pairs where key is the tensor name,
-    # val can be either a set or [(chan_id, val), ...]
-    # canonicalize pruning spec to sets
-    for key, val in prunespec_dict.items():
-        if isinstance(val, list):
-            val_as_set = {x[0] for x in val}
-            prunespec_dict[key] = val_as_set
+def prune_channels(input_filename, prunespec_filename, *, lossy=True, output_filename=""):
+    model = ModelWrapper(input_filename)
+    with open(prunespec_filename) as f:
+        prunespec_dict = dict(eval(f.read()))
     pruned_model = model.transform(PruneChannels(prunespec_dict, lossy))
-    if output_filename != "":
-        pruned_model.save(output_filename)
-    return pruned_model
+    if output_filename == "":
+        output_filename = input_filename.replace(".onnx", "_pruned.onnx")
+    pruned_model.save(output_filename)
 
 
 def main():
