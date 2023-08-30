@@ -61,6 +61,12 @@ eltwise_ops_bwdonly = ["Add", "Sub", "BatchNormalization"]
 # other ops (MatMul, Conv) have more specialized behavior
 # and will be handled by update_node_mask
 
+# mapping of weight tensor axes to input/output channels
+optype_to_w_axis = {
+    "MatMul": {"in": 0, "out": 1},
+    "Conv": {"in": 1, "out": 0},
+}
+
 
 def ensure_masktype_is_dict(mask):
     if isinstance(mask, dict):
@@ -141,13 +147,10 @@ def update_node_mask(node, masks_in, masks_out, lossy=True):
         else:
             is_depthwise = False
 
-        # the weight mask is formulated specially via prefixed strings:
-        # iX for input channel X
-        # oX for output channel X
-        w_mask = masks_in[1]
         # convert back to two distinct int sets to be able to use union etc set ops
-        w_axis_in = 1
-        w_axis_out = 0
+        w_mask = masks_in[1]
+        w_axis_in = optype_to_w_axis[node.op_type]["in"]
+        w_axis_out = optype_to_w_axis[node.op_type]["out"]
         w_mask_in = w_mask.get(w_axis_in, set())
         w_mask_out = w_mask.get(w_axis_out, set())
         # take union with i/o masks to update
@@ -237,21 +240,23 @@ class RemoveMaskedChannels(Transformation):
                 if io_t is None:
                     # dynamic input/output, no initializer
                     # compute new shape only
-                    # TODO proper axis? assumes NCHW
-                    axis = 1
-                    new_shp = remove_masked_tensor_channels(io_shp, mask, axis=axis)
-                    model.set_tensor_shape(ioname, new_shp)
+                    for target_axis, axis_mask in mask.items():
+                        new_shp = remove_masked_tensor_channels(io_shp, axis_mask, axis=target_axis)
+                        model.set_tensor_shape(ioname, new_shp)
                 else:
                     if node.op_type in ["MatMul"]:
-                        i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
-                        o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
-                        # for MatMul weights, input axis is 0, output is 1
-                        new_t = remove_masked_tensor_channels(io_t, i_mask, axis=0)
-                        new_t = remove_masked_tensor_channels(new_t, o_mask, axis=1)
+                        w_axis_in = optype_to_w_axis[node.op_type]["in"]
+                        w_axis_out = optype_to_w_axis[node.op_type]["out"]
+                        w_mask_in = mask.get(w_axis_in, set())
+                        w_mask_out = mask.get(w_axis_out, set())
+                        new_t = remove_masked_tensor_channels(io_t, w_mask_in, axis=w_axis_in)
+                        new_t = remove_masked_tensor_channels(new_t, w_mask_out, axis=w_axis_out)
                         model.set_initializer(ioname, new_t)
                     elif node.op_type in ["Conv"]:
-                        i_mask = [int(x.replace("i", "")) for x in mask if x.startswith("i")]
-                        o_mask = [int(x.replace("o", "")) for x in mask if x.startswith("o")]
+                        w_axis_in = optype_to_w_axis[node.op_type]["in"]
+                        w_axis_out = optype_to_w_axis[node.op_type]["out"]
+                        w_mask_in = mask.get(w_axis_in, set())
+                        w_mask_out = mask.get(w_axis_out, set())
                         ifm_w = io_shp[1]
                         groups = get_by_name(node.attribute, "group")
                         if groups is not None:
@@ -260,23 +265,36 @@ class RemoveMaskedChannels(Transformation):
                             groups = 1
                         assert groups == 1 or ifm_w == 1, "Unknown grouped conv setting"
                         depthwise = groups > 1
-                        # for dense Conv weights, input (ifm) axis is 1, output (ofm) is 0
-                        ifm_axis = 1
-                        ofm_axis = 0
                         if depthwise:
                             # depthwise convs only use the o_mask by convention
-                            new_t = remove_masked_tensor_channels(io_t, o_mask, axis=ofm_axis)
+                            new_t = remove_masked_tensor_channels(io_t, w_mask_out, axis=w_axis_out)
                             # need to update the group attribute to match new n chans
                             get_by_name(node.attribute, "group").i = new_t.shape[0]
                         else:
-                            new_t = remove_masked_tensor_channels(io_t, i_mask, axis=ifm_axis)
-                            new_t = remove_masked_tensor_channels(new_t, o_mask, axis=ofm_axis)
+                            new_t = remove_masked_tensor_channels(io_t, w_mask_in, axis=w_axis_in)
+                            new_t = remove_masked_tensor_channels(new_t, w_mask_out, axis=w_axis_out)
                         model.set_initializer(ioname, new_t)
                     else:
-                        # TODO proper axis? assumes NCHW
-                        axis = 1 if io_t.ndim >= 2 else 0
-                        new_t = remove_masked_tensor_channels(io_t, mask, axis=axis)
-                        model.set_initializer(ioname, new_t)
+                        new_t = io_t
+                        for target_axis, axis_mask in mask.items():
+                            if target_axis >= new_t.ndim:
+                                # for layers that use broadcasting, param dims have lower dim than input dims
+                                # and the target axis won't exist. try to handle those cases appropriately
+                                if new_t.ndim == 1:
+                                    new_t = remove_masked_tensor_channels(new_t, axis_mask, axis=0)
+                                    model.set_initializer(ioname, new_t)
+                                elif new_t.ndim == 0:
+                                    # don't prune scalar param
+                                    continue
+                                else:
+                                    assert False, "Cannot prune paramet tensor %s with shape %s using spec %s" % (
+                                        ioname,
+                                        str(io_shp),
+                                        str(mask),
+                                    )
+                            else:
+                                new_t = remove_masked_tensor_channels(new_t, axis_mask, axis=target_axis)
+                                model.set_initializer(ioname, new_t)
                 # clear sparsity annotation since it's already handled
                 # leftover annotations here can lead to erronous removal later
                 model.set_tensor_sparsity(ioname, {})

@@ -61,21 +61,25 @@ def test_apply_and_propagate_masks():
     # and channel 6 for the input to the 2nd MatMul as well as
     # channel 2 of input and 5 of output from the matmul weight
     # to be pruned
-    prune_spec = {"Mul_0_out0": {1: {0, 3}}, mm_nodes[0].input[1]: {0: {2}, 1: {5}}, mm_nodes[1].input[0]: {1: {6}}}
+    mm0_input = mm_nodes[0].input[0]
+    mm0_weight = mm_nodes[0].input[1]
+    mm1_input = mm_nodes[1].input[0]
+    mm1_weight = mm_nodes[1].input[1]
+    prune_spec = {"Mul_0_out0": {1: {0, 3}}, mm0_weight: {0: {2}, 1: {5}}, mm1_input: {1: {6}}}
     model = model.transform(ApplyMasks(prune_spec))
     assert model.get_tensor_sparsity("Mul_0_out0") == prune_spec["Mul_0_out0"]
-    assert model.get_tensor_sparsity(mm_nodes[1].input[0]) == prune_spec[mm_nodes[1].input[0]]
-    assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == prune_spec[mm_nodes[0].input[1]]
+    assert model.get_tensor_sparsity(mm1_input) == prune_spec[mm1_input]
+    assert model.get_tensor_sparsity(mm0_weight) == prune_spec[mm0_weight]
     # now apply the propagation
     model = model.transform(PropagateMasks())
     assert model.get_tensor_sparsity("Mul_0_out0") == {1: {0, 2, 3}}
-    assert model.get_tensor_sparsity(mm_nodes[0].input[1]) == {0: {5, 6}, 1: {0, 2, 3}}
+    assert model.get_tensor_sparsity(mm0_weight) == {0: {0, 2, 3}, 1: {5, 6}}
     assert model.get_tensor_sparsity("BatchNormalization_0_out0") == {1: {5, 6}}
     model = model.transform(RemoveMaskedChannels())
-    assert tuple(model.get_tensor_shape(mm_nodes[0].input[0])) == (1, 781)
-    assert tuple(model.get_tensor_shape(mm_nodes[0].input[1])) == (781, 62)
-    assert tuple(model.get_tensor_shape(mm_nodes[1].input[0])) == (1, 62)
-    assert tuple(model.get_tensor_shape(mm_nodes[1].input[1])) == (62, 64)
+    assert tuple(model.get_tensor_shape(mm0_input)) == (1, 781)
+    assert tuple(model.get_tensor_shape(mm0_weight)) == (781, 62)
+    assert tuple(model.get_tensor_shape(mm1_input)) == (1, 62)
+    assert tuple(model.get_tensor_shape(mm1_weight)) == (62, 64)
 
 
 def test_pruning_mnv1():
@@ -92,12 +96,12 @@ def test_pruning_mnv1():
     assert cost0["op_mac_SCALEDINT<4>_SCALEDINT<4>"] == 556357408.0
     assert cost0["mem_w_SCALEDINT<4>"] == 4208224.0
     prune_spec = {
-        "Quant_0_out0": {4, 6, 10, 13, 15, 16, 19, 26, 28},
-        "Quant_1_out0": {0, 4, 6, 10, 15, 19, 26, 28},
-        "Quant_2_out0": {42},
-        "Quant_3_out0": {42},
-        "Quant_6_out0": {102},
-        "Quant_7_out0": {102},
+        "Quant_0_out0": {1: {4, 6, 10, 13, 15, 16, 19, 26, 28}},
+        "Quant_1_out0": {1: {0, 4, 6, 10, 15, 19, 26, 28}},
+        "Quant_2_out0": {1: {42}},
+        "Quant_3_out0": {1: {42}},
+        "Quant_6_out0": {1: {102}},
+        "Quant_7_out0": {1: {102}},
     }
 
     model = model.transform(PruneChannels(prune_spec))
