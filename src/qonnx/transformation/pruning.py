@@ -278,12 +278,16 @@ class PruneChannels(Transformation):
         matmul_nodes = model.get_nodes_by_op_type("MatMul")
         convs_with_bias = [x for x in conv_nodes if len(x.input) == 3]
         if len(convs_with_bias) > 0:
-            assert False, "Please extract bias from Conv nodes: %s" % str([x.name for x in convs_with_bias])
+            assert False, "Found Conv nodes with bias, please use cleanup with extract_conv_bias=True first: %s" % str(
+                [x.name for x in convs_with_bias]
+            )
         dotprod_nodes = conv_nodes + matmul_nodes
         dotprod_nodes_dyn_w = [x for x in dotprod_nodes if model.get_initializer(x.input[1]) is None]
         if len(dotprod_nodes_dyn_w) > 0:
-            assert False, "Please ensure MatMul and Conv nodes have static weights: " + str(
-                [x.name for x in dotprod_nodes_dyn_w]
+            assert False, (
+                "Found MatMul or Conv nodes with non-static weights. "
+                "If this is due to weight quantizer ops, try cleanup with preserve_qnt_ops=False: "
+                + str([x.name for x in dotprod_nodes_dyn_w])
             )
         model = model.transform(ApplyMasks(self.prune_spec))
         model = model.transform(PropagateMasks())

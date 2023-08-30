@@ -65,7 +65,7 @@ def cleanup(in_file, *, out_file=None, preserve_qnt_ops=True, override_batchsize
     :param out_file: If set, filename for the output ONNX model. Set to in_file with _clean
         suffix otherwise.
     :param override_batchsize: If specified, override the batch size for the ONNX graph
-    :param separate_conv_bias: If specified, separate Conv bias into its own Add node
+    :param extract_conv_bias: If specified, separate Conv bias into its own Add node
     """
 
     model = ModelWrapper(in_file)
