@@ -49,6 +49,8 @@ def cleanup_model(model, preserve_qnt_ops=True, override_batchsize=None, extract
     if extract_conv_bias:
         model = model.transform(ExtractBiasFromConv())
         model = model.transform(InferShapes())
+        model = model.transform(GiveUniqueNodeNames())
+        model = model.transform(GiveReadableTensorNames())
 
     if override_batchsize is not None:
         model = model.transform(ChangeBatchSize(override_batchsize))
