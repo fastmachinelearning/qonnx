@@ -30,6 +30,7 @@ import clize
 import numpy as np
 import onnxruntime as rt
 from tqdm import tqdm
+import warnings
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
@@ -118,7 +119,7 @@ def exec_qonnx(
 
     n_custom_nodes = len(model.get_finn_nodes())
     if n_custom_nodes == 0:
-        print("No custom qonnx nodes found, running in onnxruntime")
+        warnings.warn("No custom qonnx nodes found, running in onnxruntime")
 
     ok = 0
     nok = 0
