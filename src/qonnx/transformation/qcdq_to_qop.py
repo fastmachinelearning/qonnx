@@ -65,8 +65,8 @@ class CustomEnv():
     imp_strides_opt=False
     save_opt_qdq=False
     change_avgpool=False
-    aecg_zendnn_opt=True
-    remove_relu=False
+    aecg_zendnn_opt=False
+    remove_relu=True
     retain_matmul=False
     is_ryzenai_model=False
     is_retinanet=False
