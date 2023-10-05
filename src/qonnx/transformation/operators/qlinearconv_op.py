@@ -53,8 +53,12 @@ class QLinearConv:
         #      Conv (QDQ model)        Conv (3 - FP32 bias embedded) (QCDQ model)
         #       |                                 |
         # ------------------------------------------------------------------------
-        b_DQL_node = conv_node.inputs[2]     # For QDQ
-        b_DQL_tensor = conv_node.inputs[2]   # For QCDQ
+        # Initialization
+        b_DQL_node = conv_node
+        b_DQL_tensor = conv_node
+        if has_bias:
+            b_DQL_node = conv_node.inputs[2]     # For QDQ
+            b_DQL_tensor = conv_node.inputs[2]   # For QCDQ
         if has_bias and QCDQ_model_detected==False:
             b_DQL_node = conv_node.inputs[2].inputs[0]
         is_fp32_bias_embedded = False
@@ -187,7 +191,7 @@ class QLinearConv:
             quantized_bias_tensor = np.clip(quantized_bias_tensor, S32_MIN, S32_MAX)
             quantized_bias_tensor = np.round(quantized_bias_tensor)
             quantized_bias_tensor = quantized_bias_tensor.astype(np.int32)
-        else:
+        elif has_bias:
             bias_tensor = b_QL_node.inputs[0]
             bias_scale_tensor1 = b_QL_node.inputs[1]
             bias_zp_tensor = b_QL_node.inputs[2]
@@ -308,6 +312,8 @@ class QLinearConv:
                         maxpool_input_s8 = False
             else:
                 x_name = x_QL_node.outputs[0].name
+                if x_QL_node.op == "Clip":
+                    x_name = str(int(x_QL_node.o().outputs[0].name)-3)
         else:
             x_name = x_QL_node.outputs[0].name
 
@@ -438,10 +444,9 @@ class QLinearConv:
         else:
             strides_attr = 1
 
-        qlinearconv_node = onnx.helper.make_node(name = conv_node.name, op_type = "QLinearConv",
-                                                inputs = [x_name, x_scale_name, x_zp_name, w_name, w_scale_name, w_zp_name, y_scale_name, y_zp_name, b_name],
-                                                outputs = [y_name], auto_pad = auto_pad_attr, group = group_attr, dilations = dilations_attr,
-                                                kernel_shape = conv_node.attrs["kernel_shape"], pads = pads_attr, strides = strides_attr)
+        qlinearconv_node = onnx.helper.make_node(name = conv_node.name, op_type = "QLinearConv", inputs = [x_name, x_scale_name, x_zp_name, w_name, w_scale_name, w_zp_name, y_scale_name, y_zp_name], outputs = [y_name], auto_pad = auto_pad_attr, group = group_attr, dilations = dilations_attr, kernel_shape = conv_node.attrs["kernel_shape"], pads = pads_attr, strides = strides_attr)
+        if has_bias:
+            qlinearconv_node = onnx.helper.make_node(name = conv_node.name, op_type = "QLinearConv", inputs = [x_name, x_scale_name, x_zp_name, w_name, w_scale_name, w_zp_name, y_scale_name, y_zp_name, b_name], outputs = [y_name], auto_pad = auto_pad_attr, group = group_attr, dilations = dilations_attr, kernel_shape = conv_node.attrs["kernel_shape"], pads = pads_attr, strides = strides_attr)
 
         if is_relu_present:
             relu_node = onnx.helper.make_node(name = relu_node.name, op_type = "Relu", inputs = [conv_node.outputs[0].name], outputs = [relu_node.outputs[0].name])
@@ -457,7 +462,8 @@ class QLinearConv:
         intializer_list.append(w_zp_tensor)
         intializer_list.append(y_scale_tensor)
         intializer_list.append(y_zp_tensor)
-        intializer_list.append(b_tensor)
+        if has_bias:
+            intializer_list.append(b_tensor)
         self.intializer_list = intializer_list
 
     def get_node(self):
