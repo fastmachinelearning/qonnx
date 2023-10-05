@@ -166,18 +166,23 @@ def QLinearConvert(model_file):
 
         supported_op = ["Conv", "QuantizeLinear", "DequantizeLinear", "MaxPool", "Add", "AveragePool", "Squeeze", "GlobalAveragePool", "Flatten", "MatMul", "LRN", "Concat", "Softmax", "Cast", "Gather", "Gemm", "Greater", "Less", "Slice", "Transpose", "Relu", "Reshape", "Shape", "Resize", "Unsqueeze", "Clip"]
 
+        '''
         for node in graph.nodes:
             if not node.op in supported_op:
                 print(node.op, " op is currently not supported in the converter. Exiting model converter")
                 sys.exit()
-
+        '''
 
         maxpool_count = 0
         ctr = 0
         cast_count = 0
         clip_num = 0
+        retinanet_end_pattern_found = False
+        squeeze_output = False
         for node in graph.nodes:
 
+            if node.op == "Flatten":
+                squeeze_output = True
             # Resnet strides optimization for Resnet50v1
 
             """
@@ -773,7 +778,7 @@ def QLinearConvert(model_file):
                         conv_node1.inputs[0] = dql_node.outputs[0]
 
             # add Squeeze as input to last DequantizeLinear node
-            if (not args.is_retinanet) and node.op == "DequantizeLinear" and ((len(node.outputs[0].outputs) == 0) or (len(node.outputs[0].outputs)==1 and (node.o().op == "Add" or node.o().op == "Softmax") and len(node.o().outputs[0].outputs)==0)):
+            if squeeze_output and (not args.is_retinanet) and node.op == "DequantizeLinear" and ((len(node.outputs[0].outputs) == 0) or (len(node.outputs[0].outputs)==1 and (node.o().op == "Add" or node.o().op == "Softmax") and len(node.o().outputs[0].outputs)==0)):
 
                 # no need to add Squeeze node if DQL is already getting 2d tensor
                 # TODO: add a check if input is 2d then don't add Squeeze node
@@ -903,8 +908,9 @@ def QLinearConvert(model_file):
                                     shape_node2.inputs[0] = new_ql_node.outputs[0]
                                     shape_node3.inputs[0] = new_ql_node.outputs[0]
                                     graph.nodes.append(new_ql_node)
+                                    retinanet_end_pattern_found = True
 
-            if node.op == "QuantizeLinear":
+            if node.op == "QuantizeLinear" and retinanet_end_pattern_found:
                 if helper.is_parent_exist(node, 0, 0) and node.i().op == "Concat":
                     if helper.is_child_present(node, 0, 0) and node.o().op == "DequantizeLinear":
                         # remove the QL node as mentioned in the above condition. (Part of retinaNet model)
@@ -1074,8 +1080,8 @@ def QLinearConvert(model_file):
 
                 if is_parent_resize_node:
                     return True
-                if is_parent_concat:
-                    return True
+                #if is_parent_concat:
+                #    return True
 
             if helper.is_child_present(node, 0, 0):
                 if helper.is_parent_exist(node, 0, 0):
@@ -1096,7 +1102,7 @@ def QLinearConvert(model_file):
                 node_list.append(QuantizeLinear_node.get_node())
                 initializer_list.append(QuantizeLinear_node.get_intializers())
             elif node.op == "DequantizeLinear" and all_dql_conditions_satisfy(node):
-                DequantizeLinear_node = DequantizeLinear(node, aecg_zendnn_opt)
+                DequantizeLinear_node = DequantizeLinear(node, aecg_zendnn_opt, args.remove_relu)
                 node_list.append(DequantizeLinear_node.get_node())
                 initializer_list.append(DequantizeLinear_node.get_intializers())
             elif node.op == "MaxPool":
@@ -1196,6 +1202,7 @@ def QLinearConvert(model_file):
             elif node.op == "Resize":
                 resize_node = Resize(node)
                 node_list.append(resize_node.get_node())
+                initializer_list.append(resize_node.get_intializers())
             elif node.op == "Unsqueeze":
                 unsq_node = Unsqueeze(node)
                 node_list.append(unsq_node.get_node())
