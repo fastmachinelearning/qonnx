@@ -20,8 +20,9 @@ def is_quant_init(node: NodeProto, model: ModelWrapper):
     return False
 
 
-# Refactored version of the transformation properly checking whether the
-# quantizer is *actually* QuantInit, i.e., all inputs have initializers
+# Transpose nodes can be folded into quantized initializers, i.e., Quant nodes
+# where *all* inputs are initializers. Initializers are constants and part of
+# the model graph and thus can be transposed offline.
 class FoldTransposeIntoQuantInit(Transformation):
     """
     Fuses a Transpose node into the initializers of a Quant node.
@@ -41,8 +42,8 @@ class FoldTransposeIntoQuantInit(Transformation):
                 predecessors = model.find_direct_predecessors(node)
                 # The transform applies only to transpose with exactly one input
                 if predecessors is None or len(predecessors) != 1:
-                    # Note: Softly skip this note, maybe consider a hard failure
-                    # at least in case there are multiple inputs?
+                    # Note: Softly skip this node, maybe consider a hard failure
+                    #   at least in case there are multiple inputs?
                     continue
                 # Check whether the predecessor is a quantizer with only
                 # initializer inputs
@@ -65,7 +66,7 @@ class FoldTransposeIntoQuantInit(Transformation):
                         # Skip transposing the initializer if the number of
                         # dimensions do not match
                         if perm is not None and len(perm) != tensor.ndim:
-                            # TODO: Soft skip ok or is this an error?
+                            # Note: Soft skip ok or is this an error?
                             continue
                         # Transpose the tensor, optionally according to the
                         # permutation indices (perm might be None)
@@ -79,7 +80,6 @@ class FoldTransposeIntoQuantInit(Transformation):
                     quant_init.output[0] = node.output[0]
                     # Remove the now absorbed transpose node
                     graph.node.remove(node)
-        # TODO: Finalize by running shape inference as some other transforms do?
         # Return the transformed model and indicate whether the graph actually
         # has been transformed
         return model, graph_modified
