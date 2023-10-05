@@ -29,7 +29,7 @@ import numpy as np
 
 class DequantizeLinear:
 
-    def __init__(self, node, aecg_zendnn_opt):
+    def __init__(self, node, aecg_zendnn_opt, remove_relu):
 
         dql_node = node
 
@@ -41,7 +41,10 @@ class DequantizeLinear:
                 if helper.is_parent_exist(ql_node,0, 0):
                     if ql_node.i().op == "Relu":
                         relu_node = ql_node.i()
-                        x_name = relu_node.outputs[0].name
+                        if remove_relu:
+                            x_name = ql_node.outputs[0].name
+                        else:
+                            x_name = relu_node.outputs[0].name
                 else:
                     print("*************** WARNING *********************** Please check parent of QL node", ql_node.name, " ignore if pattern is correct")
         else:
