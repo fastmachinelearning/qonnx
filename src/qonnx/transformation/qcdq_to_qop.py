@@ -31,35 +31,42 @@ import argparse
 from onnx import TensorProto
 import sys
 
-from qonnx.transformation.operators.qlinearconv_op import *
-from qonnx.transformation.operators.quantizelinear_op import *
-from qonnx.transformation.operators.dequantizelinear_op import *
-from qonnx.transformation.operators.maxpool_op import *
-from qonnx.transformation.operators.add_op import *
-from qonnx.transformation.operators.averagepool_op import *
-from qonnx.transformation.operators.squeeze_op import *
-from qonnx.transformation.operators.globalAveragePool_op import *
-from qonnx.transformation.operators.flatten_op import *
-from qonnx.transformation.operators.matmul_op import *
-from qonnx.transformation.operators.lrn_op import *
-from qonnx.transformation.operators.concat_op import *
-from qonnx.transformation.operators.softmax_op import *
-from qonnx.transformation.operators.matmul_retained_op import *
-from qonnx.transformation.operators.cast_op import *
-from qonnx.transformation.operators.gather_op import *
-from qonnx.transformation.operators.gemm_op import *
-from qonnx.transformation.operators.gemm_op_optimized import *
-from qonnx.transformation.operators.greater_op import *
-from qonnx.transformation.operators.less_op import *
-from qonnx.transformation.operators.slice_op import *
-from qonnx.transformation.operators.transpose_op import *
-from qonnx.transformation.operators.relu_op import *
-from qonnx.transformation.operators.reshape_op import *
-from qonnx.transformation.operators.identity_op import *
-from qonnx.transformation.operators.shape_op import *
-from qonnx.transformation.operators.resize_op import *
-from qonnx.transformation.operators.unsqueeze_op import *
-from qonnx.transformation.operators.clip_op import *
+import math
+import onnx.numpy_helper
+from typing import Tuple
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.base import Transformation
+from qonnx.util.basic import get_by_name
+
+from qonnx.custom_op.qop.qlinearconv_op import *
+from qonnx.custom_op.qop.quantizelinear_op import *
+from qonnx.custom_op.qop.dequantizelinear_op import *
+from qonnx.custom_op.qop.maxpool_op import *
+from qonnx.custom_op.qop.add_op import *
+from qonnx.custom_op.qop.averagepool_op import *
+from qonnx.custom_op.qop.squeeze_op import *
+from qonnx.custom_op.qop.globalAveragePool_op import *
+from qonnx.custom_op.qop.flatten_op import *
+from qonnx.custom_op.qop.matmul_op import *
+from qonnx.custom_op.qop.lrn_op import *
+from qonnx.custom_op.qop.concat_op import *
+from qonnx.custom_op.qop.softmax_op import *
+from qonnx.custom_op.qop.matmul_retained_op import *
+from qonnx.custom_op.qop.cast_op import *
+from qonnx.custom_op.qop.gather_op import *
+from qonnx.custom_op.qop.gemm_op import *
+from qonnx.custom_op.qop.gemm_op_optimized import *
+from qonnx.custom_op.qop.greater_op import *
+from qonnx.custom_op.qop.less_op import *
+from qonnx.custom_op.qop.slice_op import *
+from qonnx.custom_op.qop.transpose_op import *
+from qonnx.custom_op.qop.relu_op import *
+from qonnx.custom_op.qop.reshape_op import *
+from qonnx.custom_op.qop.identity_op import *
+from qonnx.custom_op.qop.shape_op import *
+from qonnx.custom_op.qop.resize_op import *
+from qonnx.custom_op.qop.unsqueeze_op import *
+from qonnx.custom_op.qop.clip_op import *
 
 class CustomEnv():
     imp_strides_opt=False
@@ -74,12 +81,14 @@ class CustomEnv():
     def __init__(self):
         pass
 
-def QLinearConvert(model_file):
-    args = CustomEnv()
-    if os.path.isfile(model_file):
-        onnx_model_name = os.path.basename(model_file)
-        model_path = model_file
-        graph = gs.import_onnx(onnx.load(model_path))
+class QCDQToQOp(Transformation):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def apply(self, model: ModelWrapper) -> Tuple[ModelWrapper, bool]:
+        args = CustomEnv()
+        graph = gs.import_onnx(model.model)
 
         graph.fold_constants()
 
@@ -1261,7 +1270,5 @@ def QLinearConvert(model_file):
 
         model_def = onnx.helper.make_model(graph_def, producer_name="onnx-example")
         model_def.opset_import[0].version = 16
-
-        new_model_name = "q_operator_" + onnx_model_name
-
-        onnx.save(model_def, new_model_name)
+        model_qop = ModelWrapper(model_def)
+        return (model_qop, False)
