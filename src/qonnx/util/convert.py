@@ -31,7 +31,7 @@ import clize
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.qcdq_to_qonnx import QCDQToQuant
 from qonnx.transformation.qonnx_to_qcdq import QuantToQCDQ
-from qonnx.transformation.operators import *
+from qonnx.custom_op.qop import *
 from qonnx.transformation.qcdq_to_qop import *
 
 CONVERT_MODE_QCDQ = "qcdq"
@@ -66,19 +66,16 @@ def convert(input_model_file, *, output_style: convert_mode_options, output_file
     elif output_style == CONVERT_MODE_QUANT:
         model = model.transform(QCDQToQuant())
     elif output_style == CONVERT_MODE_QOP:
-        QLinearConvert(input_model_file)
+        model = model.transform(QCDQToQOp(), False, False)
     else:
         print("Unknown output_style for conversion: %s" % output_style)
         exit(-1)
     if output_file is None:
         output_file = input_model_file.replace(".onnx", "_%s.onnx" % output_style)
-    if output_style != CONVERT_MODE_QOP:
-        model.save(output_file)
-
+    model.save(output_file)
 
 def main():
     clize.run(convert)
-
 
 if __name__ == "__main__":
     main()
