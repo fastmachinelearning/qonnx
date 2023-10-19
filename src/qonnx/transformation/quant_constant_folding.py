@@ -1,9 +1,12 @@
 # Protobuf onnx graph node type
 from onnx import NodeProto
+
 # QONNX wrapper of ONNX model graphs
 from qonnx.core.modelwrapper import ModelWrapper
+
 # QONNX graph transformations base class
 from qonnx.transformation.base import Transformation
+
 #  Gets items from protobuf by name
 from qonnx.util.basic import get_by_name
 
