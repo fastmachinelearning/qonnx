@@ -110,7 +110,7 @@ def test_fold_transpose_into_quant_init(quant_init, signed, narrow, rounding_mod
     # Fill the execution context with dummy input data
     context = {"input": x}
 
-    # Some test cases even tun the inpout into an initializer
+    # Some test cases even turn the input into an initializer
     if quant_init:
         # Turn the model input into an initializer
         model.set_initializer("input", x)
