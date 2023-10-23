@@ -26,57 +26,91 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import warnings
+# Protobuf onnx graph node type
+from onnx import NodeProto
 
+# QONNX wrapper of ONNX model graphs
+from qonnx.core.modelwrapper import ModelWrapper
+
+# QONNX graph transformations base class
 from qonnx.transformation.base import Transformation
+
+#  Gets items from protobuf by name
 from qonnx.util.basic import get_by_name
 
 
+# Tests whether a node is a quant-init, i.e., a quantizer with only initializer
+# inputs
+def is_quant_init(node: NodeProto, model: ModelWrapper):
+    # Only handle existing Quant or BipolarQuant type nodes
+    if node is not None and node.op_type in {"Quant", "BipolarQuant"}:
+        # All inputs must have initializers, otherwise this is just a normal
+        # quant, but not a quant-init
+        return all(model.get_initializer(i) is not None for i in node.input)
+    # Did not match the operator type
+    return False
+
+
+# Transpose nodes can be folded into quantized initializers, i.e., Quant nodes
+# where *all* inputs are initializers. Initializers are constants and part of
+# the model graph and thus can be transposed offline.
 class FoldTransposeIntoQuantInit(Transformation):
     """
-    Fueses a Transpose node into the initalizer of a Quant node.
+    Fuses a Transpose node into the initializers of a Quant node.
     """
 
-    def apply(self, model):
+    # Applies the transform to a whole model graph
+    def apply(self, model: ModelWrapper):
+        # Get the model graph out of the model wrapper object
         graph = model.graph
-        node_ind = 0
+        # Keep track of whether the graph has been modified
         graph_modified = False
-        # Find transpose nodes, which have Quant node with initilizer upstream.
-        for n in graph.node:
-            node_ind += 1
-            if n.op_type == "Transpose":
-                predecessors = model.find_direct_predecessors(n)
-                # Check if we reached the top of the graph
-                if predecessors is None:
+        # Iterate all nodes in the graph keeping track of the index
+        for index, node in enumerate(graph.node):
+            # This transformation is triggered by finding a Transpose node
+            if node.op_type == "Transpose":
+                # Get the predecessors feeding into the transpose node
+                predecessors = model.find_direct_predecessors(node)
+                # The transform applies only to transpose with exactly one input
+                if predecessors is None or len(predecessors) != 1:
+                    # Note: Softly skip this node, maybe consider a hard failure
+                    #   at least in case there are multiple inputs?
                     continue
-                predecessor = predecessors[0]
-                if predecessor.op_type == "Quant" or predecessor.op_type == "BipolarQuant":
-                    for inp in predecessor.input:
-                        if not isinstance(model.get_initializer(inp), type(None)):
-                            # Explicitly apply the transpose to the initializers
-                            # of the previous node
-                            target_tensor = model.get_initializer(inp)
-                            if target_tensor is None:
-                                warnings.warn(
-                                    f"Cannot fold transpose {n} into Quant/BipolarQuant node {predecessor}, "
-                                    f"due to not initialized tensor: {inp}. "
-                                    f"Exiting FoldTransposeIntoQuantInit transformation."
-                                )
-                                return model, False
-                            # Make sure the tensor has the correct shape
-                            perm = get_by_name(n.attribute, "perm")
-                            if perm is None:
-                                target_tensor = target_tensor.transpose()
-                                model.set_initializer(inp, target_tensor)
-                                graph_modified = True
-                            elif len(perm.ints) == len(target_tensor.shape):
-                                target_tensor = target_tensor.transpose(perm.ints)
-                                model.set_initializer(inp, target_tensor)
-                                graph_modified = True
-                    # Reconnect predecessor and delete transpose node
-                    predecessor.output[0] = n.output[0]
-                    graph.node.remove(n)
-
-                    return model, graph_modified
-
+                # Check whether the predecessor is a quantizer with only
+                # initializer inputs
+                if is_quant_init(predecessors[0], model):
+                    # Alias to the single predecessor node
+                    quant_init = predecessors[0]
+                    # Get the (optional) permutation indices of the transpose in
+                    # case it is a multi-axis transpose
+                    perm = get_by_name(node.attribute, "perm")
+                    # Convert permutation indices to list of integers if it is
+                    # given
+                    perm = perm.ints if perm is not None else None
+                    # Transpose all(!) initializer inputs of the quant node
+                    for i in quant_init.input:
+                        # Get the initializer tensor
+                        # Note: No need to validate the presence of the
+                        # initializer here, as we already tested this as the
+                        # applicability condition above
+                        tensor = model.get_initializer(i)
+                        # Skip transposing the initializer if the number of
+                        # dimensions do not match
+                        if perm is not None and len(perm) != tensor.ndim:
+                            # Note: Soft skip ok or is this an error?
+                            continue
+                        # Transpose the tensor, optionally according to the
+                        # permutation indices (perm might be None)
+                        tensor = tensor.transpose(perm)
+                        # Reassign the transposed initializer tensor
+                        model.set_initializer(i, tensor)
+                        # The graph has been modified, this needs to be reported
+                        # back to the caller
+                        graph_modified = True
+                    # Rewire the graph to skip the transpose node
+                    quant_init.output[0] = node.output[0]
+                    # Remove the now absorbed transpose node
+                    graph.node.remove(node)
+        # Return the transformed model and indicate whether the graph actually
+        # has been transformed
         return model, graph_modified
