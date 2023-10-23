@@ -68,31 +68,7 @@ def test_conv_lowering_convmnist():
     assert np.isclose(produced, expected).all()
 
 
-# input datatype
-@pytest.mark.parametrize("idt", [DataType["INT2"], DataType["INT4"]])
-# kernel size
-@pytest.mark.parametrize("k_h", [2, 3])
-@pytest.mark.parametrize("k_w", [2, 3, 1])
-# input dimension
-@pytest.mark.parametrize("ifm_dim_h", [9, 11])
-@pytest.mark.parametrize("ifm_dim_w", [9, 11, 1])
-# input channels
-@pytest.mark.parametrize("ifm_ch", [2, 3])
-# stride
-@pytest.mark.parametrize("stride", [[1, 1], [1, 2], [2, 1], [2, 2]])
-# padding
-@pytest.mark.parametrize("padding", [[0, 0, 0, 0], [1, 1, 1, 1]])
-# dilations
-@pytest.mark.parametrize("dilations", [[1, 1], [2, 2], [3, 3]])
-# depthwise or channelwise
-@pytest.mark.parametrize("dw", [True, False])
-# conv bias
-@pytest.mark.parametrize("bias", [True, False])
-def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):
-    if k_h > ifm_dim_h:
-        pytest.skip("Kernel height must be smaller than image height")
-    if k_w > ifm_dim_w:
-        pytest.skip("Kernel width must be smaller than image height")
+def run_conv_lowering_test(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):
     # Ensure the right padding parameters are set
     if ifm_dim_w == 1:
         dilations[1] = 1
@@ -189,6 +165,34 @@ def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stri
         assert model.get_tensor_sparsity("W") is not None
         im2col_node = getCustomOp(model.graph.node[1])
         assert im2col_node.get_nodeattr("depthwise") == 1
+
+
+# input datatype
+@pytest.mark.parametrize("idt", [DataType["INT2"], DataType["INT4"]])
+# kernel size
+@pytest.mark.parametrize("k_h", [2, 3])
+@pytest.mark.parametrize("k_w", [2, 3, 1])
+# input dimension
+@pytest.mark.parametrize("ifm_dim_h", [9, 11])
+@pytest.mark.parametrize("ifm_dim_w", [9, 11, 1])
+# input channels
+@pytest.mark.parametrize("ifm_ch", [2, 3])
+# stride
+@pytest.mark.parametrize("stride", [[1, 1], [1, 2], [2, 1], [2, 2]])
+# padding
+@pytest.mark.parametrize("padding", [[0, 0, 0, 0], [1, 1, 1, 1]])
+# dilations
+@pytest.mark.parametrize("dilations", [[1, 1], [2, 2], [3, 3]])
+# depthwise or channelwise
+@pytest.mark.parametrize("dw", [True, False])
+# conv bias
+@pytest.mark.parametrize("bias", [True, False])
+def test_dws_reg_conv_lowering(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):
+    if k_h > ifm_dim_h:
+        pytest.skip("Kernel height must be smaller than image height")
+    if k_w > ifm_dim_w:
+        pytest.skip("Kernel width must be smaller than image height")
+    run_conv_lowering_test(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias)
 
 
 # input datatype
@@ -336,3 +340,18 @@ def test_conv_lowering_conv_1x1():
     assert new_model.graph.node[1].op_type == "MatMul"
     assert new_model.graph.node[2].op_type == "Transpose"
     assert len(new_model.graph.node) == 3
+
+
+def test_rect_dwise_dilated_conv_lowering():
+    idt = DataType["INT4"]
+    k_h = 3
+    k_w = 3
+    padding = [2, 3, 2, 3]
+    ifm_dim_h = 192
+    ifm_dim_w = 14
+    ifm_ch = 64
+    stride = [1, 1]
+    dilations = [2, 3]
+    dw = True
+    bias = False
+    run_conv_lowering_test(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias)

@@ -51,5 +51,4 @@ def test_expose_intermediate(model_name):
     # break out all dynamic (non-weight) quantizer outputs
     pattern_list = ["Quant"]
     model = model.transform(ExposeIntermediateTensorsPatternList(pattern_list, dynamic_only=True))
-    model.save(model_name + "_dbg.onnx")
     assert len(model.graph.output) == model_details_expint[model_name]["n_quant_outputs"] + 1
