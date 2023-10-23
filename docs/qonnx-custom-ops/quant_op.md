@@ -1,7 +1,9 @@
 ### <a name="Quant"></a><a name="abs">**Quant**</a>
 
 Calculates the quantized values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
-Additionally, takes three floats as input, which define the scale, zero-point and bit-width of the quantization.
+Additionally, takes three floats as input, which define the scale, zero-point and bit-width of the quantization,
+which may be scalars or tensors with number of dimensions equal to the input data tensor, for e.g. tensor-wise
+or channel-wise quantization.
 The attributes narrow and signed define how the bits of the quantization are interpreted, while the attribute
 rounding_mode defines how quantized values are rounded.
 
@@ -27,12 +29,12 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dl>
 <dt><tt>X</tt> (differentiable) : tensor(float32)</dt>
 <dd>input tensor to quantize</dd>
-<dt><tt>scale</tt> : float32</dt>
-<dd>The scale factor</dd>
-<dt><tt>zeropt</tt> : float32</dt>
-<dd>The zero-point</dd>
-<dt><tt>bitwidth</tt> : int32</dt>
-<dd>The number of bits used by the quantization</dd>
+<dt><tt>scale</tt> : float32, tensor(float32)</dt>
+<dd>The scale factor, either as a global scalar or with a shape matching the number of dimensions of the X tensor</dd>
+<dt><tt>zeropt</tt> : float32, tensor(float32) </dt>
+<dd>The zero-point, either as a global scalar or with a shape matching the number of dimensions of the X tensor</dd>
+<dt><tt>bitwidth</tt> : int32, float32</dt>
+<dd>The number of bits used by the quantization, must be a positive integer. If float32 dtype is used for convenience, it must still represent an positive integer number of bits.</dd>
 </dl>
 
 
