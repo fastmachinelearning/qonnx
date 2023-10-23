@@ -121,7 +121,7 @@ git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
 virtualenv -p python3.8 venv
 source venv/bin/activate
-pip install -e .[qkeras,testing,docs]
+pip install -e .[qkeras,testing]
 ```
 
 Run entire test suite, parallelized across CPU cores:
