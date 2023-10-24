@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pytest
+
 import numpy as np
 import onnx.parser as oprs
 
@@ -34,19 +36,22 @@ from qonnx.core.onnx_exec import execute_onnx
 from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
 
 
-def make_test_model():
-    ishp = (1, 10)
+def make_test_model(ishp, channelwise, bitwidth, need_extraction_scale, need_extraction_zeropt):
     ishp_str = str(list(ishp))
-    channelwise = True
-    bitwidth = np.asarray(4.0, dtype=np.float32)
     if channelwise:
         q_attr_shp = ishp
     else:
-        q_attr_shp = 1
+        q_attr_shp = (1,)
     attrshp_str = str(list(q_attr_shp))
     np.random.seed(0)
-    scale = np.random.rand(*q_attr_shp).astype(np.float32)
-    zeropt = np.random.rand(*q_attr_shp).astype(np.float32)
+    if need_extraction_scale:
+        scale = np.random.rand(*q_attr_shp).astype(np.float32)
+    else:
+        scale = np.ones(q_attr_shp, dtype=np.float32)
+    if need_extraction_zeropt:
+        zeropt = np.random.rand(*q_attr_shp).astype(np.float32)
+    else:
+        zeropt = np.zeros(q_attr_shp, dtype=np.float32)
     signed = 1
     narrow = 1
     rounding_mode = "ROUND"
@@ -78,8 +83,13 @@ def make_test_model():
     return model
 
 
-def test_extract_quant_scale_zeropt():
-    model = make_test_model()
+@pytest.mark.parametrize("need_extraction_scale", [True, False])
+@pytest.mark.parametrize("need_extraction_zeropt", [True, False])
+@pytest.mark.parametrize("channelwise", [True, False])
+def test_extract_quant_scale_zeropt(channelwise, need_extraction_scale, need_extraction_zeropt):
+    ishp = (1, 10)
+    bitwidth = np.asarray(4.0, dtype=np.float32)
+    model = make_test_model(ishp, channelwise, bitwidth, need_extraction_scale, need_extraction_zeropt)
     ishp = model.get_tensor_shape("in0")
     inp = np.random.rand(*ishp).astype(np.float32)
     y_golden = execute_onnx(model, {"in0": inp})["out0"]
@@ -88,6 +98,12 @@ def test_extract_quant_scale_zeropt():
     assert np.allclose(y_golden, y_ret)
     qnt_node = model_new.get_nodes_by_op_type("Quant")[0]
     new_scale = model_new.get_initializer(qnt_node.input[1])
-    assert new_scale == 1
+    assert (new_scale == 1).all()
     new_zeropt = model_new.get_initializer(qnt_node.input[2])
-    assert new_zeropt == 0
+    assert (new_zeropt == 0).all()
+    if need_extraction_scale:
+        assert len(model_new.get_nodes_by_op_type("Mul")) == 1
+        assert len(model_new.get_nodes_by_op_type("Div")) == 1
+    if need_extraction_zeropt:
+        assert len(model_new.get_nodes_by_op_type("Add")) == 1
+        assert len(model_new.get_nodes_by_op_type("Sub")) == 1
