@@ -232,6 +232,7 @@ def inference_cost(model, discount_sparsity=True):
     unsupported_ops = set()
     inference_cost_fxn_map = {
         "Conv": inference_cost_conv,
+        "ConvTranspose": inference_cost_conv,
         "MatMul": inference_cost_matmul,
         "Gemm": inference_cost_matmul,
         "Upsample": inference_cost_upsample,
