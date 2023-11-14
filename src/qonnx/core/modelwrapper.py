@@ -41,8 +41,8 @@ from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
     RemoveUnusedTensors,
+    SortCommutativeInputsInitializerLast,
     SortGraph,
-    SortCommutativeInputsInitializerLast
 )
 
 
