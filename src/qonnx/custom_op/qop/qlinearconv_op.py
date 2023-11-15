@@ -155,12 +155,16 @@ class QLinearConv:
             weight_scale_tensor = w_QL_node.inputs[1]
             weight_zp_tensor = w_QL_node.inputs[2]
 
+            weight_scale_channel_detected = 0
+            if (weight_scale_tensor.shape):
+                if (weight_scale_tensor.shape[0] > 1):
+                    weight_scale_channel_detected = 1
             weight_scaled_tensor = weight_scale_tensor.values * np.ones(weight_tensor.shape)
-            if QCDQ_model_detected:
+            if QCDQ_model_detected or weight_scale_channel_detected:
                 weight_scaled_tensor = np.ones(weight_tensor.shape) * weight_scale_tensor.values[:, np.newaxis, np.newaxis, np.newaxis]
             b = weight_tensor.values / weight_scaled_tensor
             c = weight_zp_tensor.values * np.ones(weight_tensor.shape)
-            if QCDQ_model_detected:
+            if QCDQ_model_detected or weight_scale_channel_detected:
                 c = weight_zp_tensor.values[:, np.newaxis, np.newaxis, np.newaxis] * np.ones(weight_tensor.shape)
             quantized_weight_tensor = b + c
             if weight_zp_tensor.dtype == "int8":
