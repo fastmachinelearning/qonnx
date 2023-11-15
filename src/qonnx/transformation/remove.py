@@ -62,9 +62,7 @@ def remove_node_and_rewire(model, node):
     if model.is_join_node(node):
         # Log this as a warning, so the user is aware of this, there might be
         # somthing wrong or some checks missing at the caller site
-        warnings.warn(
-            "Tried to remove join-node operation: Currently not supported"
-        )
+        warnings.warn("Removing join-node operation is currently not supported")
         # Exit the function here without doing anything
         return
     # We already know that node is not a join-node, thus to rewire, we only need
