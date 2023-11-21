@@ -134,7 +134,7 @@ def inference_cost_matmul(model, node, discount_sparsity):
         if tB is not None and tB.i == 1:
             w_shape = w_shape[::-1]
     # exclude common dim (last axis) from one side to avoid duplication
-    n_macs = np.prod(i_shape[:-1]) * np.prod(w_shape)
+    n_macs = i_shape[-1] * np.prod(o_shape)
     # deal with both dyn,param and dyn,dyn cases for weight memory
     inp0_is_const = model.get_initializer(node.input[0]) is not None
     inp1_is_const = model.get_initializer(node.input[1]) is not None
