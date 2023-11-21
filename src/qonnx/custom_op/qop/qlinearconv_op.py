@@ -29,7 +29,7 @@ from .helper import helper
 
 class QLinearConv:
 
-    def __init__(self, node, aecg_zendnn_opt, remove_relu, conv_count):
+    def __init__(self, node, remove_relu, conv_count):
         x_DQL_node = node.i()
 
         conv_node = node
@@ -335,44 +335,39 @@ class QLinearConv:
         x_zp_name = conv_node.name + "_X_ZERO_POINT"
         x_zp_value = x_zp_tensor.values
 
-        if aecg_zendnn_opt and conv_count > 0:
+        if is_x_QL_maxpool:
+            if maxpool_input_s8:
+                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                                tensor_array=x_zp_value,
+                                                                data_type=onnx.TensorProto.INT8)
+            else:
+                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                                tensor_array=x_zp_value,
+                                                                data_type=onnx.TensorProto.UINT8)
+        elif is_X_QL_transpose:
             x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
                                                                 tensor_array=x_zp_value,
-                                                                data_type=onnx.TensorProto.UINT8)
+                                                                data_type=onnx.TensorProto.INT8)
         else:
-            if is_x_QL_maxpool:
-                if maxpool_input_s8:
-                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                                    tensor_array=x_zp_value,
-                                                                    data_type=onnx.TensorProto.INT8)
-                else:
-                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                                    tensor_array=x_zp_value,
-                                                                    data_type=onnx.TensorProto.UINT8)
-            elif is_X_QL_transpose:
+            if (x_QL_node.op == "QuantizeLinear" and x_QL_node.inputs[2].dtype == np.int8):
                 x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                                    tensor_array=x_zp_value,
-                                                                    data_type=onnx.TensorProto.INT8)
+                                                        tensor_array=x_zp_value,
+                                                        data_type=onnx.TensorProto.INT8)
+            elif (x_QL_node.op == "QuantizeLinear" and x_QL_node.inputs[2].dtype == np.uint8):
+                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                            tensor_array=x_zp_value,
+                                                            data_type=onnx.TensorProto.UINT8)
+            elif x_QL_node.op == "Relu" or x_QL_node.op == "Clip":
+                if (x_QL_node.i().op == "QuantizeLinear" and x_QL_node.i().inputs[2].dtype == np.int8):
+                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                        tensor_array=x_zp_value,
+                                                        data_type=onnx.TensorProto.INT8)
+                elif (x_QL_node.i().op == "QuantizeLinear" and x_QL_node.i().inputs[2].dtype == np.uint8):
+                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                            tensor_array=x_zp_value,
+                                                            data_type=onnx.TensorProto.UINT8)
             else:
-                if (x_QL_node.op == "QuantizeLinear" and x_QL_node.inputs[2].dtype == np.int8):
-                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                            tensor_array=x_zp_value,
-                                                            data_type=onnx.TensorProto.INT8)
-                elif (x_QL_node.op == "QuantizeLinear" and x_QL_node.inputs[2].dtype == np.uint8):
-                    x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                                tensor_array=x_zp_value,
-                                                                data_type=onnx.TensorProto.UINT8)
-                elif x_QL_node.op == "Relu" or x_QL_node.op == "Clip":
-                    if (x_QL_node.i().op == "QuantizeLinear" and x_QL_node.i().inputs[2].dtype == np.int8):
-                        x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                            tensor_array=x_zp_value,
-                                                            data_type=onnx.TensorProto.INT8)
-                    elif (x_QL_node.i().op == "QuantizeLinear" and x_QL_node.i().inputs[2].dtype == np.uint8):
-                        x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                                tensor_array=x_zp_value,
-                                                                data_type=onnx.TensorProto.UINT8)
-                else:
-                    print("ERROR Please check x_zp_tensor of ", conv_node.name)
+                print("ERROR Please check x_zp_tensor of ", conv_node.name)
 
         w_name = conv_node.inputs[1].name
         w_value = quantized_weight_tensor
@@ -401,20 +396,14 @@ class QLinearConv:
         y_zp_name = conv_node.name + "_Y_ZERO_POINT"
         y_zp_value = y_zp_tensor.values
 
-        if aecg_zendnn_opt:
-            # if this opt is enabled then y_zp has be to set to u8 type
+        if y_zp_tensor.dtype == np.int8:
+            y_zp_tensor = helper.create_initializer_tensor(name=y_zp_name,
+                                                        tensor_array=y_zp_value,
+                                                        data_type=onnx.TensorProto.INT8)
+        elif y_zp_tensor.dtype == np.uint8:
             y_zp_tensor = helper.create_initializer_tensor(name=y_zp_name,
                                                     tensor_array=y_zp_value,
                                                     data_type=onnx.TensorProto.UINT8)
-        else:
-            if y_zp_tensor.dtype == np.int8:
-                y_zp_tensor = helper.create_initializer_tensor(name=y_zp_name,
-                                                            tensor_array=y_zp_value,
-                                                            data_type=onnx.TensorProto.INT8)
-            elif y_zp_tensor.dtype == np.uint8:
-                y_zp_tensor = helper.create_initializer_tensor(name=y_zp_name,
-                                                        tensor_array=y_zp_value,
-                                                        data_type=onnx.TensorProto.UINT8)
 
         if has_bias:
             b_name = conv_node.inputs[2].name

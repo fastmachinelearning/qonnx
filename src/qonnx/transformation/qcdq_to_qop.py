@@ -72,56 +72,12 @@ class QCDQToQOp(Transformation):
 
         graph.fold_constants()
 
-        aecg_zendnn_opt = False
-
         def is_any_output_tensor_graph_output(node):
             for i in range(len(graph.outputs)):
                 output_tensor_name = graph.outputs[i].name
                 if node.outputs[0].name == output_tensor_name:
                     return True
             return False
-
-        # return 6/7/8th child name depending on Relu is present or not
-        def get_child_name(node):
-            if helper.is_child_present(node, 0, 0):
-                c1 = node.o()
-                if c1.op == "Relu": #C1 is relu
-                    if helper.is_child_present(c1, 0, 0):
-                        c1 = c1.o() # c1 is QL node
-                # c1 is QL now
-                if helper.is_child_present(c1, 0, 0):
-                    c2 = c1.o() # c2 is DQL
-                if helper.is_child_present(c2, 0, 0):
-                    c3 = c2.o() # c3 is Conv
-
-                if helper.is_child_present(c3, 0, 0):
-                    c4 = c3.o()
-
-                    if c4.op == "Relu":
-                        if helper.is_child_present(c4, 0, 0):
-                            c4 = c4.o()
-                    # c4 is QL now
-
-                    if helper.is_child_present(c4, 0, 0):
-                        c5 = c4.o() # c5 is DQL
-                    if helper.is_child_present(c5, 0, 0):
-                        c6 = c5.o() # c6 is conv
-
-                        return c6.name
-
-            print("************************* ERROR ************************* get_child_name() returned empty string")
-            return ""
-
-        def get_child_conv(node):
-            if helper.is_child_present(node, 0, 0):
-                c1 = node.o()
-                if c1.op == "Relu" and helper.is_child_present(c1, 0, 0):
-                    c1 = c1.o()
-                if helper.is_child_present(c1, 0, 0):
-                    c2 = c1.o()
-                if helper.is_child_present(c2, 0, 0):
-                    c3 = c2.o()
-                return c3
 
         supported_op = ["Conv", "QuantizeLinear", "DequantizeLinear", "MaxPool", "Squeeze", "Flatten", "Concat", "Softmax", "Cast", "Gather", "Gemm", "Greater", "Less", "Slice", "Transpose", "Relu", "Clip"]
 
@@ -139,34 +95,7 @@ class QCDQToQOp(Transformation):
                 if helper.is_child_present(gemm_node, 0, 0) and gemm_node.o().op == "Softmax":
                     continue
                 gemm_input_node = gemm_node.i()
-                if gemm_input_node.op == "DequantizeLinear":
-
-                    if gemm_node.inputs[1].inputs[0].op == "DequantizeLinear":
-                        w_dql_node = gemm_node.inputs[1].inputs[0]
-                        is_weight_quantized = True if len(w_dql_node.inputs[0].inputs) == 0 else False
-                        if is_weight_quantized:
-                            wt_tensor = w_dql_node.inputs[0]
-                        else:
-                            w_ql_node = w_dql_node.i()
-                            wt_tensor = w_ql_node.inputs[0]
-                        org = wt_tensor.values
-                        new_shape = org.shape + (1,1)
-                        new = np.reshape(org, new_shape)
-                        if is_weight_quantized:
-                            w_dql_node.inputs[0] = gs.Constant(name=w_dql_node.inputs[0].name, values = new.astype(np.int8))
-                        else:
-                            w_ql_node.inputs[0] = gs.Constant(name=w_ql_node.inputs[0].name, values = new.astype(np.float32))
-
-                    gemm_node.op = "Conv"
-                    new_attrs = {
-                        "dilations":[1,1],
-                        "group":1,
-                        "kernel_shape":[1,1],
-                        "pads":[0,0,0,0],
-                        "strides":[1,1]
-                    }
-                    gemm_node.attrs = new_attrs
-                elif gemm_input_node.op == "Flatten":
+                if gemm_input_node.op == "Flatten":
                     flatten_node = gemm_input_node
                     flatten_dql_node = flatten_node.i()
                     flatten_dql_node.outputs = flatten_node.outputs
@@ -317,16 +246,7 @@ class QCDQToQOp(Transformation):
                 if helper.is_parent_exist(node, 0, 0) and helper.is_child_present(node, 0, 0):
                     parent_node = node.i()
                     child_node = node.o()
-                    if len(parent_node.outputs[0].outputs) == 1 and parent_node.op == "DequantizeLinear" and child_node.op == "QuantizeLinear":
-                        dql_node = parent_node
-                        dql_parent = dql_node.i()
-                        dql_parent.outputs = dql_node.outputs
-                        dql_node.outputs.clear()
-
-                        ql_node = child_node
-                        node.outputs = ql_node.outputs
-                        ql_node.outputs.clear()
-                    elif len(parent_node.outputs[0].outputs) == 1 and parent_node.op == "DequantizeLinear" and child_node.op == "Conv":
+                    if len(parent_node.outputs[0].outputs) == 1 and parent_node.op == "DequantizeLinear" and child_node.op == "Conv":
                         dql_node = parent_node
                         dql_parent = dql_node.i()
                         node.inputs[0] = dql_parent.outputs[0]
@@ -334,56 +254,6 @@ class QCDQToQOp(Transformation):
                         conv_node1 = child_node
                         dql_node.inputs[0] = node.outputs[0]
                         conv_node1.inputs[0] = dql_node.outputs[0]
-
-            # add Squeeze as input to last DequantizeLinear node
-            if squeeze_output and node.op == "DequantizeLinear" and ((len(node.outputs[0].outputs) == 0) or (len(node.outputs[0].outputs)==1 and (node.o().op == "Softmax") and len(node.o().outputs[0].outputs)==0)):
-
-                squeeze_dim = [2, 3]
-
-                Y1 = gs.Variable(name="sq_output" + node.name, dtype=np.int8)
-                parent_node = node.i()
-
-                X1 = parent_node.outputs[0]
-                X2 = gs.Constant(name="axes" + node.name, values=(np.array(squeeze_dim)).astype(np.int64))
-
-                squeeze_node = gs.Node(op="Squeeze", name="squeeze_node" + node.name, inputs=[X1, X2], outputs=[Y1])
-
-                node.inputs[0] = squeeze_node.outputs[0]
-                graph.nodes.append(squeeze_node)
-
-            # Retinanet case
-            if node.op == "DequantizeLinear":
-                if helper.is_parent_exist(node, 0, 0):
-                    dql_parent = node.i()
-                if len(node.outputs) > 0  and len(node.outputs[0].outputs) > 1:
-                    for i in range(len(node.outputs[0].outputs)):
-                        # node.outputs[0].outputs[0].op is used instead of node.outputs[0].outputs[i].op because in each pass 1 child is removed
-                        if is_any_output_tensor_graph_output(node) or node.outputs[0].outputs[0].op == "Conv" or node.outputs[0].outputs[0].op == "Relu":
-                            child_node = node.outputs[0].outputs[0]
-                            s = gs.Constant(name=node.inputs[1].name + "_" + str(i), values=(node.inputs[1].values).astype(np.float32))
-                            zp = gs.Constant(name=node.inputs[2].name + "_" + str(i), values=(node.inputs[2].values).astype(node.inputs[2].dtype))
-                            y = gs.Variable(name=node.outputs[0].name + "_" + str(i), dtype=node.inputs[2].dtype)
-                            new_dql_node = gs.Node(op = "DequantizeLinear", name = node.name + "_" + str(i),  inputs = [node.i().outputs[0], s, zp], outputs = [y])
-
-                            for j in range(len(child_node.inputs)):
-                                if child_node.inputs[j].name == node.outputs[0].name:
-                                    child_node.inputs[j] = new_dql_node.outputs[0]
-                            graph.nodes.append(new_dql_node)
-
-                    # QL                                        QL-------DQL-------Conv
-                    # |                                         | \
-                    # |                                         |   \
-                    # DQL---------conv gets converted to        DQL  \
-                    # |                                         |    DQL
-                    # |                                         |
-                    # Conv                                      Conv
-                    # this extra DQL needs to be removed, when later we do graph.cleanup() this node gets removed but before cleanup if any case needs QL childs it will reflect 3 childs
-
-                    for i in range(len(dql_parent.outputs[0].outputs)):
-                        child_node = dql_parent.outputs[0].outputs[i]
-                        if not helper.is_child_present(child_node, 0, 0) and not is_any_output_tensor_graph_output(child_node):
-                            child_node.inputs.clear()
-                            break
 
             if node.op == "Gather" and node.o().op == "Transpose":
                 gather_node = node
@@ -444,18 +314,11 @@ class QCDQToQOp(Transformation):
         maxpool_count = 0
         conv_count = 0
 
-        def is_all_concat_input_dql(node):
-            for i in range(len(node.inputs)):
-                if helper.is_parent_exist(node, i, 0) and  node.inputs[i].inputs[0].op != "DequantizeLinear":
-                    return False
-            return True
-
         def concat_input_not_constant(node):
             for i in range(len(node.inputs)):
                 if len(node.inputs[i].inputs) == 0:
                     return True
             return False
-
 
         def all_dql_conditions_satisfy(node):
             has_output_ternsor = len(node.outputs) > 0
@@ -525,7 +388,7 @@ class QCDQToQOp(Transformation):
         for node in graph.nodes:
 
             if node.op == "Conv":
-                QLinearConv_node = QLinearConv(node, aecg_zendnn_opt, args.remove_relu, conv_count)
+                QLinearConv_node = QLinearConv(node, args.remove_relu, conv_count)
                 node_list.append(QLinearConv_node.get_node())
                 initializer_list.append(QLinearConv_node.get_intializers())
                 conv_count = conv_count + 1
@@ -534,7 +397,7 @@ class QCDQToQOp(Transformation):
                 node_list.append(QuantizeLinear_node.get_node())
                 initializer_list.append(QuantizeLinear_node.get_intializers())
             elif node.op == "DequantizeLinear" and all_dql_conditions_satisfy(node):
-                DequantizeLinear_node = DequantizeLinear(node, aecg_zendnn_opt, args.remove_relu)
+                DequantizeLinear_node = DequantizeLinear(node, args.remove_relu)
                 node_list.append(DequantizeLinear_node.get_node())
                 initializer_list.append(DequantizeLinear_node.get_intializers())
             elif node.op == "MaxPool":
@@ -549,9 +412,9 @@ class QCDQToQOp(Transformation):
                 flatten_node = Flatten(node)
                 node_list.append(flatten_node.get_node())
             elif node.op == "Concat":
-                concat_node = Concat(node, is_all_concat_input_dql(node))
+                concat_node = Concat(node)
                 node_list.append(concat_node.get_node())
-                if (is_all_concat_input_dql(node) or concat_input_not_constant(node)):
+                if (concat_input_not_constant(node)):
                     initializer_list.append(concat_node.get_intializers())
             elif node.op == "Softmax":
                 softmax_node = Softmax(node)

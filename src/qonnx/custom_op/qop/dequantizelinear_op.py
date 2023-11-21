@@ -29,7 +29,7 @@ import numpy as np
 
 class DequantizeLinear:
 
-    def __init__(self, node, aecg_zendnn_opt, remove_relu):
+    def __init__(self, node, remove_relu):
 
         dql_node = node
 
@@ -73,23 +73,18 @@ class DequantizeLinear:
         x_zp_name = dql_node.inputs[2].name
         x_zp_value = dql_node.inputs[2].values
 
-        if aecg_zendnn_opt:
+        if dql_node.inputs[2].dtype == np.uint8:
             x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                           tensor_array=x_zp_value,
-                                                           data_type=onnx.TensorProto.UINT8)
-        else:
-            if dql_node.inputs[2].dtype == np.uint8:
-                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                            tensor_array=x_zp_value,
-                                                            data_type=onnx.TensorProto.UINT8)
-            if dql_node.inputs[2].dtype == np.int32:
-                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                           tensor_array=x_zp_value,
-                                                           data_type=onnx.TensorProto.INT32)
-            elif dql_node.inputs[2].dtype == np.int8:
-                x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
-                                                            tensor_array=x_zp_value,
-                                                            data_type=onnx.TensorProto.INT8)
+                                                        tensor_array=x_zp_value,
+                                                        data_type=onnx.TensorProto.UINT8)
+        if dql_node.inputs[2].dtype == np.int32:
+            x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                       tensor_array=x_zp_value,
+                                                       data_type=onnx.TensorProto.INT32)
+        elif dql_node.inputs[2].dtype == np.int8:
+            x_zp_tensor = helper.create_initializer_tensor(name=x_zp_name,
+                                                        tensor_array=x_zp_value,
+                                                        data_type=onnx.TensorProto.INT8)
 
         y_name = dql_node.outputs[0].name
 

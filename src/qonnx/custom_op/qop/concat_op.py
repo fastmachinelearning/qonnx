@@ -28,7 +28,7 @@ from .helper import helper
 
 class Concat:
 
-    def __init__(self, node, is_all_concat_input_dql):
+    def __init__(self, node):
 
         concat_node = node
 
@@ -44,58 +44,15 @@ class Concat:
         input_names = []
 
         for i in range(number_of_inputs):
-            if is_all_concat_input_dql:
-                parent_dql_node = concat_node.inputs[i].inputs[0]
-                scale_values_list.append(parent_dql_node.inputs[1].values)
-                scale_name_list.append(parent_dql_node.inputs[1].name)
-                zp_value_list.append(parent_dql_node.inputs[2].values)
-                zp_name_list.append(parent_dql_node.inputs[2].name)
-                input_tensor_names.append(parent_dql_node.inputs[0].name)
-            else:
-                input_tensor_names.append(concat_node.inputs[i].name)
-                if len(concat_node.inputs[i].inputs) == 0:
-                    c_input = helper.create_initializer_tensor(name=concat_node.inputs[i].name,
-                                                               tensor_array=concat_node.inputs[i].values,
-                                                               data_type=onnx.TensorProto.INT64)
-                    intializer_list.append(c_input)
-                    self.intializer_list = intializer_list
+            input_tensor_names.append(concat_node.inputs[i].name)
+            if len(concat_node.inputs[i].inputs) == 0:
+                 c_input = helper.create_initializer_tensor(name=concat_node.inputs[i].name,
+                                                            tensor_array=concat_node.inputs[i].values,
+                                                            data_type=onnx.TensorProto.INT64)
+                 intializer_list.append(c_input)
+                 self.intializer_list = intializer_list
 
-        if is_all_concat_input_dql:
-            for i in range(number_of_inputs):
-                scale_tesnor = helper.create_initializer_tensor(name=scale_name_list[i],
-                                                                    tensor_array=scale_values_list[i],
-                                                                    data_type=onnx.TensorProto.FLOAT)
-                zp_tensor = helper.create_initializer_tensor(name=zp_name_list[i],
-                                                                    tensor_array=zp_value_list[i],
-                                                                    data_type=onnx.TensorProto.UINT8)
-                intializer_list.append(scale_tesnor)
-                intializer_list.append(zp_tensor)
-
-        if helper.is_child_present(concat_node, 0, 0) and concat_node.o().op == "DequantizeLinear" and is_all_concat_input_dql:
-            y_ql_node = concat_node.o()
-            y_name = y_ql_node.outputs[0].name
-        else:
-            y_name = concat_node.outputs[0].name
-
-        if helper.is_child_present(concat_node, 0, 0) and concat_node.o().op == "DequantizeLinear" and is_all_concat_input_dql:
-            y_scale_name = y_ql_node.inputs[1].name
-            y_scale_value = y_ql_node.inputs[1].values
-            y_zp_name = y_ql_node.inputs[2].name
-            y_zp_value = y_ql_node.inputs[2].values
-
-            y_scale_tensor = helper.create_initializer_tensor(name=y_scale_name,
-                                                            tensor_array=y_scale_value,
-                                                            data_type=onnx.TensorProto.FLOAT)
-            y_zp_tensor = helper.create_initializer_tensor(name=y_zp_name,
-                                                            tensor_array=y_zp_value,
-                                                            data_type=onnx.TensorProto.UINT8)
-
-            intializer_list.append(y_scale_tensor)
-            intializer_list.append(y_zp_tensor)
-            self.intializer_list = intializer_list
-
-            input_names.append(y_scale_tensor.name)
-            input_names.append(y_zp_tensor.name)
+        y_name = concat_node.outputs[0].name
 
         for i in range(number_of_inputs):
             input_names.append(input_tensor_names[i])
@@ -106,19 +63,11 @@ class Concat:
         kwargs = {}
         kwargs["domain"] = 'com.microsoft'
 
-        if is_all_concat_input_dql:
-            new_concat_node = onnx.helper.make_node(name = concat_node.name,
-                                                        op_type = "QLinearConcat",
-                                                        inputs = input_names,
-                                                        outputs = [y_name],
-                                                        axis = concat_node.attrs["axis"],
-                                                        **kwargs)
-        else:
-            new_concat_node = onnx.helper.make_node(name = concat_node.name,
-                                                        op_type = "Concat",
-                                                        inputs = input_names,
-                                                        outputs = [y_name],
-                                                        axis = concat_node.attrs["axis"])
+        new_concat_node = onnx.helper.make_node(name = concat_node.name,
+                                                    op_type = "Concat",
+                                                    inputs = input_names,
+                                                    outputs = [y_name],
+                                                    axis = concat_node.attrs["axis"])
 
         self.node = new_concat_node
 
