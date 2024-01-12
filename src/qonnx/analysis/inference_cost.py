@@ -209,6 +209,8 @@ def inference_cost(model, discount_sparsity=True):
         "MaxPool",
         "AveragePool",
         "Quant",
+        "QuantizeLinear",
+        "DequantizeLinear",
         "Reshape",
         "Concat",
         "Transpose",
@@ -223,6 +225,9 @@ def inference_cost(model, discount_sparsity=True):
         "Sigmoid",
         "Identity",
         "Flatten",
+        "Pad",
+        "Clip",
+        "Trunc",
     ]
     unsupported_ops = set()
     inference_cost_fxn_map = {

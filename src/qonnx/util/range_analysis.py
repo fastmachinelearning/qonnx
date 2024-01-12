@@ -127,6 +127,7 @@ def calc_matmul_range(node, model, range_dict):
 def calc_conv_range(node, model, range_dict):
     iname = node.input[0]
     wname = node.input[1]
+    assert len(node.input) == 2, "Found unsupported Conv with bias"
     oname = node.output[0]
     irange = range_dict[iname]
     imin, imax = irange
