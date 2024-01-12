@@ -60,13 +60,6 @@ def calculate_matvec_accumulator_extremum(matrix: np.ndarray, vec_min, vec_max):
     return (min_values, max_values)
 
 
-def propagate_range(node, model, range_dict):
-    iname = node.input[0]
-    node_irange = range_dict[iname]
-    for oname in node.output:
-        range_dict[oname] = node_irange
-
-
 def calc_gemm_range(node, model, range_dict):
     alpha = get_by_name(node.attribute, "alpha").f
     beta = get_by_name(node.attribute, "beta").f
@@ -240,11 +233,11 @@ def calc_range_outdtype(node, model, range_dict):
 
 
 optype_to_range_calc = {
-    "Transpose": propagate_range,
+    "Transpose": calc_monotonic_range,
     "MatMul": calc_matmul_range,
     "Conv": calc_conv_range,
     "QuantMaxNorm": calc_range_outdtype,
-    "Flatten": propagate_range,
+    "Flatten": calc_monotonic_range,
     "Reshape": calc_monotonic_range,
     "Quant": calc_monotonic_range,
     "BipolarQuant": calc_monotonic_range,
@@ -254,7 +247,7 @@ optype_to_range_calc = {
     "Add": calc_monotonic_range,
     "BatchNormalization": calc_monotonic_range,
     "Relu": calc_monotonic_range,
-    "Pad": propagate_range,
+    "Pad": calc_monotonic_range,
     "AveragePool": calc_monotonic_range,
     "Trunc": calc_range_outdtype,
     "MaxPool": calc_monotonic_range,
