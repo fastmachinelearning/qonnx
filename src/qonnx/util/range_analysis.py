@@ -363,8 +363,12 @@ def range_analysis(
             range_min = None
             range_max = None
         else:
-            irange = irange.split(",")
-            range_min, range_max = float(irange[0]), float(irange[1])
+            irange = eval(irange)
+            range_min, range_max = irange
+            if isinstance(range_min, list):
+                range_min = np.asarray(range_min, dtype=np.float32)
+            if isinstance(range_max, list):
+                range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
     else:
