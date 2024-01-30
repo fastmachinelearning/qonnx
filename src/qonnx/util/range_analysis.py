@@ -165,6 +165,45 @@ def calc_conv_range(node, model, range_dict):
     range_dict[oname] = ret
 
 
+def calc_convtranspose_range(node, model, range_dict):
+    iname = node.input[0]
+    wname = node.input[1]
+    assert len(node.input) == 2, "Found unsupported ConvTranspose with bias"
+    oname = node.output[0]
+    irange = range_dict[iname]
+    imin, imax = irange
+    weights = model.get_initializer(wname)
+    assert weights is not None, "Uninitialized ConvTranspose weights"
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
+    assert groups == 1, "Only dense (non-grouped) ConvTranspose is supported"
+    # do weight reshaping to treat Conv similar to MatMul
+    # (mh, mw) = (ofm, (ifm x k0 x k1 x ...))
+    conv_ofm = weights.shape[1]
+    conv_ifm = weights.shape[0]
+    weights = weights.transpose(1, 0, 2, 3).reshape(conv_ofm, -1)
+    k_total = weights.shape[1] // conv_ifm
+    if type(imin) is np.ndarray:
+        imin_rep = np.repeat(imin, k_total)
+        imax_rep = np.repeat(imax, k_total)
+    else:
+        imin_rep = imin
+        imax_rep = imax
+    dw_ret_min = []
+    dw_ret_max = []
+    for i in range(conv_ofm):
+        w_slice = weights[i, :].reshape(1, -1)
+        dw_ret = calculate_matvec_accumulator_extremum(w_slice, imin_rep, imax_rep)
+        dw_ret_min.append(dw_ret[0].item())
+        dw_ret_max.append(dw_ret[1].item())
+    ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
+    range_dict[oname] = ret
+
+
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
@@ -245,6 +284,7 @@ optype_to_range_calc = {
     "Transpose": calc_monotonic_range,
     "MatMul": calc_matmul_range,
     "Conv": calc_conv_range,
+    "ConvTranspose": calc_convtranspose_range,
     "QuantMaxNorm": calc_range_outdtype,
     "Flatten": calc_monotonic_range,
     "Reshape": calc_monotonic_range,
