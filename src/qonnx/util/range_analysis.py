@@ -204,11 +204,14 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         inp_vi = model.get_tensor_valueinfo(inp)
         proto_vectors.append(get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis))
     # process all combinations of prototype vectors for dynamic inputs
-    running_min = None
-    running_max = None
+    running_min = [None for i in range(len(node.output))]
+    running_max = [None for i in range(len(node.output))]
     # create context for single-node execution
     ctx = {x: model.get_initializer(x) for x in node.input}
-    ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
+    for oname in node.output:
+        ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
+    # assume all outputs are homogenous wrt data layout (e.g. channel axis
+    # always lives in the same position)
     axes_to_min = [i for i in range(ctx[oname].ndim)]
     axes_to_min.remove(i_channel_axis)
     axes_to_min = tuple(axes_to_min)
@@ -216,13 +219,19 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         for i in range(n_dyn_inp):
             ctx[dyn_inps[i]] = inps[i]
         execute_node(node, ctx, model.graph, opset_version=opset_version)
-        # grab new output and update running min/max
-        out = ctx[oname]
-        chanwise_min = out.min(axis=axes_to_min).flatten()
-        chanwise_max = out.max(axis=axes_to_min).flatten()
-        running_min = np.minimum(chanwise_min, running_min).flatten() if running_min is not None else chanwise_min
-        running_max = np.maximum(chanwise_max, running_max).flatten() if running_max is not None else chanwise_max
-    range_dict[oname] = (running_min, running_max)
+        for oind, oname in enumerate(node.output):
+            # grab new output and update running min/max
+            out = ctx[oname]
+            chanwise_min = out.min(axis=axes_to_min).flatten()
+            chanwise_max = out.max(axis=axes_to_min).flatten()
+            running_min[oind] = (
+                np.minimum(chanwise_min, running_min[oind]).flatten() if running_min[oind] is not None else chanwise_min
+            )
+            running_max[oind] = (
+                np.maximum(chanwise_max, running_max[oind]).flatten() if running_max[oind] is not None else chanwise_max
+            )
+    for oind, oname in enumerate(node.output):
+        range_dict[oname] = (running_min[oind], running_max[oind])
 
 
 def calc_range_outdtype(node, model, range_dict):
@@ -260,6 +269,7 @@ optype_to_range_calc = {
     "Clip": calc_monotonic_range,
     "Sigmoid": calc_monotonic_range,
     "Concat": calc_monotonic_range,
+    "Split": calc_monotonic_range,
 }
 
 
@@ -343,9 +353,8 @@ def range_analysis(
     for node in model.graph.node:
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
-        outcount_ok = len(node.output) == 1
         op_ok = node.op_type in optype_to_range_calc.keys()
-        if inprange_ok and op_ok and outcount_ok:
+        if inprange_ok and op_ok:
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]
