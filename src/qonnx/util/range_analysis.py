@@ -207,7 +207,7 @@ def calc_convtranspose_range(node, model, range_dict):
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
-    if type(irange[0]) in [float, int, np.float32, np.float64, np.uint8, np.int8]:
+    if type(irange[0]) in [float, int, np.float16, np.float32, np.float64, np.uint8, np.int8]:
         imin, imax = irange
         proto_min[...] = imin
         proto_max[...] = imax
