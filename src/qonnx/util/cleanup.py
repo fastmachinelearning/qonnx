@@ -63,16 +63,16 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
         preserve_qnt_optypes = []
 
     if override_inpsize is not None:
-        inpsize = eval(override_inpsize)
-        if type(inpsize) is int:
-            override_batchsize = inpsize
+        if type(override_inpsize) is str:
+            override_inpsize = eval(override_inpsize)
+        if type(override_inpsize) is int:
+            override_batchsize = override_inpsize
             model = model.transform(ChangeBatchSize(override_batchsize))
-        elif type(inpsize) is tuple:
-            override_batchsize = inpsize[0]
+        elif type(override_inpsize) is tuple:
+            override_batchsize = override_inpsize[0]
             model = model.transform(ChangeBatchSize(override_batchsize))
             iname = model.graph.input[0].name
-            model.set_tensor_shape(iname, inpsize)
-            model.save("dbg.onnx")
+            model.set_tensor_shape(iname, override_inpsize)
 
     cleanup_transformations = [
         InferShapes(),
