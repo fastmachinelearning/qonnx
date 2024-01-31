@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import warnings
-from onnx import TensorProto, helper
+from onnx import helper
 
 from qonnx.transformation.base import Transformation
 
@@ -65,7 +65,7 @@ class ExtractBiasFromConv(Transformation):
 
                     act_add_tensor = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
-                        TensorProto.FLOAT,
+                        model.get_tensor_valueinfo(n.output[0]).type.tensor_type.elem_type,
                         out_shape,
                     )
                     graph.value_info.append(act_add_tensor)
