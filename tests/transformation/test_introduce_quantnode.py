@@ -81,7 +81,7 @@ def download_model(test_model, do_cleanup=False, return_modelwrapper=False):
         urllib.request.urlretrieve(qonnx_url, dl_file)
     if do_cleanup:
         out_file = dl_dir + f"/{test_model}_clean.onnx"
-        cleanup(dl_file, out_file=out_file, override_batchsize=1)
+        cleanup(dl_file, out_file=out_file, override_inpsize=1)
         ret = out_file
     if return_modelwrapper:
         ret = ModelWrapper(ret)
