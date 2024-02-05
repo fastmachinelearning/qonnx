@@ -180,32 +180,30 @@ class graph_util:
         return model
 
 
-class IntroduceQuantnode(Transformation):
-    """This transformation can be used to introduce a Quant node for a specific type of node in the graph.
-    Users would be able to specify the location of the quant node by providing the input and output indexs
-    as the parameters.
+class QuantizeGraph(Transformation):
+    """This transformation can be used to introduce a Quant node for particular nodes in the graph,
+    determined based on either op_type or node name.
+    For the particular nodes identified, users can specify the location of the Quant nodes by providing
+    the input and output indices where Quant nodes are to be inserted.
+    Assumes the input model is cleaned-up with all intermediate shapes specified and nodes given
+    unique names already.
 
-             1) Expectations:
-                a) Onnx model in the modelwraper format.
-                b) Model must be cleaned using cleanup_model qonnx.util.cleanup.cleanup_model()
-                c) Batchsize to be set.
+        2) Steps to transform are
+            Step1: Finding the input for the quant node.
+            Step2: Finding the consumer of the quant node output.
+            Step3: Finding the shape for the output tensor of quant node.
+            Note: The output tensor of the quant node must have the same shape as the
+                    consumer of the input to the quant node.
 
-            2) Steps to transform are
-                Step1: Finding the input for the quant node.
-                Step2: Finding the consumer of the quant node output.
-                Step3: Finding the shape for the output tensor of quant node.
-                Note: The output tensor of the quant node must have the same shape as the
-                      consumer of the input to the quant node.
+        3) Introduction to quantnodes will be done with precedence to "Name" in comparison to "op_type".
 
-            3) Introduction to quantnodes will be done with precedence to "Name" in comparison to "op_type".
+        4) Assert:
+            a) The input is a dictionary representing the node names as keys and a list of quant positions
+                as values.
+            b) The input dictionary must have atleast one mac node (Conv, gemm, matmul) for the transformation.
 
-            4) Assert:
-                a) The input is a dictionary representing the node names as keys and a list of quant positions
-                   as values.
-                b) The input dictionary must have atleast one mac node (Conv, gemm, matmul) for the transformation.
-
-            5) Return:
-                Returns a cleaned version of the model.
+        5) Return:
+            Returns a cleaned version of the model.
 
     """
 

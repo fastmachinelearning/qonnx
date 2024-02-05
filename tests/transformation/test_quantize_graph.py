@@ -33,7 +33,7 @@ import random
 import urllib.request
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.introduce_quantnode import IntroduceQuantnode, graph_util
+from qonnx.transformation.quantize_graph import QuantizeGraph, graph_util
 from qonnx.util.cleanup import cleanup
 from qonnx.util.inference_cost import inference_cost
 
@@ -41,13 +41,13 @@ random.seed(42)
 
 graph_util = graph_util()
 
-a = "https://github.com/onnx/models/raw/main/validated/vision/"
-b = "classification/resnet/model/resnet18-v1-7.onnx?download="
+download_url = "https://github.com/onnx/models/raw/main/validated/vision/"
+download_url += "classification/resnet/model/resnet18-v1-7.onnx?download="
 
 model_details = {
     "resnet18-v1-7": {
         "description": "Resnet18 Opset version 7.",
-        "url": (a + b),
+        "url": download_url,
         "test_input": {
             "name": {
                 "Conv_0": [
@@ -124,7 +124,7 @@ def test_introduce_quantnode(test_model):
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
     original_model_inf_cost = inference_cost(model, discount_sparsity=False)
     nodes_pos = test_details["test_input"]
-    model = model.transform(IntroduceQuantnode(nodes_pos))
+    model = model.transform(QuantizeGraph(nodes_pos))
     quantnodes_added = len(model.get_nodes_by_op_type("Quant"))
     assert quantnodes_added == 10  # 10 positions are specified.
     verification = to_verify(model, nodes_pos)
