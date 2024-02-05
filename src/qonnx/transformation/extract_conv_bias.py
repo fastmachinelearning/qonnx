@@ -27,15 +27,15 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import warnings
-from onnx import TensorProto, helper
+from onnx import helper
 
 from qonnx.transformation.base import Transformation
 
 
 class ExtractBiasFromConv(Transformation):
     """
-    Extracts the (optional) Bias from a Conv node and inserts it behind the
-    Conv node as an Add node.
+    Extracts the (optional) Bias from a Conv(Transpose) node and inserts it behind the
+    Conv(Transpose) node as an Add node.
     """
 
     def apply(self, model):
@@ -43,13 +43,13 @@ class ExtractBiasFromConv(Transformation):
         node_ind = 0
         for n in graph.node:
             node_ind += 1
-            if n.op_type == "Conv":
+            if n.op_type in ["Conv", "ConvTranspose"]:
                 # Check if the node has a bias input
                 if len(n.input) > 2:
                     # Extract bias
                     bias = model.get_initializer(n.input[2])
                     if bias is None:
-                        warnings.warn(f"Could not extract bias from Conv node {n}")
+                        warnings.warn(f"Could not extract bias from node {n}")
                         continue
 
                     # Insert bias as Add node behind the Conv node
@@ -65,7 +65,7 @@ class ExtractBiasFromConv(Transformation):
 
                     act_add_tensor = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
-                        TensorProto.FLOAT,
+                        model.get_tensor_valueinfo(n.output[0]).type.tensor_type.elem_type,
                         out_shape,
                     )
                     graph.value_info.append(act_add_tensor)
