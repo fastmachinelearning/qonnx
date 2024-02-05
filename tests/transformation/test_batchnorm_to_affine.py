@@ -41,7 +41,7 @@ from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
-download_url = "https://github.com/onnx/models/raw/main/vision/classification"
+download_url = "https://github.com/onnx/models/raw/main/validated/vision/classification"
 download_url += "/shufflenet/model/shufflenet-9.onnx"
 export_onnx_path = download_url.split("/")[-1]
 
