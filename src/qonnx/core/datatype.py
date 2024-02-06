@@ -144,6 +144,36 @@ class FloatType(BaseDataType):
     def get_canonical_name(self):
         return "FLOAT32"
 
+class Float16Type(BaseDataType):
+    def bitwidth(self):
+        return 16
+
+    def min(self):
+        return np.finfo(np.float16).min
+
+    def max(self):
+        return np.finfo(np.float16).max
+
+    def allowed(self, value):
+        return True
+
+    def get_num_possible_values(self):
+        raise Exception("Undefined for Float16Type")
+
+    def is_integer(self):
+        return False
+
+    def is_fixed_point(self):
+        return False
+
+    def get_hls_datatype_str(self):
+        return "float"
+
+    def to_numpy_dt(self):
+        return np.float16
+
+    def get_canonical_name(self):
+        return "FLOAT16"
 
 class IntType(BaseDataType):
     def __init__(self, bitwidth, signed):
@@ -349,6 +379,7 @@ def resolve_datatype(name):
         "BIPOLAR": BipolarType(),
         "TERNARY": TernaryType(),
         "FLOAT32": FloatType(),
+        "FLOAT16": Float16Type(),
     }
     if name in _special_types.keys():
         return _special_types[name]
