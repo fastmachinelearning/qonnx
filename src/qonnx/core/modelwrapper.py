@@ -542,6 +542,15 @@ class ModelWrapper:
         except ValueError:
             return None
 
+    def get_node_from_name(self, node_name):
+        """Returns the node with the specified name."""
+        try:
+            for node in self.graph.node:
+                if node.name == node_name:
+                    return node
+        except ValueError:
+            return None
+
     def get_tensor_layout(self, tensor_name):
         """Returns the data layout annotation of tensor with given name.
         The data layout is expressed as a list of strings with as many

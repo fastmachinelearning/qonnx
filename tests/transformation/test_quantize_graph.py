@@ -33,13 +33,11 @@ import random
 import urllib.request
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.quantize_graph import QuantizeGraph, graph_util
+from qonnx.transformation.quantize_graph import QuantizeGraph
 from qonnx.util.cleanup import cleanup
 from qonnx.util.inference_cost import inference_cost
 
 random.seed(42)
-
-graph_util = graph_util()
 
 download_url = "https://github.com/onnx/models/raw/main/validated/vision/"
 download_url += "classification/resnet/model/resnet18-v1-7.onnx?download="
@@ -93,11 +91,11 @@ def to_verify(model, test_details):
 
     if by == "name":
         sample_node_name = random.choice(list(test_details["name"].keys()))
-        sample_node = graph_util.node_from_name(model, sample_node_name)
+        sample_node = model.node_from_name(model, sample_node_name)
         sample_pos = random.choice(test_details["name"][sample_node_name])
     if by == "op_type":
         node_type = random.choice(list(test_details["op_type"].keys()))
-        sample_node = random.choice(graph_util.identify_nodes(model, node_type))
+        sample_node = random.choice(model.get_nodes_by_op_type(node_type))
         sample_pos = random.choice(test_details["op_type"][node_type])
 
     if sample_pos[0][0] == "input":
@@ -119,7 +117,7 @@ def to_verify(model, test_details):
 
 
 @pytest.mark.parametrize("test_model", model_details.keys())
-def test_introduce_quantnode(test_model):
+def test_quantize_graph(test_model):
     test_details = model_details[test_model]
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
     original_model_inf_cost = inference_cost(model, discount_sparsity=False)
