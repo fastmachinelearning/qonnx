@@ -69,6 +69,14 @@ def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
             total_mem_elems += v
     return total_mem_bits, total_mem_elems
 
+def assign_mem_bits_and_elems(res_dict):
+    mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(res_dict, "mem_w")
+    mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(res_dict, "mem_o")
+    res_dict["total_mem_w_bits"] = mem_w_bits
+    res_dict["total_mem_w_elems"] = mem_w_elems
+    res_dict["total_mem_o_bits"] = mem_o_bits
+    res_dict["total_mem_o_elems"] = mem_o_elems
+    return res_dict
 
 def inference_cost(
     model_filename_or_wrapper,
@@ -114,14 +122,9 @@ def inference_cost(
     for i, res in ret.items():
         if i == "total_cost":
             bops, macs = compute_bops_and_macs(res)
-            mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(res, "mem_w")
-            mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(res, "mem_o")
+            res = assign_mem_bits_and_elems(res)
             res["total_bops"] = bops
             res["total_macs"] = macs
-            res["total_mem_w_bits"] = mem_w_bits
-            res["total_mem_w_elems"] = mem_w_elems
-            res["total_mem_o_bits"] = mem_o_bits
-            res["total_mem_o_elems"] = mem_o_elems
             if "unsupported" in res:
                 res["unsupported"] = str(res["unsupported"])
             if output_json is not None:
@@ -132,30 +135,19 @@ def inference_cost(
             per_optype_breakdown = {}
             for optype, op_res in res.items():
                 bops, macs = compute_bops_and_macs(op_res)
-                mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(op_res, "mem_w")
-                mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(op_res, "mem_o")
+                op_res = assign_mem_bits_and_elems(op_res)
                 op_res["total_bops"] = bops
                 op_res["total_macs"] = macs
-                op_res["total_mem_w_bits"] = mem_w_bits
-                op_res["total_mem_w_elems"] = mem_w_elems
-                op_res["total_mem_o_bits"] = mem_o_bits
-                op_res["total_mem_o_elems"] = mem_o_elems
                 per_optype_breakdown[optype] = op_res
             combined_results[i] = per_optype_breakdown
         else:
             per_node_breakdown = {}
             for node_name in res.keys():
-                node_cost = res[node_name]
-                mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(node_cost, "mem_w")
-                mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(node_cost, "mem_o")
-                node_cost["total_mem_w_bits"] = mem_w_bits
-                node_cost["total_mem_w_elems"] = mem_w_elems
-                node_cost["total_mem_o_bits"] = mem_o_bits
-                node_cost["total_mem_o_elems"] = mem_o_elems
-                per_node_breakdown[node_name] = node_cost
+                node_res = res[node_name]
+                node_res = assign_mem_bits_and_elems(node_res)
+                per_node_breakdown[node_name] = node_res
             combined_results[i] = per_node_breakdown
     return combined_results
-
 
 def main():
     clize.run(inference_cost)
