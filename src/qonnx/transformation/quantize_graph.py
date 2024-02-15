@@ -140,15 +140,15 @@ def adjust_graph(model, input_positions, node_name, quantized_nodes):
 
 class QuantizeGraph(Transformation):
     """This transformation can be used to introduce a Quant node for a specific type of node in the graph.
-    Users would be able to specify the location of the quant node by providing the input and output indexs
+    Users would be able to specify the location of the quant node by providing the input and output index
     as the parameters.
 
         1) Expectations:
             a) Onnx model in the modelwraper format.
-            b) Model must be cleaned using cleanup_model qonnx.util.cleanup.cleanup_model()
+            b) Model must be cleaned using qonnx.util.cleanup.cleanup_model()
             c) Batchsize to be set.
 
-        2) S.teps to transform are:
+        2) Steps to transform are:
             Step1: Finding the input for the quant node.
             Step2: Finding the consumer of the quant node output.
             Step3: Finding the shape for the output tensor of quant node.
@@ -157,7 +157,7 @@ class QuantizeGraph(Transformation):
 
         3) Input:
             A dict "quantnode_map" specifying the criterion, positions, and input parameters like
-            scale, bitwidth, zeropoint, and others for the particular quantnode.
+            scale, bitwidth, zeropoint, and others for a specific quantnode.
 
             Criterion:
                 a) name: This will allow users to add quant nodes for specific node like "Conv_0" and "Gemm_0".
@@ -171,9 +171,9 @@ class QuantizeGraph(Transformation):
                                     in comparison to "op_type".
 
             Positions:  ("input", index) or  ("output", index)
-                a) "input":  specifies that the user want to quantize the input of the selected node.
-                b) "output": specifies that the user want to quantize the input of the selected node.
-                c) index: specifies which input/output to quantize (as a node can have multiple inputs and outputs)
+                a) "input":  indicates that the user want to quantize the input of the selected node.
+                b) "output": indicates that the user want to quantize the output of the selected node.
+                c) index: refers to the input/output index to quantize (a node can have multiple inputs and outputs)
 
             Parameters (to quant node) are provided as (scale, zeropoint, bitwidth, narrow, signed, rounding_mode)
 

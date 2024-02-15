@@ -91,7 +91,7 @@ def to_verify(model, test_details):
 
     if by == "name":
         sample_node_name = random.choice(list(test_details["name"].keys()))
-        sample_node = model.node_from_name(model, sample_node_name)
+        sample_node = model.get_node_from_name(sample_node_name)
         sample_pos = random.choice(test_details["name"][sample_node_name])
     if by == "op_type":
         node_type = random.choice(list(test_details["op_type"].keys()))
