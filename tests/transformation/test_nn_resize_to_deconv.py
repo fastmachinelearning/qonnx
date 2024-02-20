@@ -94,7 +94,7 @@ def test_resize_conv_to_deconv_quant_model(maintain_bit_width: bool):
     # shouldn't be expected to maintain reasonable functional similarity
     if not maintain_bit_width:
         assert np.isclose(
-            output_deconv, output_resize_conv, atol=1 / 255.0, rtol=1.
+            output_deconv, output_resize_conv, atol=1 / 255.0, rtol=1.0
         ).all(), "Error: expected output does not match the produced output."
 
 
@@ -108,7 +108,7 @@ def create_nn_resize_conv_model(
     ifm_dim = input_dim
     ofm_dim = ifm_dim * upscale_factor
     ofm_ch = out_channels
-    scales = np.array([1., 1., upscale_factor, upscale_factor], dtype=np.float32)
+    scales = np.array([1.0, 1.0, upscale_factor, upscale_factor], dtype=np.float32)
 
     resize = oh.make_node(
         "Resize",
