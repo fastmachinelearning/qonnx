@@ -144,6 +144,7 @@ class FloatType(BaseDataType):
     def get_canonical_name(self):
         return "FLOAT32"
 
+
 class Float16Type(BaseDataType):
     def bitwidth(self):
         return 16
@@ -174,6 +175,7 @@ class Float16Type(BaseDataType):
 
     def get_canonical_name(self):
         return "FLOAT16"
+
 
 class IntType(BaseDataType):
     def __init__(self, bitwidth, signed):

@@ -27,19 +27,19 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-import pytest
-import qonnx
 from pkgutil import get_data
+
 import qonnx.util.inference_cost as infc
-from qonnx.util.cleanup import cleanup_model
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.util.cleanup import cleanup_model
 
 
 def test_matmul_mac_cost():
-    raw_model = get_data("qonnx","data/onnx/matmul_update/sdp.onnx")
+    raw_model = get_data("qonnx", "data/onnx/matmul_update/sdp.onnx")
     model = ModelWrapper(raw_model)
     cleaned_model = cleanup_model(model)
-    # Two Matmul layers with shape (i_shape, w_shape, o_shape), L1: ([4, 64, 32], [4, 32, 64], [4, 64, 64]) and L2: ([4, 64, 64], [4, 64, 32], [4, 64, 32])
+    # Two Matmul layers with shape (i_shape, w_shape, o_shape), L1: ([4, 64, 32], [4, 32, 64], [4, 64, 64])
+    # and L2: ([4, 64, 64], [4, 64, 32], [4, 64, 32])
     inf_cost_dict = infc.inference_cost(cleaned_model, discount_sparsity=False)
-    mac_cost = inf_cost_dict['op_mac_FLOAT32_FLOAT32'] # Expected mac cost 4*32*64*64 + 4*64*64*32 = 1048576
+    mac_cost = inf_cost_dict["op_mac_FLOAT32_FLOAT32"]  # Expected mac cost 4*32*64*64 + 4*64*64*32 = 1048576
     assert mac_cost == 1048576.0, "Error: discrepancy in mac cost."
