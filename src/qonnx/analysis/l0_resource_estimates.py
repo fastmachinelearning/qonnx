@@ -59,6 +59,11 @@ from qonnx.core.datatype import DataType
                     For Floating Points
                         1) FLOAT32:  1 mac count requires 1 dsp.
                         2) FLOAT16: 1 mac count requires 1 dsp.
+    Mapping strategy for On-Chip Memory (bits_per_res):
+                        a) 1 "BRAM", 1 "BRAM36" and 1 "BRAM_36K" can accomodate 36*1024 = 36864 bits.
+                        b) 1 "BRAM_18K" can accomodate 18*1024 = 18432 bits.
+                        c) 1 "URAM" can accomodate 288*1024 = 294912 bits.
+                        d) 1 LUT can accomodate 64 bits.
 """
 resource_table = {
     "FLOAT32": {"NONE": (0, 1100), "DSP48": (2, 700), "DSP58": (1, 0)},
@@ -69,38 +74,33 @@ resource_table = {
     "INT4": {"NONE": (0, 18), "DSP48": (0.25, 50), "DSP58": (0.25, 0)},
 }
 
+bits_per_res = {"BRAM": 36864, "BRAM36": 36864, "BRAM_36K": 36864, "BRAM_18K": 18432, "URAM": 294912, "LUT": 64}
 
-def resource_distribution(num_mem_bits, bram_type, d_fator):
+
+def resource_distribution(num_mem_bits, uram_type, bram_type, d_factor):
     """Distributes on chip memory between BRAM and URAM based on the distribution factor.
     Args:
-            num_mem_bits (int): Number of memory bits.
-            d_factor (float): Distribution factor between 0 and 1.
-                             To distribute memory between BRAM and URAM.
-            bram_type (str): can be BRAM, BRAM36, BRAM_36K,BRAM_18K.
+        num_mem_bits (int): Number of memory bits.
+        d_factor (float): Distribution factor between 0 and 1.
+                         To distribute memory between BRAM and URAM.
+        bram_type (str): can be BRAM, BRAM36, BRAM_36K,BRAM_18K.
     Returns:
-            A dictionary containing memory requirements for brams and urams
+        A dictionary containing memory requirements for brams and urams
     """
-
-    uram_type = "URAM"
-
-    if d_fator == 1:  # everything in uram.
-        uram_req = num_mem_bits / (288 * 1024)  # URAM: 288kbit/URAM
+    if d_factor is None:
+        luts_req = num_mem_bits / bits_per_res["LUT"]  # neither bram nor uram.
+        ocm_res = {"LUT": luts_req}
+    elif d_factor == 1:  # everything in uram.
+        uram_req = num_mem_bits / bits_per_res[uram_type]  # URAM: 288kbit/URAM
         ocm_res = {uram_type: uram_req}
-    elif d_fator == 0:  # everything in brams (BRAM_18K/BRAM/BRAM36/BRAM_36K)
-        if bram_type in ["BRAM", "BRAM36", "BRAM_36K"]:
-            bram_req = num_mem_bits / (36 * 1024)  # BRAM: 36Kbit/BRAM
-        else:
-            bram_req = num_mem_bits / (18 * 1024)  # BRAM_18K: 18Kbit/BRAM
+    elif d_factor == 0:  # everything in bram (BRAM_18K/BRAM/BRAM36/BRAM_36K)
+        bram_req = num_mem_bits / bits_per_res[bram_type]
         ocm_res = {bram_type: bram_req}
     else:  # both bram and uram.
-        uram_por, bram_por = d_fator, 1 - d_fator
-        if bram_type in ["BRAM", "BRAM36", "BRAM_36K"]:
-            bram_req = (bram_por * num_mem_bits) / (36 * 1024)  # BRAM: 36Kbit/BRAM
-        else:
-            bram_req = (bram_por * num_mem_bits) / (18 * 1024)  # BRAM_18K: 18Kbit/BRAM
-        uram_req = (uram_por * num_mem_bits) / (288 * 1024)
+        uram_por, bram_por = d_factor, 1 - d_factor
+        bram_req = (bram_por * num_mem_bits) / bits_per_res[bram_type]
+        uram_req = (uram_por * num_mem_bits) / bits_per_res[uram_type]
         ocm_res = {bram_type: bram_req, uram_type: uram_req}
-
     return ocm_res
 
 
@@ -157,7 +157,9 @@ def dtype_casting(dtype1, dtype2, b_width1, b_width2):
     return dtype
 
 
-def l0_resource_estimates(inf_cost, dsp_type=None, bram_type="BRAM", bwidth_lower_limit=8, bwidth_upper_limit=32, d_fator=1):
+def l0_resource_estimates(
+    inf_cost, dsp_type=None, uram_type=None, bram_type=None, bwidth_lower_limit=8, bwidth_upper_limit=32, d_factor=None
+):
     """Provide estimate resources required for the processing ("CORE") and memory ("OCM"), assuming maximum unfolding.
     Args:
         resource_table (dict): Defining the resources required.
@@ -170,9 +172,6 @@ def l0_resource_estimates(inf_cost, dsp_type=None, bram_type="BRAM", bwidth_lowe
     Returns:
         A dictionary containing CORE and OCM resource estimates."""
 
-    bram_type = bram_type.upper()
-    if dsp_type is not None:
-        dsp_type = dsp_type.upper()
     dsp_res_mac = 0
     lut_res_mac = 0
 
@@ -209,7 +208,7 @@ def l0_resource_estimates(inf_cost, dsp_type=None, bram_type="BRAM", bwidth_lowe
 
         elif i == "total_mem_w_bits":
             num_mem_bits = inf_cost["total_mem_w_bits"]
-            ocm_res = resource_distribution(num_mem_bits, bram_type, d_fator)
+            ocm_res = resource_distribution(num_mem_bits, uram_type, bram_type, d_factor)
         else:
             continue
 

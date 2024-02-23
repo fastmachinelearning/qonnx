@@ -60,53 +60,83 @@ resource_map = {
         "DSP48": 0.80,
         "DSP58": 0.80,
     },
-    "enc_lut": {"BRAM": 576, "BRAM36": 576, "BRAM_36K": 576, "BRAM_18K": 288, "URAM": 4608},
+    "bits_per_res": {"BRAM": 36864, "BRAM36": 36864, "BRAM_36K": 36864, "BRAM_18K": 18432, "URAM": 294912, "LUT": 64},
 }
+
+
+def d_fact(resource_budget, bits_per_res, uram_type, bram_type):
+    "Determining the d_factor for l0_resource_estimates."
+    if uram_type == bram_type is None:
+        d_factor = None
+    elif uram_type is None and bram_type is not None:
+        d_factor = 0
+    elif bram_type is None and uram_type is not None:
+        d_factor = 1
+    else:
+        available_bits_uram = resource_budget[uram_type] * bits_per_res[uram_type]
+        available_bits_bram = resource_budget[bram_type] * bits_per_res[bram_type]
+        d_factor = available_bits_uram / (available_bits_uram + available_bits_bram)
+    return d_factor
 
 
 def l0_performance_estimate(
     resource_budget,
     inf_cost,
     dsp_type=None,
-    bram_type="BRAM",
+    uram_type=None,
+    bram_type=None,
     bwidth_lower_limit=8,
     bwidth_upper_limit=32,
-    d_fator=1,
     clock_freq=3000000,
 ):
     expected_inference = {}
-    res_limit, enc_lut = resource_map["res_limit"], resource_map["enc_lut"]
-    est_res_req = l0_resource_estimates(inf_cost, dsp_type, bram_type, bwidth_lower_limit, bwidth_upper_limit, d_fator)
+    res_limit, bits_per_res = resource_map["res_limit"], resource_map["bits_per_res"]
+    d_factor = d_fact(resource_budget, bits_per_res, uram_type, bram_type)
+    est_res_req = l0_resource_estimates(
+        inf_cost, dsp_type, uram_type, bram_type, bwidth_lower_limit, bwidth_upper_limit, d_factor
+    )
     ocm_res_req, core_res_req = est_res_req["OCM"], est_res_req["CORE"]
     luts_for_mem = (1 - res_limit["LUT"]) * resource_budget["LUT"]  # some amount of LUTs for memory requirement.
 
     for type, res in ocm_res_req.items():
-        if type in resource_budget.keys():
-            resource_tally = res_limit[type] * resource_budget[type] - res
-            if resource_tally >= 0:  # do param fit on ocm.
-                memory_check = True
-            else:
-                luts_req = enc_lut[type] * abs(resource_tally)
-                resource_tally = res_limit["LUT"] * luts_for_mem - luts_req
-                if resource_tally >= 0:
-                    print(f"{type} out of budget, using luts")
-                    memory_check = True
-                    luts_for_mem = luts_for_mem - luts_req
-                else:
-                    luts_for_mem = 0
-                    memory_check = False
-                    break
-        else:
-            luts_req = enc_lut[type] * res
-            resource_tally = res_limit["LUT"] * (luts_for_mem - luts_req)
+        if type == "LUT":
+            luts_req = res
+            resource_tally = luts_for_mem - luts_req
             if resource_tally >= 0:
-                print(f"{type} not available in the budget, using luts")
                 luts_for_mem = luts_for_mem - luts_req
                 memory_check = True
             else:
                 luts_for_mem = 0
                 memory_check = False
                 break
+        else:
+            if type in resource_budget.keys():
+                resource_tally = (res_limit[type] * resource_budget[type]) - res
+                if resource_tally >= 0:  # do param fit on ocm.
+                    memory_check = True
+                else:
+                    luts_req = (bits_per_res[type] / bits_per_res["LUT"]) * abs(resource_tally)
+                    resource_tally = (res_limit["LUT"] * luts_for_mem) - luts_req
+                    if resource_tally >= 0:
+                        print(f"{type} out of budget, using luts")
+                        memory_check = True
+                        luts_for_mem = luts_for_mem - luts_req
+                    else:
+                        luts_for_mem = 0
+                        memory_check = False
+                        break
+            else:
+                luts_req = (bits_per_res[type] / bits_per_res["LUT"]) * res
+                resource_tally = luts_for_mem - luts_req
+                if resource_tally >= 0:
+                    print(f"{type} not available in the budget, using luts")
+                    luts_for_mem = luts_for_mem - luts_req
+                    memory_check = True
+                else:
+                    luts_for_mem = 0
+                    memory_check = False
+                    break
+
     if memory_check is True:
         for i in core_res_req.keys():
             inf_sec = ((res_limit[i] * resource_budget[i]) / core_res_req[i]) * clock_freq

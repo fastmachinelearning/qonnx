@@ -35,7 +35,7 @@ from qonnx.analysis.l0_resource_estimates import l0_resource_estimates
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup
 from qonnx.util.inference_cost import inference_cost
-from qonnx.util.l0_performance_estimate import l0_performance_estimate
+from qonnx.util.l0_performance_estimate import d_fact, l0_performance_estimate
 
 download_url = "https://github.com/onnx/models/raw/main/validated/vision/"
 download_url += "classification/resnet/model/resnet18-v1-7.onnx?download="
@@ -46,6 +46,7 @@ model_details = {
         "url": download_url,
         "r_bdgt1": {"LUT": 375000, "BRAM_18K": 1152, "URAM": 300, "DSP48": 2800},
         "r_bdgt2": {"LUT": 375000, "BRAM_18K": 11520, "URAM": 1200, "DSP48": 2800},  # created for the test.
+        "bits_per_res": {"BRAM": 36864, "BRAM36": 36864, "BRAM_36K": 36864, "BRAM_18K": 18432, "URAM": 294912, "LUT": 64},
         "res_limit": {
             "LUT": 0.7,
             "BRAM": 0.80,
@@ -91,32 +92,36 @@ def performance_check(test_model, r_bdgt, core_res_req, clock_freq):
 
 @pytest.mark.parametrize("test_model", model_details.keys())
 def test_l0_performance_estimate(test_model):
-    test_details = model_details[test_model]
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
     inf_cost = inference_cost(model, discount_sparsity=False)
-    res_est_req = l0_resource_estimates(
-        inf_cost,
-        dsp_type="dsp48",
-        bram_type="BRAM_18K",
-        d_fator=0.7,
-    )
-    core_res_req = res_est_req["CORE"]  # processing resources.
+    infc_dict = inf_cost["total_cost"]
+    test_details = model_details[test_model]
+    bits_per_res = test_details["bits_per_res"]
     r_bdgt1 = test_details["r_bdgt1"]
     r_bdgt2 = test_details["r_bdgt2"]
-    perf_check = performance_check(test_model, r_bdgt2, core_res_req, clock_freq=3000000)  # r_bdgt fails mem_check.
     per_est1 = l0_performance_estimate(
         r_bdgt1,
-        inf_cost,
-        dsp_type="dsp48",
+        infc_dict,
+        uram_type="URAM",
+        dsp_type="DSP48",
         bram_type="BRAM_18K",
-        d_fator=0.7,
     )
+    d_factor2 = d_fact(r_bdgt2, bits_per_res, uram_type="URAM", bram_type="BRAM_18K")
+    res_est_req2 = l0_resource_estimates(
+        infc_dict,
+        dsp_type="DSP48",
+        uram_type="URAM",
+        bram_type="BRAM_18K",
+        d_factor=d_factor2,
+    )
+    core_res_req2 = res_est_req2["CORE"]
+    perf_check2 = performance_check(test_model, r_bdgt2, core_res_req2, clock_freq=3000000)
     per_est2 = l0_performance_estimate(
         r_bdgt2,
-        inf_cost,
-        dsp_type="dsp48",
+        infc_dict,
+        dsp_type="DSP48",
+        uram_type="URAM",
         bram_type="BRAM_18K",
-        d_fator=0.7,
     )
-    assert per_est1 == "Memory out of budget", "Discrepancy"  # memory check fails.
-    assert per_est2 == perf_check, "Discrepancy"  # memory check will pass.
+    assert per_est1 == "Memory out of budget", "Discrepancy"  # memory check fails
+    assert per_est2 == perf_check2, "Discrepancy"  # memory check will pass.

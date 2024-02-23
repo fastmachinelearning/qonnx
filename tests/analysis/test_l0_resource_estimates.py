@@ -68,30 +68,33 @@ def download_model(test_model, do_cleanup=False, return_modelwrapper=False):
 def test_l0_resource_estimates(test_model):
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
     inf_cost = inference_cost(model, discount_sparsity=False)
+    infc_dict = inf_cost["total_cost"]
     estimates1 = l0_resource_estimates(
-        inf_cost,
-        dsp_type="dsp48",
+        infc_dict,
+        dsp_type="DSP48",
+        uram_type="URAM",
         bram_type="BRAM_18K",
-        d_fator=0.7,
+        d_factor=0.7,
     )
-    estimates2 = l0_resource_estimates(inf_cost)  # default dsp_type and d_fator are None and 1 (only uram), respectively.
+    estimates2 = l0_resource_estimates(infc_dict)  # default values for dsp_type, bram, d_fator are None.
     estimates3 = l0_resource_estimates(
-        inf_cost,
-        dsp_type="dsp58",
+        infc_dict,
+        dsp_type="DSP58",
+        uram_type="URAM",
         bram_type="BRAM36",
-        d_fator=0.5,
+        d_factor=0.5,
     )
     ocm_res1, core_res1 = estimates1["OCM"], estimates1["CORE"]
     ocm_res2, core_res2 = estimates2["OCM"], estimates2["CORE"]
     ocm_res3, core_res3 = estimates3["OCM"], estimates3["CORE"]
-    assert inf_cost["total_mem_w_bits"] == (ocm_res1["BRAM_18K"] * 18 + ocm_res1["URAM"] * 288) * 1024, "discrepancy"
-    assert inf_cost["total_mem_w_bits"] == (ocm_res2["URAM"] * 288) * 1024, "discrepancy"
-    assert inf_cost["total_mem_w_bits"] == (ocm_res3["BRAM36"] * 36 + ocm_res3["URAM"] * 288) * 1024, "discrepancy"
+    assert infc_dict["total_mem_w_bits"] == (ocm_res1["BRAM_18K"] * 18 + ocm_res1["URAM"] * 288) * 1024, "discrepancy"
+    assert infc_dict["total_mem_w_bits"] == (ocm_res2["LUT"] * 64), "discrepancy"
+    assert infc_dict["total_mem_w_bits"] == (ocm_res3["BRAM36"] * 36 + ocm_res3["URAM"] * 288) * 1024, "discrepancy"
     # 1 mac fp32*fp32 requires 2 DSP48 and 700 LUTs.
-    assert core_res1["LUT"] == 700 * inf_cost["op_mac_FLOAT32_FLOAT32"], "discrepancy"
-    assert core_res1["DSP48"] == 2 * inf_cost["op_mac_FLOAT32_FLOAT32"], "discrepancy"
+    assert core_res1["LUT"] == 700 * infc_dict["op_mac_FLOAT32_FLOAT32"], "discrepancy"
+    assert core_res1["DSP48"] == 2 * infc_dict["op_mac_FLOAT32_FLOAT32"], "discrepancy"
     # when dsp_type is None all processing is performed in LUTs.
-    assert core_res2["LUT"] == 1.1 * 32 * 32 * inf_cost["op_mac_FLOAT32_FLOAT32"], "discrepancy"
+    assert core_res2["LUT"] == 1.1 * 32 * 32 * infc_dict["op_mac_FLOAT32_FLOAT32"], "discrepancy"
     # 1 mac fp32*fp32 requires 1 DSP58 and no LUTs.
-    assert core_res3["DSP58"] == inf_cost["op_mac_FLOAT32_FLOAT32"], "discrepancy"
+    assert core_res3["DSP58"] == infc_dict["op_mac_FLOAT32_FLOAT32"], "discrepancy"
     assert core_res3["LUT"] == 0.0, "discrepancy"
