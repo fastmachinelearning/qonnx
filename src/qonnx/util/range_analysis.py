@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import clize
+import dataclasses as dc
 import itertools
 import numpy as np
 import pprint
@@ -46,6 +47,14 @@ from qonnx.util.onnx import valueinfo_to_tensor
 # - layout and shape inference already completed
 # - any quantized weights are resolved into initializers
 # - range info is generated per-channel (tuple of 1D arrays) or per-tensor (tuple of scalars)
+
+
+@dc.dataclass
+class RangeInfo:
+    range: tuple = None
+    int_range: tuple = None
+    scale: np.ndarray = None
+    bias: np.ndarray = None
 
 
 def calculate_matvec_accumulator_extremum(matrix: np.ndarray, vec_min, vec_max):
@@ -81,7 +90,7 @@ def calc_gemm_range(node, model, range_dict):
         bname = node.input[2]
     oname = node.output[0]
 
-    irange = range_dict[iname]
+    irange = range_dict[iname].range
     imin, imax = irange
     weights = model.get_initializer(wname)
     assert weights is not None, "Uninitialized Gemm weights"
@@ -98,14 +107,14 @@ def calc_gemm_range(node, model, range_dict):
         pmin += beta * bias
         pmax += beta * bias
     ret = (pmin, pmax)
-    range_dict[oname] = ret
+    range_dict[oname].range = ret
 
 
 def calc_matmul_range(node, model, range_dict):
     iname = node.input[0]
     wname = node.input[1]
     oname = node.output[0]
-    irange = range_dict[iname]
+    irange = range_dict[iname].range
     imin, imax = irange
     weights = model.get_initializer(wname)
     assert weights is not None, "Uninitialized MatMul weights"
@@ -114,7 +123,7 @@ def calc_matmul_range(node, model, range_dict):
     if type(imin) is np.ndarray:
         assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
     ret = calculate_matvec_accumulator_extremum(weights, imin, imax)
-    range_dict[oname] = ret
+    range_dict[oname].range = ret
 
 
 def calc_conv_range(node, model, range_dict):
@@ -122,7 +131,7 @@ def calc_conv_range(node, model, range_dict):
     wname = node.input[1]
     assert len(node.input) == 2, "Found unsupported Conv with bias"
     oname = node.output[0]
-    irange = range_dict[iname]
+    irange = range_dict[iname].range
     imin, imax = irange
     weights = model.get_initializer(wname)
     assert weights is not None, "Uninitialized Conv weights"
@@ -162,7 +171,7 @@ def calc_conv_range(node, model, range_dict):
         dw_ret_min.append(dw_ret[0].item())
         dw_ret_max.append(dw_ret[1].item())
     ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
-    range_dict[oname] = ret
+    range_dict[oname].range = ret
 
 
 def calc_convtranspose_range(node, model, range_dict):
@@ -170,7 +179,7 @@ def calc_convtranspose_range(node, model, range_dict):
     wname = node.input[1]
     assert len(node.input) == 2, "Found unsupported ConvTranspose with bias"
     oname = node.output[0]
-    irange = range_dict[iname]
+    irange = range_dict[iname].range
     imin, imax = irange
     weights = model.get_initializer(wname)
     assert weights is not None, "Uninitialized ConvTranspose weights"
@@ -201,7 +210,7 @@ def calc_convtranspose_range(node, model, range_dict):
         dw_ret_min.append(dw_ret[0].item())
         dw_ret_max.append(dw_ret[1].item())
     ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
-    range_dict[oname] = ret
+    range_dict[oname].range = ret
 
 
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
@@ -238,7 +247,7 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
     proto_vectors = []
     # generate min-max prototype vectors for each dynamic input
     for inp in dyn_inps:
-        irange = range_dict[inp]
+        irange = range_dict[inp].range
         ishp = model.get_tensor_shape(inp)
         inp_vi = model.get_tensor_valueinfo(inp)
         proto_vectors.append(get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis))
@@ -270,14 +279,14 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
                 np.maximum(chanwise_max, running_max[oind]).flatten() if running_max[oind] is not None else chanwise_max
             )
     for oind, oname in enumerate(node.output):
-        range_dict[oname] = (running_min[oind], running_max[oind])
+        range_dict[oname].range = (running_min[oind], running_max[oind])
 
 
 def calc_range_outdtype(node, model, range_dict):
     oname = node.output[0]
     odt = model.get_tensor_datatype(oname)
     assert odt is not None, "Cannot infer %s range, dtype annotation is missing" % oname
-    range_dict[oname] = (odt.min(), odt.max())
+    range_dict[oname].range = (odt.min(), odt.max())
 
 
 optype_to_range_calc = {
@@ -392,22 +401,27 @@ def range_analysis(
             assert idt is not None, "Could not infer irange, please specify"
             range_min = idt.min()
             range_max = idt.max()
-        range_dict[iname] = (range_min, range_max)
+        range_dict[iname] = RangeInfo(range=(range_min, range_max))
 
     for node in model.graph.node:
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
         op_ok = node.op_type in optype_to_range_calc.keys()
         if inprange_ok and op_ok:
+            # create entries in range_dict with RangeInfo type for all outputs
+            # since range analysis functions will be assigning to the .range member of
+            # this RangeInfo directly later on
+            for node_out in node.output:
+                range_dict[node_out] = RangeInfo()
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
-            out_range = range_dict[node.output[0]]
+            out_range = range_dict[node.output[0]].range
             tensor_stuck_chans = np.nonzero(out_range[0] == out_range[1])[0]
             if len(tensor_stuck_chans) > 0:
                 list_stuck_chans = list(tensor_stuck_chans)
                 list_stuck_values = list(out_range[0][tensor_stuck_chans])
                 stuck_chans[node.output[0]] = list(zip(list_stuck_chans, list_stuck_values))
-            range_dict[node.output[0]] = simplify_range(out_range)
+            range_dict[node.output[0]].range = simplify_range(out_range)
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
 
@@ -421,10 +435,8 @@ def range_analysis(
         ret = {k: v for (k, v) in ret.items() if key_filter in k}
 
     if report_mode == REPORT_MODE_RANGE:
-        # convert ranges in report to regular Python lists
-        for tname, trange in ret.items():
-            if type(trange[0]) is np.ndarray:
-                ret[tname] = (list(trange[0]), list(trange[1]))
+        # TODO convert ranges in report to regular Python lists for nicer printing
+        pass
     elif report_mode == REPORT_MODE_ZEROSTUCKCHANNEL:
         # only leave channels that are stuck at zero
         # value info removed since implicitly 0
