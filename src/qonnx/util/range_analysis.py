@@ -45,7 +45,6 @@ from qonnx.util.onnx import valueinfo_to_tensor
 # walk the graph to deduce range information about each tensor
 # assumptions:
 # - layout and shape inference already completed
-# - any quantized weights are resolved into initializers
 # - range info is generated per-channel (tuple of 1D arrays) or per-tensor (tuple of scalars)
 
 
@@ -55,6 +54,7 @@ class RangeInfo:
     int_range: tuple = None
     scale: np.ndarray = None
     bias: np.ndarray = None
+    is_initializer: bool = False
 
 
 def calculate_matvec_accumulator_extremum(matrix: np.ndarray, vec_min, vec_max):
@@ -92,8 +92,11 @@ def calc_gemm_range(node, model, range_dict):
 
     irange = range_dict[iname].range
     imin, imax = irange
-    weights = model.get_initializer(wname)
-    assert weights is not None, "Uninitialized Gemm weights"
+    weight_range_info = range_dict[wname]
+    assert weight_range_info.is_initializer, "Uninitialized Gemm weights"
+    assert weight_range_info.range[0].ndim == 2, "Malformed Gemm weights in range info"
+    assert (weight_range_info.range[0] == weight_range_info.range[1]).all(), "Non-constant Gemm weights in range info"
+    weights = weight_range_info.range[0]
     if type(imin) is np.ndarray:
         assert len(imin) == weights.shape[1], "Dot product length mismatch, np broadcast may be wrong"
     pmin, pmax = calculate_matvec_accumulator_extremum(weights, imin, imax)
@@ -102,8 +105,11 @@ def calc_gemm_range(node, model, range_dict):
     pmax *= alpha
     # if there is a bias, apply it to the range
     if bname is not None:
-        bias = model.get_initializer(bname)
-        assert bias is not None, "Uninitialized Gemm bias"
+        bias_range_info = range_dict[bname]
+        assert bias_range_info.is_initializer, "Uninitialized Gemm bias"
+        assert bias_range_info.range[0].ndim == 1, "Malformed Gemm bias in range info"
+        assert (bias_range_info.range[0] == bias_range_info.range[1]).all(), "Non-constant Gemm bias in range info"
+        bias = bias_range_info.range[0]
         pmin += beta * bias
         pmax += beta * bias
     ret = (pmin, pmax)
@@ -116,8 +122,11 @@ def calc_matmul_range(node, model, range_dict):
     oname = node.output[0]
     irange = range_dict[iname].range
     imin, imax = irange
-    weights = model.get_initializer(wname)
-    assert weights is not None, "Uninitialized MatMul weights"
+    weight_range_info = range_dict[wname]
+    assert weight_range_info.is_initializer, "Uninitialized MatMul weights"
+    assert weight_range_info.range[0].ndim == 2, "Malformed MatMul weights in range info"
+    assert (weight_range_info.range[0] == weight_range_info.range[1]).all(), "Non-constant MatMul weights in range info"
+    weights = weight_range_info.range[0]
     # util function expects (mh, mw) so transpose
     weights = weights.transpose()
     if type(imin) is np.ndarray:
@@ -133,8 +142,11 @@ def calc_conv_range(node, model, range_dict):
     oname = node.output[0]
     irange = range_dict[iname].range
     imin, imax = irange
-    weights = model.get_initializer(wname)
-    assert weights is not None, "Uninitialized Conv weights"
+    weight_range_info = range_dict[wname]
+    assert weight_range_info.is_initializer, "Uninitialized Conv weights"
+    assert weight_range_info.range[0].ndim >= 2, "Malformed Conv weights in range info"
+    assert (weight_range_info.range[0] == weight_range_info.range[1]).all(), "Non-constant Conv weights in range info"
+    weights = weight_range_info.range[0]
     # do weight reshaping to treat Conv similar to MatMul
     # (mh, mw) = (ofm, (ifm x k0 x k1 x ...))
     conv_ofm = weights.shape[0]
@@ -181,8 +193,13 @@ def calc_convtranspose_range(node, model, range_dict):
     oname = node.output[0]
     irange = range_dict[iname].range
     imin, imax = irange
-    weights = model.get_initializer(wname)
-    assert weights is not None, "Uninitialized ConvTranspose weights"
+    weight_range_info = range_dict[wname]
+    assert weight_range_info.is_initializer, "Uninitialized ConvTranspose weights"
+    assert weight_range_info.range[0].ndim >= 2, "Malformed ConvTranspose weights in range info"
+    assert (
+        weight_range_info.range[0] == weight_range_info.range[1]
+    ).all(), "Non-constant ConvTranspose weights in range info"
+    weights = weight_range_info.range[0]
     groups = get_by_name(node.attribute, "group")
     if groups is None:
         # default to dense convs
@@ -244,8 +261,22 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
     oname = node.output[0]
     dyn_inps = [x for x in node.input if is_dyn_input(x, model)]
     n_dyn_inp = len(dyn_inps)
-    proto_vectors = []
+    # create context for single-node execution
+    ctx = {x: model.get_initializer(x) for x in node.input}
+    for oname in node.output:
+        ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
+    if n_dyn_inp == 0:
+        # special case: all inputs were constants (e.g. quantized for trained weights)
+        # so there is no proto vectors to operate over really - just need a single eval
+        execute_node(node, ctx, model.graph, opset_version=opset_version)
+        # grab new output and keep the entire thing as the range
+        for oname in node.output:
+            range_dict[oname].range = (ctx[oname], ctx[oname])
+            range_dict[oname].is_initializer = True
+        return
+    # going beyond this point we are sure we have at least one dynamic input
     # generate min-max prototype vectors for each dynamic input
+    proto_vectors = []
     for inp in dyn_inps:
         irange = range_dict[inp].range
         ishp = model.get_tensor_shape(inp)
@@ -254,10 +285,6 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
     # process all combinations of prototype vectors for dynamic inputs
     running_min = [None for i in range(len(node.output))]
     running_max = [None for i in range(len(node.output))]
-    # create context for single-node execution
-    ctx = {x: model.get_initializer(x) for x in node.input}
-    for oname in node.output:
-        ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
     # assume all outputs are homogenous wrt data layout (e.g. channel axis
     # always lives in the same position)
     axes_to_min = [i for i in range(ctx[oname].ndim)]
@@ -270,8 +297,14 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         for oind, oname in enumerate(node.output):
             # grab new output and update running min/max
             out = ctx[oname]
-            chanwise_min = out.min(axis=axes_to_min).flatten()
-            chanwise_max = out.max(axis=axes_to_min).flatten()
+            if len(axes_to_min) != 0:
+                chanwise_min = out.min(axis=axes_to_min).flatten()
+                chanwise_max = out.max(axis=axes_to_min).flatten()
+            else:
+                # for certain cases (e.g. quantizer for a 1D vector) the axes_to_min may be empty
+                # then we don't do any more min/max reduction and just take the vector as-is
+                chanwise_max = out.flatten()
+                chanwise_min = out.flatten()
             running_min[oind] = (
                 np.minimum(chanwise_min, running_min[oind]).flatten() if running_min[oind] is not None else chanwise_min
             )
@@ -287,6 +320,14 @@ def calc_range_outdtype(node, model, range_dict):
     odt = model.get_tensor_datatype(oname)
     assert odt is not None, "Cannot infer %s range, dtype annotation is missing" % oname
     range_dict[oname].range = (odt.min(), odt.max())
+
+
+def calc_range_all_initializers(model, range_dict):
+    all_tensor_names = model.get_all_tensor_names()
+    for tensor_name in all_tensor_names:
+        tensor_init = model.get_initializer(tensor_name)
+        if tensor_init is not None:
+            range_dict[tensor_name] = RangeInfo(range=(tensor_init, tensor_init), is_initializer=True)
 
 
 optype_to_range_calc = {
@@ -360,7 +401,8 @@ def range_analysis(
     key_filter: str = "",
     report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
     prettyprint=False,
-    do_cleanup=False
+    do_cleanup=False,
+    strip_initializers_from_report=True
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -384,10 +426,11 @@ def range_analysis(
         assert False, "Unknown irange type"
     if do_cleanup:
         model = cleanup_model(model)
-    # call constant folding with no exclusions to get weight initializers
-    # (but not full cleanup, in order to preserve node/tensor naming)
+    # call constant folding & shape inference, this preserves weight quantizers
+    # (but do not do extra full cleanup, in order to preserve node/tensor naming)
+    # TODO is this redundant? remove?
     model = model.transform(InferShapes())
-    model = model.transform(FoldConstants(exclude_op_types=[]))
+    model = model.transform(FoldConstants())
     model = model.transform(InferDataTypes())
     range_dict = {}
     stuck_chans = {}
@@ -403,6 +446,10 @@ def range_analysis(
             range_max = idt.max()
         range_dict[iname] = RangeInfo(range=(range_min, range_max))
 
+    # add range info for all tensors with initializers
+    calc_range_all_initializers(model, range_dict)
+
+    # now walk the graph node by node and propagate range info
     for node in model.graph.node:
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
@@ -415,13 +462,16 @@ def range_analysis(
                 range_dict[node_out] = RangeInfo()
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
-            out_range = range_dict[node.output[0]].range
-            tensor_stuck_chans = np.nonzero(out_range[0] == out_range[1])[0]
-            if len(tensor_stuck_chans) > 0:
-                list_stuck_chans = list(tensor_stuck_chans)
-                list_stuck_values = list(out_range[0][tensor_stuck_chans])
-                stuck_chans[node.output[0]] = list(zip(list_stuck_chans, list_stuck_values))
-            range_dict[node.output[0]].range = simplify_range(out_range)
+            if not range_dict[node.output[0]].is_initializer:
+                # only consider non-initializer (dynamic) tensors for range simplification
+                # and stuck channel analysis
+                out_range = range_dict[node.output[0]].range
+                tensor_stuck_chans = np.nonzero(out_range[0] == out_range[1])[0]
+                if len(tensor_stuck_chans) > 0:
+                    list_stuck_chans = list(tensor_stuck_chans)
+                    list_stuck_values = list(out_range[0][tensor_stuck_chans])
+                    stuck_chans[node.output[0]] = list(zip(list_stuck_chans, list_stuck_values))
+                range_dict[node.output[0]].range = simplify_range(out_range)
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
 
@@ -430,6 +480,13 @@ def range_analysis(
         ret = stuck_chans
     else:
         ret = range_dict
+        if strip_initializers_from_report:
+            # exclude all initializer ranges for reporting
+            ret = {k: v for (k, v) in ret.items() if not v.is_initializer}
+
+    # only keep tensors (keys) where filter appears in the name
+    if key_filter != "":
+        ret = {k: v for (k, v) in ret.items() if key_filter in k}
     # only keep tensors (keys) where filter appears in the name
     if key_filter != "":
         ret = {k: v for (k, v) in ret.items() if key_filter in k}
