@@ -133,6 +133,23 @@ class MultiThreshold(CustomOp):
                 pass
             else:
                 raise Exception("Unknown data_layout and input ndim" " combination for MultiThreshold.")
+
+        # Remember whether the shape has been modified to handle 1d or 3d data
+        # layouts
+        orig_shape = None
+        # If the input tensor has dimensions not covered by the NC or NCWH data
+        # layouts, the shape needs to be adapted such that it can be handled by
+        # multithreshold.
+        # TODO: Seems like a rather sketchy solution to support arbitrary data
+        #  layouts. This does not even validate the assumption of channel last
+        #  layout.
+        if v.ndim not in {2, 4}:
+            # Remember the original shape to be restored later
+            orig_shape = v.shape
+            # Assume last dimension to be the channel dimension C and reshape
+            # into NC layout which is supported by multithreshold
+            v = v.reshape((-1, v.shape[-1]))
+
         # calculate output
         output = multithreshold(v, thresholds, out_scale, out_bias)
         # setting context according to output
@@ -145,6 +162,13 @@ class MultiThreshold(CustomOp):
                 pass
             else:
                 raise Exception("Unknown data_layout and output ndim" " combination for MultiThreshold.")
+
+        # If the shape has been modified to support arbitrary layouts, restore
+        # the original shape
+        # TODO: Part of the rather sketchy solution above.
+        if orig_shape is not None:
+            output = output.reshape(orig_shape)
+
         context[node.output[0]] = output
 
     def verify_node(self):
