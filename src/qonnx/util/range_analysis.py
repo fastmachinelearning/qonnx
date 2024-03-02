@@ -35,6 +35,7 @@ from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
+from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
@@ -55,6 +56,10 @@ class RangeInfo:
     scale: np.ndarray = None
     bias: np.ndarray = None
     is_initializer: bool = False
+
+    def has_integer_info(self) -> bool:
+        integer_props = [self.int_range, self.scale, self.bias]
+        return all([x is not None for x in integer_props])
 
 
 def calculate_matvec_accumulator_extremum(matrix: np.ndarray, vec_min, vec_max):
@@ -392,6 +397,86 @@ report_mode_options = clize.parameters.mapped(
         (REPORT_MODE_ZEROSTUCKCHANNEL, [REPORT_MODE_ZEROSTUCKCHANNEL], "Report 0-stuck channels"),
     ]
 )
+
+
+# assumptions for intrange calculations:
+# * "normal" ranges (.range) for inputs and outputs have been already computed & present in range_dict
+# * other range info (.int_range, .scale, .bias) is present for inputs in range_dict, if relevant
+
+
+def calc_intrange_quant(node, model, range_dict):
+    orange_inf = range_dict[node.output[0]]
+    # get quantizer parameters
+    q_bitwidth = model.get_initializer(node.input[3])
+    assert not (q_bitwidth is None)
+    assert q_bitwidth.ndim <= 1
+    q_zeropt = model.get_initializer(node.input[2])
+    assert not (q_zeropt is None)
+    q_scale = model.get_initializer(node.input[1])
+    assert not (q_scale is None)
+    # we need to do a little style conversion for the scale/bias:
+    # intrange calculations here represent quant tensors as Mx+N (x: int tensor, M: scale, N: bias)
+    # whereas Quant nodes represent them as S(x-Z) (x: int tensor, S: scale, Z: zeropoint)
+    # it follows that M = S and N = -SZ
+    orange_inf.scale = q_scale
+    orange_inf.bias = -(q_scale * q_zeropt)
+    if orange_inf.is_initializer:
+        # if the quantizer output was a constant, we can derive the entire
+        # integer tensor component by recovering it using the scale/bias info
+        assert (orange_inf.range[0] == orange_inf.range[1]).all()
+        q_out = orange_inf.range[0]
+        q_out_int_cand = (q_out / q_scale) + q_zeropt
+        q_out_int = np.round(q_out_int_cand)
+        # TODO ensure that rounding error introduced here is smaller than scale? how does zeropt come into this?
+        orange_inf.int_range = (q_out_int, q_out_int)
+    else:
+        # input is not constant so we can only reason about the "dtype range"
+        # as implemented by the generic settings of the quantizer:
+        # output int range is decided by bitwidth & signedness of quantization
+        qnt_node_inst = getCustomOp(node)
+        odt_int_type = qnt_node_inst.get_integer_datatype(model)
+        if qnt_node_inst.get_nodeattr("narrow") and qnt_node_inst.get_nodeattr("signed"):
+            narrow_range_adj = 1
+        else:
+            narrow_range_adj = 0
+        orange_inf.int_range = (odt_int_type.min() + narrow_range_adj, odt_int_type.max())
+
+    range_dict[node.output[0]] = orange_inf
+
+
+def calc_intrange_dotprod(node, model, range_dict):
+    irange_inf = range_dict[node.input[0]]
+    wrange_inf = range_dict[node.input[1]]
+    orange_inf = range_dict[node.output[0]]
+    if not (irange_inf.has_integer_info() and wrange_inf.has_integer_info()):
+        # integer range info is missing in at least one of the inputs
+        # cannot infer anything about the output int range info
+        return
+    # be extra conservative for now: no negative scales, no biases
+    assert (wrange_inf.scale >= 0).all(), "Need nonnegative scale for weights"
+    assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
+    assert (wrange_inf.bias == 0).all(), "Need zero bias for weights"
+    assert (irange_inf.bias == 0).all(), "Need zero bias for inputs"
+    int_range_dict = {}
+    for node_out in node.output:
+        int_range_dict[node_out] = RangeInfo()
+    # use integer components of input ranges for new range computation
+    for node_in in node.input:
+        int_range_dict[node_in] = RangeInfo(
+            range=range_dict[node_in].int_range, is_initializer=range_dict[node_in].is_initializer
+        )
+    range_calc_fxn = optype_to_range_calc[node.op_type]
+    range_calc_fxn(node, model, int_range_dict)
+    int_orange_inf = int_range_dict[node.output[0]]
+    # now deduce the output scale factor and bias from all available info
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
 
 
 def range_analysis(
