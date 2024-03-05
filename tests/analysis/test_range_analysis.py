@@ -30,7 +30,7 @@ import pytest
 
 import numpy as np
 
-from qonnx.util.range_analysis import RangeInfo, calc_intrange_dotprod, calc_intrange_quant, range_analysis
+from qonnx.util.range_analysis import RangeInfo, calc_intrange_linear, calc_intrange_quant, range_analysis
 from qonnx.util.test import download_model, test_model_details
 
 model_details_stuckchans = {
@@ -124,4 +124,7 @@ def test_int_range_analysis():
 
     irange_inf = RangeInfo(range=(0, +1), int_range=(0, 255), scale=np.asarray([1.0 / 255.0]), bias=np.asarray([0.0]))
     ret["global_in"] = irange_inf
-    calc_intrange_dotprod(model.get_node_from_name("Conv_0"), model, ret)
+    calc_intrange_linear(model.get_node_from_name("Conv_0"), model, ret)
+    ret_scale = ret["Conv_0_out0"].scale
+    golden_scale = ret["Quant_0_out0"].scale * ret["global_in"].scale
+    assert np.logical_or(np.isclose(ret_scale.flatten(), golden_scale.flatten()), np.isnan(ret_scale)).all()

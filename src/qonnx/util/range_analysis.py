@@ -444,19 +444,17 @@ def calc_intrange_quant(node, model, range_dict):
     range_dict[node.output[0]] = orange_inf
 
 
-def calc_intrange_dotprod(node, model, range_dict):
-    irange_inf = range_dict[node.input[0]]
-    wrange_inf = range_dict[node.input[1]]
+def calc_intrange_linear(node, model, range_dict):
+    for node_in in node.input:
+        irange_inf = range_dict[node_in]
+        if not irange_inf.has_integer_info():
+            # integer range info is missing in at least one of the inputs
+            # cannot infer anything about the output int range info
+            return
+        # be extra conservative for now: no negative scales, no biases
+        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
+        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
     orange_inf = range_dict[node.output[0]]
-    if not (irange_inf.has_integer_info() and wrange_inf.has_integer_info()):
-        # integer range info is missing in at least one of the inputs
-        # cannot infer anything about the output int range info
-        return
-    # be extra conservative for now: no negative scales, no biases
-    assert (wrange_inf.scale >= 0).all(), "Need nonnegative scale for weights"
-    assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
-    assert (wrange_inf.bias == 0).all(), "Need zero bias for weights"
-    assert (irange_inf.bias == 0).all(), "Need zero bias for inputs"
     int_range_dict = {}
     for node_out in node.output:
         int_range_dict[node_out] = RangeInfo()
@@ -473,10 +471,14 @@ def calc_intrange_dotprod(node, model, range_dict):
     # range_min = S*int_range_min + B
     # so S = (range_max - range_min) / (int_range_max - int_range_min)
     # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
 def range_analysis(
