@@ -32,7 +32,8 @@ from onnx import TensorProto, helper
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
-from qonnx.util.basic import get_by_name, auto_pad_to_explicit_padding
+from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
+
 
 class LowerConvsToMatMul(Transformation):
     """Replace Conv layers with pairs of Im2Col-MatMul layers, plus Transpose

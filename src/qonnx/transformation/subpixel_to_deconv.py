@@ -31,7 +31,7 @@ import warnings
 from onnx import helper
 
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import get_by_name, auto_pad_to_explicit_padding
+from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
 
 
 def _weight_shuffle(cnv_weights: np.ndarray, block_size: int) -> np.ndarray:
@@ -120,8 +120,8 @@ class SubPixelToDeconvolution(Transformation):
                             continue
 
                     kshape = get_by_name(n.attribute, "kernel_shape").ints
-                    idim = model.get_tensor_shape(n.input[0]) # require NCHW
-                    odim = model.get_tensor_shape(n.output[0]) # require NCHW
+                    idim = model.get_tensor_shape(n.input[0])  # require NCHW
+                    odim = model.get_tensor_shape(n.output[0])  # require NCHW
                     if not (len(odim) == len(idim) == 4):
                         warnings.warn("Skipping sub-pixel conv, only 2D convolutions supported.")
                         continue

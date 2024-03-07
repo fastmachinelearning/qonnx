@@ -33,7 +33,7 @@ from onnx import helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.general.quant import quant
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import get_by_name, auto_pad_to_explicit_padding
+from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
 
 
 def _weight_convolution(cnv_weights: np.ndarray, scale: int) -> np.ndarray:
@@ -124,8 +124,8 @@ class ResizeConvolutionToDeconvolution(Transformation):
                             continue
 
                     kshape = get_by_name(conv.attribute, "kernel_shape").ints
-                    idim = model.get_tensor_shape(conv.input[0]) # require NCHW
-                    odim = model.get_tensor_shape(conv.output[0]) # require NCHW
+                    idim = model.get_tensor_shape(conv.input[0])  # require NCHW
+                    odim = model.get_tensor_shape(conv.output[0])  # require NCHW
                     if not (len(odim) == len(idim) == 4):
                         warnings.warn("Skipping resize conv, only 2D convolutions supported.")
                         continue
