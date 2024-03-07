@@ -124,12 +124,15 @@ class ResizeConvolutionToDeconvolution(Transformation):
                             continue
 
                     kshape = get_by_name(conv.attribute, "kernel_shape").ints
-                    ifm_ch = model.get_tensor_shape(conv.input[0])[1]  # assume NCHW
-                    ofm_ch = model.get_tensor_shape(conv.output[0])[1]  # assume NCHW
-                    ifm_dim_h = model.get_tensor_shape(conv.input[0])[2]  # assume NCHW
-                    ifm_dim_w = model.get_tensor_shape(conv.input[0])[3]  # assume NCHW
-                    ofm_dim_h = model.get_tensor_shape(conv.output[0])[2]  # assume NCHW
-                    ofm_dim_w = model.get_tensor_shape(conv.output[0])[3]
+                    idim = model.get_tensor_shape(conv.input[0]) # require NCHW
+                    odim = model.get_tensor_shape(conv.output[0]) # require NCHW
+                    if not (len(odim) == len(idim) == 4):
+                        warnings.warn("Skipping resize conv, only 2D convolutions supported.")
+                        continue
+
+                    [_, ifm_ch, ifm_dim_h, ifm_dim_w] = idim
+                    [_, ofm_ch, ofm_dim_h, ofm_dim_w] = odim
+
                     if (ifm_dim_h != ofm_dim_h) or (ifm_dim_w != ofm_dim_w):
                         warnings.warn("Skipping resize conv, only same-padded convs supported.")
                         continue
