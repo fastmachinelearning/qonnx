@@ -33,7 +33,7 @@ from onnx import helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.general.quant import quant
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import get_by_name, auto_pad_to_explicit_padding
 
 
 def _weight_convolution(cnv_weights: np.ndarray, scale: int) -> np.ndarray:
@@ -53,23 +53,6 @@ def _weight_convolution(cnv_weights: np.ndarray, scale: int) -> np.ndarray:
                 for j in range(scale):
                     dcnv_weights[ic, oc, i : i + kh_size, j : j + kw_size] += np.rot90(cnv_weights[oc, ic], 2, [0, 1])
     return dcnv_weights
-
-
-def _auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h, stride_w, n_dims):
-    pad_total_h = (stride_h - 1) * idim_h - stride_h + k_h
-    pad_total_w = (stride_w - 1) * idim_w - stride_w + k_w
-    pad_half_small_h = int((pad_total_h / 2))
-    pad_half_small_w = int((pad_total_w / 2))
-    pad_half_large_h = pad_total_h - pad_half_small_h
-    pad_half_large_w = pad_total_w - pad_half_small_w
-    if autopad_str == "VALID":
-        return [0 for i in range(2 * n_dims)]
-    elif autopad_str == "SAME_UPPER":
-        return [pad_half_small_h, pad_half_small_w, pad_half_large_h, pad_half_large_w]
-    elif autopad_str == "SAME_LOWER":
-        return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
-    else:
-        raise Exception("Unsupported auto_pad: " + autopad_str)
 
 
 class ResizeConvolutionToDeconvolution(Transformation):
@@ -189,7 +172,7 @@ class ResizeConvolutionToDeconvolution(Transformation):
                             # use specified padding
                             pad = get_by_name(conv.attribute, "pads").ints
                         else:
-                            pad = _auto_pad_to_explicit_padding(
+                            pad = auto_pad_to_explicit_padding(
                                 auto_pad,
                                 ifm_dim_h,
                                 ifm_dim_w,
