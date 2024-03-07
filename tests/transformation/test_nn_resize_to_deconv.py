@@ -155,7 +155,6 @@ def create_nn_resize_conv_model(
     model.set_initializer("W", np.random.rand(*conv_param_shape).astype(np.float32))
     if bias:
         model.set_initializer("B", np.random.rand(*bias_param_shape).astype(np.float32))
-    model.save("cnv-graph.onnx")
     model = model.transform(InferShapes())
     check_model(model._model_proto)
     return model
