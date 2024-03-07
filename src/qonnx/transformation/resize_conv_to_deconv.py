@@ -217,9 +217,13 @@ class ResizeConvolutionToDeconvolution(Transformation):
                     # Make sure to keep the biases from the convolution
                     if len(conv.input) == 3:
                         bias_name = conv.input[2]
-                        B_conv = model.get_initializer(bias_name)  # (OC,)
+                        bias_prod = model.find_producer(bias_name)
+                        # If the producer is None, then it is initialized by the Conv node
+                        # and we need to ensure it isn't removed with the Conv node
+                        if bias_prod is None:
+                            B_conv = model.get_initializer(bias_name)  # (OC,)
+                            model.set_initializer(bias_name, B_conv)
                         deconv_inps.append(bias_name)  # add to the inputs
-                        model.set_initializer(bias_name, B_conv)
                     deconv_outs = conv.output
                     deconv_pad = pad
                     deconv_node = helper.make_node(
