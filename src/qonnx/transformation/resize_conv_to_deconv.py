@@ -111,7 +111,8 @@ class ResizeConvolutionToDeconvolution(Transformation):
                             [q_w_name, q_s_name, q_zp_name, q_bw_name] = weight_prod.input
                             W_conv = model.get_initializer(q_w_name)
                             W_scale = model.get_initializer(q_s_name)
-                            W_scale = np.moveaxis(W_scale, 0, 1)
+                            if isinstance(W_scale, np.ndarray) and W_scale.ndim > 0:
+                                W_scale = np.moveaxis(W_scale, 0, 1)
                             W_zeropt = model.get_initializer(q_zp_name)
                             W_bitwidth = model.get_initializer(q_bw_name)
                             W_signed = get_by_name(weight_prod.attribute, "signed").i
