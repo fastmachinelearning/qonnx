@@ -31,7 +31,7 @@ import warnings
 from onnx import helper
 
 from qonnx.core.datatype import DataType
-from qonnx.custom_op.general.quant import quant
+from qonnx.custom_op.general.quant import quant, resolve_rounding_mode
 from qonnx.transformation.base import Transformation
 from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
 
@@ -111,9 +111,11 @@ class ResizeConvolutionToDeconvolution(Transformation):
                             [q_w_name, q_s_name, q_zp_name, q_bw_name] = weight_prod.input
                             W_conv = model.get_initializer(q_w_name)
                             W_scale = model.get_initializer(q_s_name)
-                            if isinstance(W_scale, np.ndarray) and W_scale.ndim > 0:
+                            if isinstance(W_scale, np.ndarray) and W_scale.ndim > 1:
                                 W_scale = np.moveaxis(W_scale, 0, 1)
                             W_zeropt = model.get_initializer(q_zp_name)
+                            if isinstance(W_zeropt, np.ndarray) and W_zeropt.ndim > 1:
+                                W_zeropt = np.moveaxis(W_zeropt, 0, 1)
                             W_bitwidth = model.get_initializer(q_bw_name)
                             W_signed = get_by_name(weight_prod.attribute, "signed").i
                             W_narrow = get_by_name(weight_prod.attribute, "narrow").i
@@ -200,19 +202,22 @@ class ResizeConvolutionToDeconvolution(Transformation):
                     # if not `maintain_bit_width`, then we adjust the bit width to
                     # account for the clipping errors.
                     elif weight_prod is not None:
+                        round_fnc = resolve_rounding_mode(W_rounding_mode)
                         W_int = (W_deconv / W_scale) + W_zeropt
-                        W_int = W_int.round()  # handling rounding errors
-                        if W_int.min() < 0:
-                            if np.abs(W_int).min() > W_int.max():
-                                tdt = DataType.get_smallest_possible(W_int.min())
+                        W_int = round_fnc(W_int)  # handling rounding errors
+                        W_min = W_int.min()
+                        W_max = W_int.max()
+                        if W_min < 0:
+                            if abs(W_min) > W_max:
+                                wdt = DataType.get_smallest_possible(W_min)
                             else:
-                                tdt = DataType.get_smallest_possible(-W_int.max() - 1)
+                                wdt = DataType.get_smallest_possible(-W_max - 1)
                         else:
-                            tdt = DataType.get_smallest_possible(W_int.max())
-                        assert np.vectorize(tdt.allowed)(W_int).all(), "Error: issue finding data type to support."
-                        if W_bitwidth != tdt.bitwidth():
-                            W_bitwidth = np.array(tdt.bitwidth(), dtype=np.float32)
-                        assert tdt.signed() == W_signed, "Error: should maintain sign of the weights."
+                            wdt = DataType.get_smallest_possible(W_max)
+                        assert np.vectorize(wdt.allowed)(W_int).all(), "Error: issue finding data type to support."
+                        if W_bitwidth != wdt.bitwidth():
+                            W_bitwidth = np.array(wdt.bitwidth(), dtype=np.float32)
+                        assert wdt.signed() == W_signed, "Error: should maintain sign of the weights."
 
                     deconv_inps = [resize_input, weight_name]
                     # Make sure to keep the biases from the convolution
@@ -240,6 +245,7 @@ class ResizeConvolutionToDeconvolution(Transformation):
                     W_deconv_init = weight_name
                     if weight_prod is not None:
                         W_deconv_init = q_w_name
+                        model.set_initializer(q_zp_name, W_zeropt)
                         model.set_initializer(q_s_name, W_scale)
                         model.set_initializer(q_bw_name, W_bitwidth)
                     model.set_initializer(W_deconv_init, W_deconv)

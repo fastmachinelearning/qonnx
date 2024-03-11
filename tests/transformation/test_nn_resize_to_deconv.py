@@ -30,18 +30,18 @@ import pytest
 
 import numpy as np
 import onnx
-import onnx.helper as oh
 import onnx.numpy_helper as nph
-from onnx import TensorProto
+import onnx.parser as oprs
 from onnx.checker import check_model
 from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.custom_op.general.quant import quant
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.resize_conv_to_deconv import ResizeConvolutionToDeconvolution
-from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
+from qonnx.util.basic import gen_finn_dt_tensor
 
 np.random.seed(0)
 
@@ -98,75 +98,244 @@ def test_resize_conv_to_deconv_quant_model(maintain_bit_width: bool):
         ).all(), "Error: expected output does not match the produced output."
 
 
-def create_nn_resize_conv_model(
-    in_channels: int, out_channels: int, input_dim: int, kernel_size: int, upscale_factor: int, bias: bool
-):
-    assert isinstance(kernel_size, int), "Assuming square kernels, so kernel_size needs to be an int."
-    padding = (kernel_size - 1) // 2
+def float_nn_resize_model(r: int, ifm: int, ich: int, och: int, ksize: int, use_bias: bool):
+    assert isinstance(ksize, int), "Assuming square kernels, so kernel_size needs to be an int."
+    pad = (ksize - 1) // 2
 
-    ifm_ch = in_channels
-    ifm_dim = input_dim
-    ofm_dim = ifm_dim * upscale_factor
-    ofm_ch = out_channels
-    scales = np.array([1.0, 1.0, upscale_factor, upscale_factor], dtype=np.float32)
+    ishp = (1, ich, ifm, ifm)
+    oshp = (1, och, ifm * r, ifm * r)
+    wshp = (och, ich, ksize, ksize)
+    bshp = (och,)
+    rscales = np.array([1.0, 1.0, r, r], dtype=np.float32)
+    weight = np.random.randn(*wshp)
+    bias = np.random.randn(*bshp)
+    ishp_str = str(list(ishp))
+    oshp_str = str(list(oshp))
+    wshp_str = str(list(wshp))
+    bshp_str = str(list(bshp))
 
-    resize = oh.make_node(
-        "Resize",
-        inputs=["inp", "roi", "scales"],
-        outputs=["hid"],
-        mode="nearest",
-    )
-    conv = oh.make_node(
-        op_type="Conv",
-        inputs=["hid", "W"] if not bias else ["hid", "W", "B"],
-        outputs=["out"],
-        kernel_shape=[kernel_size, kernel_size],
-        pads=[padding, padding, padding, padding],
-        strides=[1, 1],
-        group=1,
-        dilations=[1, 1],
-    )
+    if use_bias:
+        params_str = f"""
+        <
+            float{wshp_str} conv_param,
+            float{bshp_str} bias_param,
+            float roi,
+            float scales
+        >
+        """
+    else:
+        params_str = f"""
+        <
+            float{wshp_str} conv_param,
+            float roi,
+            float scales
+        >
+        """
 
-    input_shape = [1, ifm_ch, ifm_dim, ifm_dim]
-    output_shape = [1, ofm_ch, ofm_dim, ofm_dim]
+    if use_bias:
+        conv_str = f"""
+            out0 = Conv<
+                dilations=[1,1],
+                group=1,
+                kernel_shape=[{ksize},{ksize}],
+                strides=[1,1],
+                pads=[{pad},{pad},{pad},{pad}]
+            >(hid0, conv_param, bias_param)
+        """
+    else:
+        conv_str = f"""
+            out0 = Conv<
+                dilations=[1,1],
+                group=1,
+                kernel_shape=[{ksize},{ksize}],
+                strides=[1,1],
+                pads=[{pad},{pad},{pad},{pad}]
+            >(hid0, conv_param)
+        """
 
-    conv_param_shape = [ofm_ch, ifm_ch, kernel_size, kernel_size]
-    bias_param_shape = [ofm_ch]
+    input = f"""
+    <
+        ir_version: 7,
+        opset_import: ["" : 13]
+    >
+    agraph (float{ishp_str} in0) => (float{oshp_str} out0)
+    {params_str}
+    {{
+        hid0 = Resize<
+            mode="nearest"
+        >(in0, roi, scales)
+        {conv_str}
+    }}
+    """
 
-    inp = oh.make_tensor_value_info("inp", TensorProto.FLOAT, input_shape)
-    out = oh.make_tensor_value_info("out", TensorProto.FLOAT, output_shape)
-
-    W_conv = oh.make_tensor_value_info("W", TensorProto.FLOAT, conv_param_shape)
-    B_conv = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_param_shape)
-
-    value_info = [W_conv] if not bias else [W_conv, B_conv]
-
-    graph = oh.make_graph(
-        nodes=[resize, conv],
-        name="cnv_graph",
-        inputs=[inp],
-        outputs=[out],
-        value_info=value_info,
-    )
-    modelproto = qonnx_make_model(graph, producer_name="test_model")
-    model = ModelWrapper(modelproto)
+    model = oprs.parse_model(input)
+    model = ModelWrapper(model)
     model.set_initializer("roi", np.empty(0))
-    model.set_initializer("scales", scales)
-    model.set_initializer("W", np.random.rand(*conv_param_shape).astype(np.float32))
-    if bias:
-        model.set_initializer("B", np.random.rand(*bias_param_shape).astype(np.float32))
+    model.set_initializer("scales", rscales.astype(np.float32))
+    model.set_initializer("conv_param", weight.astype(np.float32))
+    if use_bias:
+        model.set_initializer("bias_param", bias.astype(np.float32))
     model = model.transform(InferShapes())
     check_model(model._model_proto)
     return model
 
 
-@pytest.mark.parametrize("kernel_size", [1, 3, 5, 7])
+def quant_nn_resize_model(r: int, ifm: int, ich: int, och: int, ksize: int, use_bias: bool, channelwise: bool):
+    assert isinstance(ksize, int), "Assuming square kernels, so kernel_size needs to be an int."
+    pad = (ksize - 1) // 2
+
+    ishp = (1, ich, ifm, ifm)
+    oshp = (1, och, ifm * r, ifm * r)
+    wshp = (och, ich, ksize, ksize)
+    bshp = (och,)
+    rscales = np.array([1.0, 1.0, r, r], dtype=np.float32)
+    weight = np.random.randn(*wshp)
+    bias = np.random.randn(*bshp)
+    ishp_str = str(list(ishp))
+    oshp_str = str(list(oshp))
+    wshp_str = str(list(wshp))
+    bshp_str = str(list(bshp))
+
+    if channelwise:
+        q_attr_shp = (och, 1, 1, 1)
+    else:
+        q_attr_shp = (1,)
+    attrshp_str = str(list(q_attr_shp))
+    scale = np.random.rand(*q_attr_shp).astype(np.float32)
+    zeropt = np.zeros(q_attr_shp).astype(np.float32)  # NOTE: needs to be integer
+    bitwidth = np.array(4.0)
+
+    weight: np.ndarray = quant(weight, scale, zeropt, bitwidth, signed=True, narrow=True, rounding_mode="ROUND")
+
+    if use_bias:
+        params_str = f"""
+        <
+            float{wshp_str} conv_param,
+            float{attrshp_str} scale_param,
+            float{attrshp_str} zeropt_param,
+            float{bshp_str} bias_param,
+            float bitwidth_param,
+            float scale_bias,
+            float zeropt_bias,
+            float bitwidth_bias,
+            float roi,
+            float scales
+        >
+        """
+    else:
+        params_str = f"""
+        <
+            float{wshp_str} conv_param,
+            float{attrshp_str} scale_param,
+            float{attrshp_str} zeropt_param,
+            float roi,
+            float scales,
+            float bitwidth_param
+        >
+        """
+
+    if use_bias:
+        scale_bias = np.random.rand(
+            1,
+        )
+        zeropt_bias = np.array(0.0)
+        bitwidth_bias = np.array(16.0)
+        convs_str = f"""
+        param1 = qonnx.custom_op.general.Quant<
+            signed=1,
+            narrow=1,
+            rounding_mode="ROUND"
+        >(bias_param, scale_bias, zeropt_bias, bitwidth_bias)
+        out0 = Conv<
+            dilations=[1,1],
+            group=1,
+            kernel_shape=[{ksize},{ksize}],
+            strides=[1,1],
+            pads=[{pad},{pad},{pad},{pad}]
+        >(hid0, param0, param1)
+        """
+    else:
+        convs_str = f"""
+        out0 = Conv<
+            dilations=[1,1],
+            group=1,
+            kernel_shape=[{ksize},{ksize}],
+            strides=[1,1],
+            pads=[{pad},{pad},{pad},{pad}]
+        >(hid0, param0)
+        """
+
+    input = f"""
+    <
+        ir_version: 7,
+        opset_import: ["" : 13, "qonnx.custom_op.general" : 1]
+    >
+    agraph (float{ishp_str} in0) => (float{oshp_str} out0)
+    {params_str}
+    {{
+        hid0 = Resize<
+            mode="nearest"
+        >(in0, roi, scales)
+        param0 = qonnx.custom_op.general.Quant<
+            signed=1,
+            narrow=1,
+            rounding_mode="ROUND"
+        >(conv_param, scale_param, zeropt_param, bitwidth_param)
+        {convs_str}
+    }}
+    """
+    model = oprs.parse_model(input)
+    model = ModelWrapper(model)
+    model.set_initializer("roi", np.empty(0))
+    model.set_initializer("scales", rscales.astype(np.float32))
+    model.set_initializer("conv_param", weight.astype(np.float32))
+    if use_bias:
+        model.set_initializer("bias_param", bias.astype(np.float32))
+        model.set_initializer("scale_bias", scale_bias.astype(np.float32))
+        model.set_initializer("zeropt_bias", zeropt_bias.astype(np.float32))
+        model.set_initializer("bitwidth_bias", bitwidth_bias.astype(np.float32))
+    model.set_initializer("scale_param", scale.astype(np.float32))
+    model.set_initializer("zeropt_param", zeropt.astype(np.float32))
+    model.set_initializer("bitwidth_param", bitwidth.astype(np.float32))
+    model = model.transform(InferShapes())
+    check_model(model._model_proto)
+    return model
+
+
+@pytest.mark.parametrize("kernel_size", [3, 5, 7])
 @pytest.mark.parametrize("upscale_factor", [1, 2, 3, 4])
 @pytest.mark.parametrize("bias", [True, False])
-def test_resize_conv_to_deconv_layer(kernel_size: int, upscale_factor: int, bias: bool):
+def test_float_resize_conv_to_deconv_layer(kernel_size: int, upscale_factor: int, bias: bool):
+    och = 10  # output channels
+    ich = 3  # input channels
+    ifm = 4  # input feature map size
+    input_shape = [1, ich, ifm, ifm]
     # Create resize convolution layer that upsamples a 4x4 image with 1 I/O channel
-    model_1 = create_nn_resize_conv_model(3, 10, 4, kernel_size, upscale_factor, bias)
+    model_1 = float_nn_resize_model(upscale_factor, ifm, ich, och, kernel_size, bias)
     model_2 = model_1.transform(ResizeConvolutionToDeconvolution())
-    input_shape = [1, 3, 4, 4]
     inp_dict = {"inp": np.random.rand(*input_shape).astype(np.float32)}
     assert oxe.compare_execution(model_1, model_2, inp_dict)
+
+
+@pytest.mark.parametrize("kernel_size", [3, 5, 7])
+@pytest.mark.parametrize("upscale_factor", [1, 2, 3, 4])
+@pytest.mark.parametrize("bias", [True, False])
+@pytest.mark.parametrize("channelwise", [True, False])
+@pytest.mark.parametrize("maintain_bit_width", [True, False])
+def test_quant_resize_conv_to_deconv_layer(
+    kernel_size: int, upscale_factor: int, bias: bool, channelwise: bool, maintain_bit_width: bool
+):
+    och = 10  # output channels
+    ich = 3  # input channels
+    ifm = 4  # input feature map size
+    input_shape = [1, ich, ifm, ifm]
+    # Create resize convolution layer that upsamples a 4x4 image with 1 I/O channel
+    model_1 = quant_nn_resize_model(upscale_factor, ifm, ich, och, kernel_size, bias, channelwise)
+    model_2 = model_1.transform(ResizeConvolutionToDeconvolution(maintain_bit_width=maintain_bit_width))
+    inp_dict = {"inp": np.random.rand(*input_shape).astype(np.float32)}
+    assert oxe.compare_execution(model_1, model_2, inp_dict)
+
+    if maintain_bit_width:
+        bw1 = model_1.get_initializer("bitwidth_param")
+        bw2 = model_2.get_initializer("bitwidth_param")
+        assert (bw1 == bw2).all()
