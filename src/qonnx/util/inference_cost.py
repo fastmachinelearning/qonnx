@@ -44,7 +44,6 @@ from qonnx.transformation.general import (
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 
-
 def compute_bops_and_macs(inf_cost_dict):
     total_bops = 0.0
     total_macs = 0.0
@@ -57,7 +56,6 @@ def compute_bops_and_macs(inf_cost_dict):
             total_macs += v
     return total_bops, total_macs
 
-
 def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
     total_mem_bits = 0.0
     total_mem_elems = 0.0
@@ -69,9 +67,23 @@ def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
             total_mem_elems += v
     return total_mem_bits, total_mem_elems
 
+def assign_mem_bits_and_elems(res_dict):
+    mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(res_dict, "mem_w")
+    mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(res_dict, "mem_o")
+    res_dict["total_mem_w_bits"] = mem_w_bits
+    res_dict["total_mem_w_elems"] = mem_w_elems
+    res_dict["total_mem_o_bits"] = mem_o_bits
+    res_dict["total_mem_o_elems"] = mem_o_elems
+    return res_dict
 
 def inference_cost(
-    model_filename_or_wrapper, *, output_json=None, output_onnx=None, preprocess=True, discount_sparsity=True
+    model_filename_or_wrapper,
+    *,
+    output_json=None,
+    output_onnx=None,
+    preprocess=True,
+    discount_sparsity=True,
+    cost_breakdown=False
 ):
     """Return the inference cost estimate metric for given ONNX model.
     Supports the Quant op for weight/activation quantization.
@@ -83,8 +95,9 @@ def inference_cost(
     :param preprocess: If set, run preprocessing steps such as shape inference,
         datatype inference and constant folding. Strongly recommended.
     :param discount_sparsity: If set, will discount op cost of MAC ops with a
-        constant zero weight, and the mem cost of constant zero weights.
-    """
+        constant zero weight, and the mem cost of constant zero weights."""
+    
+    combined_results = {}
     if isinstance(model_filename_or_wrapper, ModelWrapper):
         model = model_filename_or_wrapper
     else:
@@ -104,30 +117,40 @@ def inference_cost(
     model = model.transform(GiveReadableTensorNames())
     if output_onnx is not None:
         model.save(output_onnx)
-    ret = model.analysis(lambda x: infca.inference_cost(x, discount_sparsity))
-    bops, macs = compute_bops_and_macs(ret)
-    mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(ret, "mem_w")
-    mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(ret, "mem_o")
-    ret["total_bops"] = bops
-    ret["total_macs"] = macs
-    ret["total_mem_w_bits"] = mem_w_bits
-    ret["total_mem_w_elems"] = mem_w_elems
-    ret["total_mem_o_bits"] = mem_o_bits
-    ret["total_mem_o_elems"] = mem_o_elems
-
-    if "unsupported" in ret:
-        ret["unsupported"] = str(ret["unsupported"])
-
-    if output_json is not None:
-        with open(output_json, "w") as f:
-            json.dump(ret, f, sort_keys=True, indent=2)
-
-    return ret
-
-
+    ret = model.analysis(lambda x: infca.inference_cost(x, discount_sparsity,
+                                                        cost_breakdown))
+    for i, res in ret.items():
+        if i == "total_cost":
+            bops, macs = compute_bops_and_macs(res)
+            res = assign_mem_bits_and_elems(res)
+            res["total_bops"] = bops
+            res["total_macs"] = macs
+            if "unsupported" in res:
+                res["unsupported"] = str(res["unsupported"])
+            if output_json is not None:
+                with open(output_json, "w") as f:
+                    json.dump(res, f, sort_keys=True, indent=2)
+            combined_results[i] = res
+        elif i == "optype_cost":
+            per_optype_breakdown = {}
+            for optype, op_res in res.items():
+                bops, macs = compute_bops_and_macs(op_res)
+                op_res = assign_mem_bits_and_elems(op_res)
+                op_res["total_bops"] = bops
+                op_res["total_macs"] = macs
+                per_optype_breakdown[optype] = op_res
+            combined_results[i] = per_optype_breakdown
+        else:
+            per_node_breakdown = {}
+            for node_name in res.keys():
+                node_res = res[node_name]
+                node_res = assign_mem_bits_and_elems(node_res)
+                per_node_breakdown[node_name] = node_res
+            combined_results[i] = per_node_breakdown
+    return combined_results
+    
 def main():
     clize.run(inference_cost)
-
 
 if __name__ == "__main__":
     main()
