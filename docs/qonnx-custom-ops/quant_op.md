@@ -49,6 +49,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 #### Rounding modes
 <details>
 <summary>rounding modes</summary>
+
 | **Number \ ROUNDING_MODE** | ROUND=HALF_EVEN | CEIL | FLOOR | UP | DOWN | HALF_UP | HALF_DOWN |
 |----------------------------|-----------------|------|-------|----|------|---------|-----------|
 | 5.5                        | 6               | 6    | 5     | 6  | 5    | 6       | 5         |
