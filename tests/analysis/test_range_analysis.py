@@ -30,7 +30,13 @@ import pytest
 
 import numpy as np
 
-from qonnx.util.range_analysis import RangeInfo, calc_intrange_linear, calc_intrange_quant, range_analysis
+from qonnx.util.range_analysis import (
+    RangeInfo,
+    calc_intrange_linear,
+    calc_intrange_quant,
+    calc_intrange_relu,
+    range_analysis,
+)
 from qonnx.util.test import download_model, test_model_details
 
 model_details_stuckchans = {
@@ -128,3 +134,17 @@ def test_int_range_analysis():
     ret_scale = ret["Conv_0_out0"].scale
     golden_scale = ret["Quant_0_out0"].scale * ret["global_in"].scale
     assert np.logical_or(np.isclose(ret_scale.flatten(), golden_scale.flatten()), np.isnan(ret_scale)).all()
+
+    calc_intrange_linear(model.get_node_from_name("BatchNormalization_0"), model, ret)
+    assert (ret["BatchNormalization_0_out0"].int_range[0] == ret["Conv_0_out0"].int_range[0]).all()
+    assert (ret["BatchNormalization_0_out0"].int_range[1] == ret["Conv_0_out0"].int_range[1]).all()
+
+    calc_intrange_relu(model.get_node_from_name("Relu_0"), model, ret)
+    assert np.logical_or(
+        (ret["BatchNormalization_0_out0"].int_range[0] <= ret["Relu_0_out0"].int_range[0]),
+        np.isnan(ret["Relu_0_out0"].int_range[0]),
+    ).all()
+    assert np.logical_or(
+        (ret["BatchNormalization_0_out0"].int_range[1] == ret["Relu_0_out0"].int_range[1]),
+        np.isnan(ret["Relu_0_out0"].int_range[1]),
+    ).all()

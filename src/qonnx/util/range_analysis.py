@@ -444,7 +444,69 @@ def calc_intrange_quant(node, model, range_dict):
     range_dict[node.output[0]] = orange_inf
 
 
+def check_int_inputs(node, range_dict):
+    inp_int_info = [range_dict[x].has_integer_info() for x in node.input]
+    return inp_int_info
+
+
+def calc_intrange_relu(node, model, range_dict):
+    # try to propagate integer range and scale/bias info for ReLU
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not any(inp_int_info):
+        # must have at least one input with integer info, otherwise no point
+        warn(node.name + " has no integer info on inputs, cannot propagate")
+        return
+    irange_inf = range_dict[node.input[inp_int_info.index(True)]]
+    orange_inf = range_dict[node.output[0]]
+    # we'll use the ReLU output range to infer the integer parts
+    # * output range can only come from the ReLU identity part (input > 0)
+    # * scale and bias are always left unchanged, unless stuck channel
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # S and B are identical between input and output
+    scale = irange_inf.scale
+    bias = irange_inf.bias
+    # int_range_min = (range_min - B) / S
+    # int_range_max = (range_max - B) / S
+    int_range_0 = (orange_inf.range[0] - bias) / scale
+    int_range_1 = (orange_inf.range[1] - bias) / scale
+    int_range_min = np.round(int_range_0)
+    int_range_max = np.round(int_range_1)
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = (int_range_min, int_range_max)
+
+
 def calc_intrange_linear(node, model, range_dict):
+    # try to propagate integer range and scale/bias info
+    inp_int_info = check_int_inputs(node, range_dict)
+    if all(inp_int_info):
+        # use own handler when all inputs have integer info available
+        return calc_intrange_linear_allint(node, model, range_dict)
+    if not any(inp_int_info):
+        # must have at least one input with integer info, otherwise no point
+        warn(node.name + " has no integer info on inputs, cannot propagate")
+        return
+    irange_inf = range_dict[node.input[inp_int_info.index(True)]]
+    # remaining cases are mix of integer and non-integer inputs
+    # e.g. scaled-int dynamic input times channelwise float scales
+    # assumption: int part remains untouched, scale/bias gets updated
+    range_dict[node.output[0]].int_range = irange_inf.int_range
+    orange_inf = range_dict[node.output[0]]
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (orange_inf.int_range[1] - orange_inf.int_range[0])
+    bias = orange_inf.range[1] - scale * orange_inf.int_range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+
+
+def calc_intrange_linear_allint(node, model, range_dict):
     for node_in in node.input:
         irange_inf = range_dict[node_in]
         if not irange_inf.has_integer_info():
