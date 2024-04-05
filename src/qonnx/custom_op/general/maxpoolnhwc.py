@@ -53,7 +53,7 @@ class MaxPoolNHWC(CustomOp):
         # https://github.com/onnx/onnx/blob/main/docs/Operators.md#MaxPool
         return {
             "kernel_shape": ("ints", True, []),
-            "pads": ("ints", True, []),
+            "pads": ("ints", False, [0, 0, 0, 0]),
             "strides": ("ints", True, []),
             "ceil_mode": ("i", False, 0),
         }
@@ -128,7 +128,7 @@ class AveragePoolNHWC(CustomOp):
         # https://github.com/onnx/onnx/blob/main/docs/Operators.md#AveragePool
         return {
             "kernel_shape": ("ints", True, []),
-            "pads": ("ints", True, []),
+            "pads": ("ints", False, [0, 0, 0, 0]),
             "strides": ("ints", True, []),
             "ceil_mode": ("i", False, 0),
         }
