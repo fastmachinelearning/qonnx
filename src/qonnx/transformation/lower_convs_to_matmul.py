@@ -81,7 +81,8 @@ class LowerConvsToMatMul(Transformation):
                     auto_pad = auto_pad.s.decode("utf-8")
                     if auto_pad == "NOTSET":
                         # use specified padding
-                        pad = get_by_name(n.attribute, "pads").ints
+                        pad = get_by_name(n.attribute, "pads")
+                        pad = pad.ints if pad is not None else [0, 0, 0, 0]
                     else:
                         pad = auto_pad_to_explicit_padding(
                             auto_pad,
@@ -95,7 +96,8 @@ class LowerConvsToMatMul(Transformation):
                         )
                 else:
                     # use specified padding
-                    pad = get_by_name(n.attribute, "pads").ints
+                    pad = get_by_name(n.attribute, "pads")
+                    pad = pad.ints if pad is not None else [0, 0, 0, 0]
 
                 # If len(pad) == 2, assume no padding for other dimension
                 if len(pad) == 2:  # only one dimension should be padded
