@@ -119,7 +119,7 @@ def test_range_analysis(model_name):
             assert np.isclose(tg_val, ret_val)
 
 
-def test_int_range_analysis():
+def test_int_range_analysis_singlelayers():
     model_name = "MobileNetv1-w4a4"
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     irange = test_model_details[model_name]["input_range"]
