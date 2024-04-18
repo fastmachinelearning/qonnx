@@ -333,6 +333,11 @@ def calc_range_all_initializers(model, range_dict):
         tensor_init = model.get_initializer(tensor_name)
         if tensor_init is not None:
             range_dict[tensor_name] = RangeInfo(range=(tensor_init, tensor_init), is_initializer=True)
+            # use % 1 == 0 to identify integers
+            if ((tensor_init % 1) == 0).all():
+                range_dict[tensor_name].int_range = (tensor_init, tensor_init)
+                range_dict[tensor_name].scale = np.asarray([1.0], dtype=np.float32)
+                range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
 
 
 optype_to_range_calc = {
@@ -414,6 +419,8 @@ def calc_intrange_quant(node, model, range_dict):
     assert not (q_zeropt is None)
     q_scale = model.get_initializer(node.input[1])
     assert not (q_scale is None)
+    # TODO can we use input/output range info instead of all this
+    # node-specific behavior, using one of the other existing handlers?
     # we need to do a little style conversion for the scale/bias:
     # intrange calculations here represent quant tensors as Mx+N (x: int tensor, M: scale, N: bias)
     # whereas Quant nodes represent them as S(x-Z) (x: int tensor, S: scale, Z: zeropoint)
@@ -543,6 +550,39 @@ def calc_intrange_linear_allint(node, model, range_dict):
     range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
+def calc_intrange_identity(node, model, range_dict):
+    n_dyn_inps = [(model.get_initializer(x) is None) for x in node.input].count(True)
+    assert n_dyn_inps == 1, "Identity int range prop needs a single dynamic input"
+    irange_inf = range_dict[node.input[0]]
+    for o in node.output:
+        range_dict[o].scale = irange_inf.scale
+        range_dict[o].bias = irange_inf.bias
+        range_dict[o].int_range = irange_inf.int_range
+
+
+def calc_intrange(model, range_dict):
+    intrange_mapping = {
+        "Conv": calc_intrange_linear,
+        "MatMul": calc_intrange_linear,
+        "BatchNormalization": calc_intrange_linear,
+        "Relu": calc_intrange_relu,
+        "Quant": calc_intrange_quant,
+        "Pad": calc_intrange_identity,
+        "MaxPool": calc_intrange_identity,
+        "Reshape": calc_intrange_identity,
+    }
+
+    # now walk the graph node by node and propagate scaled-int range info
+    for node in model.graph.node:
+        op_ok = node.op_type in intrange_mapping.keys()
+        if op_ok:
+            range_calc_fxn = intrange_mapping[node.op_type]
+            range_calc_fxn(node, model, range_dict)
+            # range_dict[node.output[0]].int_range = simplify_range(range_dict[node.output[0]].int_range)
+        else:
+            warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
+
+
 def range_analysis(
     model_filename_or_wrapper,
     *,
@@ -551,7 +591,8 @@ def range_analysis(
     report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
     prettyprint=False,
     do_cleanup=False,
-    strip_initializers_from_report=True
+    strip_initializers_from_report=True,
+    scaled_int=False
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -571,6 +612,8 @@ def range_analysis(
                 range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
+    elif isinstance(irange, RangeInfo):
+        pass
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
@@ -587,13 +630,16 @@ def range_analysis(
     # start by calculating/annotating range info for input tensors
     for inp in model.graph.input:
         iname = inp.name
-        if range_min is None or range_max is None:
-            # use idt annotation
-            idt = model.get_tensor_datatype(iname)
-            assert idt is not None, "Could not infer irange, please specify"
-            range_min = idt.min()
-            range_max = idt.max()
-        range_dict[iname] = RangeInfo(range=(range_min, range_max))
+        if isinstance(irange, RangeInfo):
+            range_dict[iname] = irange
+        else:
+            if range_min is None or range_max is None:
+                # use idt annotation
+                idt = model.get_tensor_datatype(iname)
+                assert idt is not None, "Could not infer irange, please specify"
+                range_min = idt.min()
+                range_max = idt.max()
+            range_dict[iname] = RangeInfo(range=(range_min, range_max))
 
     # add range info for all tensors with initializers
     calc_range_all_initializers(model, range_dict)
@@ -623,6 +669,10 @@ def range_analysis(
                 range_dict[node.output[0]].range = simplify_range(out_range)
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
+
+    # if scaled-int range prop is enabled, call as postproc
+    if scaled_int:
+        calc_intrange(model, range_dict)
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
