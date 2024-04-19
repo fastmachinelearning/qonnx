@@ -40,11 +40,11 @@ from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantIn
 from qonnx.util.basic import get_by_name
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-# _channelsLast_node_types = [x for x in list(channels_last.custom_op.keys()) if x != 'Resize']
 _channelsLast_node_types = list(channels_last.custom_op.keys())
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
+# Probably some more nodes have to be added here.
 _move_through_nodes = ["Quant", "Relu", "LeakyRelu", "Resize"]
 
 # Nodes, which do not modify the shape of the tensor,
@@ -70,7 +70,6 @@ class ConvertToChannelsLastAndClean(Transformation):
 
     def apply(self, model):
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
-        
         initial_model_string = model.model.SerializeToString()
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -99,7 +98,6 @@ class ConvertToChannelsLastAndClean(Transformation):
 
         # Check if the model changed
         new_model_string = model.model.SerializeToString()
-    
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
         model = model.transform(FoldConstants())
@@ -122,7 +120,6 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
         # Find nodes, where the domain should be changed
         for n in graph.node:
             node_ind += 1
-
             if (n.op_type in _channelsLast_node_types) and (n.domain == ""):
                 running_node_index = node_ind
                 # Insert transformation nodes for input nodes
@@ -132,6 +129,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                 chanFirst_shape = model.get_tensor_shape(input_tensors[0])
                 if n.op_type == "BatchNormalization" and len(chanFirst_shape) == 2:
                     continue
+
                 for i, inp in enumerate(input_tensors):
                     # Skip higher "order" inputs of the Batch-Norm,
                     # these don't need a transpose.
