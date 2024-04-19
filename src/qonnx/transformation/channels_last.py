@@ -98,6 +98,7 @@ class ConvertToChannelsLastAndClean(Transformation):
 
         # Check if the model changed
         new_model_string = model.model.SerializeToString()
+
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
         model = model.transform(FoldConstants())
@@ -289,8 +290,8 @@ class MoveChanLastUpstream(Transformation):
                         # Input tensors are always input 0
                         inp = predecessor.input[0]
                         if isinstance(model.get_initializer(inp), type(None)):
-                            # Swap around node "predecessor" and "n"
-                            # collect tensors
+                            # Handle of the case in which predecessor is fork node
+                            # for models with branches
                             if model.is_fork_node(predecessor):
                                 # Here we are considering one branch of the fork.
                                 # This case must be handles separately since the
@@ -323,6 +324,8 @@ class MoveChanLastUpstream(Transformation):
                                 predecessor.input[0] = tensor_3
                                 graph.node.remove(x2)                  
                             else:
+                                # Swap around node "predecessor" and "n"
+                                # collect tensors
                                 tensor_1 = inp
                                 tensor_2 = n.input[0]
                                 tensor_3 = n.output[0]
