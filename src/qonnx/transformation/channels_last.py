@@ -69,70 +69,33 @@ class ConvertToChannelsLastAndClean(Transformation):
         self._make_input_channels_last = make_input_channels_last
 
     def apply(self, model):
-        # assert model.analysis(is_linear)["is_linear"], "Only linear and non-branching models are supported at this moment."
-        # assert model.check_all_tensor_shapes_specified(), (
-        #     "All tensor shapes must be specified. " "Consider running InferShapes."
-        # )
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
-        
-        import onnx
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_1.onnx')
-        print('ONNX model saved InsertChannelsLastDomainsAndTrafos - 1')
         
         initial_model_string = model.model.SerializeToString()
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_2.onnx')
-        print('ONNX model saved RemoveConsecutiveChanFirstAndChanLastTrafos - 2')
 
         # Apply MoveChanLastUpstream and fold into initializers
         model = model.transform(MoveChanLastUpstream())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_3.onnx')
-        print('ONNX model saved MoveChanLastUpstream - 3')
-        
         model = model.transform(FoldTransposeIntoQuantInit())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_4.onnx')
-        print('ONNX model saved FoldTransposeIntoQuantInit - 4')
 
         # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
         # Technically only required if something changed in the previous trafo
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_5.onnx')
-        print('ONNX model saved RemoveConsecutiveChanFirstAndChanLastTrafos - 5')
 
         # Apply MoveChanLastDownStream
         model = model.transform(MoveChanFirstDownstream())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_6.onnx')
-        print('ONNX model saved MoveChanFirstDownstream - 6')
 
         # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
         # Technically only required if something changed in the previous trafo
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_7.onnx')
-        print('ONNX model saved RemoveConsecutiveChanFirstAndChanLastTrafos - 7')
 
         # Apply AbsorbChanFirstIntoMatMul
         model = model.transform(AbsorbChanFirstIntoMatMul())
-        
-        onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_8.onnx')
-        print('ONNX model saved AbsorbChanFirstIntoMatMul - 8')
 
         if self._make_input_channels_last:
             model = model.transform(MakeInputChannelsLast())
-            
-            onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_9.onnx')
-            print('ONNX model saved MakeInputChannelsLast - 9')
-            
             model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
-            
-            onnx.save(model.model, 'modified-onnx-models/modified_tiny_unet_100k_ch_last_10.onnx')
-            print('ONNX model saved RemoveConsecutiveChanFirstAndChanLastTrafos - 10')
 
         # Check if the model changed
         new_model_string = model.model.SerializeToString()
@@ -336,16 +299,31 @@ class MoveChanLastUpstream(Transformation):
                                 # transpose on the other branch has to be simplified as well
                                 transposes = model.find_direct_successors(predecessor)
                                 both_transpose = True if all(n.op_type == 'Transpose' for n in transposes) else False
-                                assert both_transpose, "Not handled case for branched model"
-                                # only for 2 branches
-                                other_node = transposes[0] if transposes[1] == n else transposes[1]
-                                x0 = model.find_direct_successors(other_node)[0]
+                                assert len(transposes) == 2, "Only the case of 2 branches is handled"
+                                assert both_transpose, "The first 2 nodes of the branches must be transpose nodes"
+                                x2 = transposes[0] if transposes[1] == n else transposes[1]
+                                
+                                # It basically rewires the nodes and tensors in order to move 
+                                # one transpose before the fork node (usually an activation function)
+                                # and removes the other transpose from the graph.
+                                # Easier to understand by writing a simple graph
+                                
+                                # Define the nodes and tensor to be rewired
+                                xa = model.find_direct_predecessors(predecessor)[0]
+                                x0 = model.find_direct_successors(x2)[0]
                                 x1 = model.find_direct_successors(n)[0]
-                                x0.input[0] = predecessor.output[0]
-                                x1.input[0] = predecessor.output[0]
-                                n.input[0] = predecessor.input[0]
-                                predecessor.input[0] = n.name
-                                graph.node.remove(other_node)                         
+                                tensor_1 = xa.output[0]
+                                tensor_2 = predecessor.output[0]
+                                tensor_3 = n.output[0]
+                                
+                                # Perform the rewiring
+                                x0.input.remove(x2.output[0])
+                                x0.input.append(tensor_2)
+                                x1.input[0] = tensor_2
+                                n.input[0] = tensor_1
+                                xa.output[0] = tensor_1
+                                predecessor.input[0] = tensor_3
+                                graph.node.remove(x2)                  
                             else:
                                 tensor_1 = inp
                                 tensor_2 = n.input[0]
@@ -357,9 +335,9 @@ class MoveChanLastUpstream(Transformation):
                                 predecessor.input[0] = tensor_2
                                 predecessor.output[0] = tensor_3
 
-                                # Change the shape of the middle tensor
-                                target_shape = model.get_tensor_shape(tensor_3)
-                                model.set_tensor_shape(tensor_2, target_shape)
+                            # Change the shape of the middle tensor
+                            target_shape = model.get_tensor_shape(tensor_3)
+                            model.set_tensor_shape(tensor_2, target_shape)
 
                             graph_modified = True
                             return model, graph_modified

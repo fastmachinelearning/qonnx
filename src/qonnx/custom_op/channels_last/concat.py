@@ -98,7 +98,7 @@ class Concat(ChannelsLastWrappedOp):
             verification_successful = False
 
         # verify the number of inputs
-        if len(node.input) == 2:
+        if len(node.input) >= 2:
             info_messages.append("The number of inputs is correct")
         else:
             info_messages.append("{} needs 2 data input".format(node.op_type))

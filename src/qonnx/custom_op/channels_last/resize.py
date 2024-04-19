@@ -49,7 +49,7 @@ class Resize(ChannelsLastWrappedOp):
         """Returns a standard ONNX op which is compatible with this CustomOp
         for performing shape inference."""
         node = self.onnx_node
-        iscalesn = node.input[2]
+        iscalesn = node.input[-1]
         inode = node.input[0]
         inodes = model.get_tensor_shape(inode)
         iscalesns = model.get_tensor_shape(iscalesn)
@@ -85,8 +85,8 @@ class Resize(ChannelsLastWrappedOp):
         info_messages.extend(wrapper_info)
 
         # verify number of attributes
-        num_of_attr_min = 1
-        num_of_attr_max = 1
+        num_of_attr_min = 4
+        num_of_attr_max = 4
         if (len(node.attribute) >= num_of_attr_min) and len(node.attribute) <= num_of_attr_max:
             info_messages.append("The number of attributes is correct")
         else:
@@ -100,7 +100,10 @@ class Resize(ChannelsLastWrappedOp):
 
         # verify that all necessary attributes exist
         try:
-            self.get_nodeattr("axis")
+            self.get_nodeattr("coordinate_transformation_mode")
+            self.get_nodeattr("cubic_coeff_a")
+            self.get_nodeattr("mode")
+            self.get_nodeattr("nearest_mode")
             info_messages.append("All necessary attributes exist")
         except Exception:
             info_messages.append(
@@ -112,14 +115,17 @@ class Resize(ChannelsLastWrappedOp):
 
         # verify that attributes have the correct datatype.
         try:
-            assert isinstance(self.get_nodeattr("axis"), int)
+            assert isinstance(self.get_nodeattr("coordinate_transformation_mode"), str)
+            assert isinstance(self.get_nodeattr("cubic_coeff_a"), float)
+            assert isinstance(self.get_nodeattr("mode"), str)
+            assert isinstance(self.get_nodeattr("nearest_mode"), str)
             info_messages.append("All attributes are of the correct type")
         except Exception:
             info_messages.append("One or more attributes are of the wrong datatype")
             verification_successful = False
 
         # verify the number of inputs
-        if len(node.input) == 2:
+        if len(node.input) == 1:
             info_messages.append("The number of inputs is correct")
         else:
             info_messages.append("{} needs 2 data input".format(node.op_type))
