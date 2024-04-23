@@ -29,7 +29,6 @@
 import warnings
 from onnx import TensorProto, helper
 
-from qonnx.analysis.topology import is_linear
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
 from qonnx.transformation.base import Transformation
