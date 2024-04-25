@@ -405,7 +405,6 @@ class SortCommutativeInputsInitializerLast(Transformation):
                 # Length of sorted and original input list must match
                 assert len(inputs) == len(node.input)
                 # Reassigned inputs from sorted categories
-                #   Note: ONNX does not allow direct assignment to node.input
                 for i, name in enumerate(inputs):
                     # The graph has been modified if any input is reordered
                     if node.input[i] != name:
