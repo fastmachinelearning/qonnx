@@ -565,6 +565,7 @@ def calc_intrange(model, range_dict):
         "Conv": calc_intrange_linear,
         "MatMul": calc_intrange_linear,
         "BatchNormalization": calc_intrange_linear,
+        "Add": calc_intrange_linear,
         "Relu": calc_intrange_relu,
         "Quant": calc_intrange_quant,
         "Pad": calc_intrange_identity,
