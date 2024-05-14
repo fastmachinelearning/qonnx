@@ -39,10 +39,8 @@ class Resize(ChannelsLastWrappedOp):
         assert len(scales) == len(input_shape)
         scales = [int(i) for i in scales]
         output_shape = input_shape.copy()
-        output_shape[1], output_shape[-1] = output_shape[-1], output_shape[1]
         for i in range(len(input_shape)):
             output_shape[i] *= scales[i]
-        output_shape[1], output_shape[-1] = output_shape[-1], output_shape[1]
         return output_shape
 
     def make_shape_compatible_op(self, model):
@@ -53,10 +51,12 @@ class Resize(ChannelsLastWrappedOp):
         inode = node.input[0]
         inodes = model.get_tensor_shape(inode)
         iscalesns = model.get_tensor_shape(iscalesn)
-        i = self._get_initializer_from_name(model, iscalesn).raw_data
+        i = self._get_initializer_from_name(model, iscalesn)
+        i_raw = i.raw_data
         fmt = self._compute_fmt(iscalesns[0])
-        scales = struct.unpack(fmt, i)
-        
+        scales = struct.unpack(fmt, i_raw)
+        scales = (scales[0], scales[-1], scales[2], scales[1])
+        i.raw_data = struct.pack(fmt, *scales)
         # implement tensor with correct shape
         output_shape = self._compute_resize_output_shape(scales, inodes)
         

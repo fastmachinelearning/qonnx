@@ -30,6 +30,7 @@ class Concat(ChannelsLastWrappedOp):
         iname1 = node.input[1]
         ishape0 = model.get_tensor_shape(iname0)
         ishape1 = model.get_tensor_shape(iname1)
+        self.set_nodeattr("axis", 3)
         # axis = self.get_nodeattr("axis")
         # not sure about what's the shape of inputs, don't know how to check it
         # check that ishape0[1] == ishape1[1] and ishape0[2] == ishape1[2]
