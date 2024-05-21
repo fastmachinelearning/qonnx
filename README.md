@@ -101,6 +101,7 @@ Inference cost for CNV_2W2A.onnx
 }
 ```
 
+You can use the `--cost-breakdown` option to generate a more detailed report that covers per-node (by name) and per-op-type information.
 You can read more about the BOPS metric in [this paper](https://www.frontiersin.org/articles/10.3389/frai.2021.676564/full), Section 4.2 Bit Operations.
 
 ### Convert between different quantization representations
