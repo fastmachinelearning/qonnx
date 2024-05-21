@@ -133,7 +133,7 @@ def inference_cost(
             if "unsupported" in res:
                 res["unsupported"] = str(res["unsupported"])
             combined_results[i] = res
-        else:
+        elif i in ["optype_cost", "node_cost"]:
             per_optype_or_node_breakdown = {}
             for optype, op_res in res.items():
                 bops, macs = compute_bops_and_macs(op_res)
