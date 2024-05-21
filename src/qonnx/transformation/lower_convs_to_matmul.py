@@ -32,24 +32,7 @@ from onnx import TensorProto, helper
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
-from qonnx.util.basic import get_by_name
-
-
-def _auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h, stride_w, n_dims):
-    pad_total_h = (stride_h - 1) * idim_h - stride_h + k_h
-    pad_total_w = (stride_w - 1) * idim_w - stride_w + k_w
-    pad_half_small_h = int((pad_total_h / 2))
-    pad_half_small_w = int((pad_total_w / 2))
-    pad_half_large_h = pad_total_h - pad_half_small_h
-    pad_half_large_w = pad_total_w - pad_half_small_w
-    if autopad_str == "VALID":
-        return [0 for i in range(2 * n_dims)]
-    elif autopad_str == "SAME_UPPER":
-        return [pad_half_small_h, pad_half_small_w, pad_half_large_h, pad_half_large_w]
-    elif autopad_str == "SAME_LOWER":
-        return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
-    else:
-        raise Exception("Unsupported auto_pad: " + autopad_str)
+from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
 
 
 class LowerConvsToMatMul(Transformation):
@@ -100,7 +83,7 @@ class LowerConvsToMatMul(Transformation):
                         # use specified padding
                         pad = get_by_name(n.attribute, "pads").ints
                     else:
-                        pad = _auto_pad_to_explicit_padding(
+                        pad = auto_pad_to_explicit_padding(
                             auto_pad,
                             ifm_dim_h,
                             ifm_dim_w,

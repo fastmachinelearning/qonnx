@@ -47,7 +47,7 @@ np.random.seed(0)
 
 
 def test_subpixel_to_deconv_float_espcn():
-    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/float_model.onnx")
+    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/subpixel/float_model.onnx")
     model = ModelWrapper(raw_m)
     model = model.transform(InferShapes())
     iname = model.graph.input[0].name
@@ -67,7 +67,7 @@ def test_subpixel_to_deconv_float_espcn():
 def test_subpixel_to_deconv_quant_espcn():
     # get raw quantized model with reference input
     raw_i = get_data("qonnx.data", "onnx/bsd300x3-espcn/test_data/input_0.pb")
-    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/quant_model.onnx")
+    raw_m = get_data("qonnx.data", "onnx/bsd300x3-espcn/subpixel/quant_model.onnx")
     # create model from the onnx file and infer the shapes
     model = ModelWrapper(raw_m)
     model = model.transform(InferShapes())
