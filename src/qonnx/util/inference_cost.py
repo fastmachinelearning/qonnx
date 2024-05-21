@@ -44,6 +44,7 @@ from qonnx.transformation.general import (
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 
+
 def compute_bops_and_macs(inf_cost_dict):
     total_bops = 0.0
     total_macs = 0.0
@@ -56,6 +57,7 @@ def compute_bops_and_macs(inf_cost_dict):
             total_macs += v
     return total_bops, total_macs
 
+
 def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
     total_mem_bits = 0.0
     total_mem_elems = 0.0
@@ -67,6 +69,7 @@ def compute_mem_bits_and_elems(inf_cost_dict, filter_string="mem_w"):
             total_mem_elems += v
     return total_mem_bits, total_mem_elems
 
+
 def assign_mem_bits_and_elems(res_dict):
     mem_w_bits, mem_w_elems = compute_mem_bits_and_elems(res_dict, "mem_w")
     mem_o_bits, mem_o_elems = compute_mem_bits_and_elems(res_dict, "mem_o")
@@ -75,6 +78,7 @@ def assign_mem_bits_and_elems(res_dict):
     res_dict["total_mem_o_bits"] = mem_o_bits
     res_dict["total_mem_o_elems"] = mem_o_elems
     return res_dict
+
 
 def inference_cost(
     model_filename_or_wrapper,
@@ -96,7 +100,7 @@ def inference_cost(
         datatype inference and constant folding. Strongly recommended.
     :param discount_sparsity: If set, will discount op cost of MAC ops with a
         constant zero weight, and the mem cost of constant zero weights."""
-    
+
     combined_results = {}
     if isinstance(model_filename_or_wrapper, ModelWrapper):
         model = model_filename_or_wrapper
@@ -117,8 +121,7 @@ def inference_cost(
     model = model.transform(GiveReadableTensorNames())
     if output_onnx is not None:
         model.save(output_onnx)
-    ret = model.analysis(lambda x: infca.inference_cost(x, discount_sparsity,
-                                                        cost_breakdown))
+    ret = model.analysis(lambda x: infca.inference_cost(x, discount_sparsity, cost_breakdown))
     for i, res in ret.items():
         if i == "total_cost":
             bops, macs = compute_bops_and_macs(res)
@@ -148,9 +151,11 @@ def inference_cost(
                 per_node_breakdown[node_name] = node_res
             combined_results[i] = per_node_breakdown
     return combined_results
-    
+
+
 def main():
     clize.run(inference_cost)
+
 
 if __name__ == "__main__":
     main()
