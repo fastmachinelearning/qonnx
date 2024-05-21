@@ -76,7 +76,9 @@ def test_inference_cost_breakdown(test_model):
     test_details = model_details[test_model]
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
     inf_cost = infca(model, discount_sparsity=False, cost_breakdown=True)
-    print(inf_cost.keys())
+    assert inf_cost["node_cost"]["Conv_0"]["total_macs"] == 118013952
+    assert inf_cost["node_cost"]["Conv_1"]["total_macs"] == 115605504
+    assert inf_cost["optype_cost"]["Conv"]["total_macs"] == 1813561344
     t_cost = inf_cost["total_cost"]  # total cost
     op_cost = aggregate_dict_keys(inf_cost["optype_cost"])  # cost per optype
     n_cost = aggregate_dict_keys(inf_cost["node_cost"])  # cost per node.

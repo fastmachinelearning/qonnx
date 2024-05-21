@@ -117,6 +117,8 @@ def inference_cost_conv(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, wdt_name)
     w_mem_type_str = "mem_w_%s" % (wdt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
+    # keep in floats to remain compatible with json serialization
+    n_macs, w_mem, o_mem = float(n_macs), float(w_mem), float(o_mem)
     ret = {mac_op_type_str: n_macs, w_mem_type_str: w_mem, o_mem_type_str: o_mem}
     return ret
 
@@ -161,6 +163,8 @@ def inference_cost_matmul(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, wdt_name)
     w_mem_type_str = "mem_w_%s" % (wdt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
+    # keep in floats to remain compatible with json serialization
+    n_macs, w_mem, o_mem = float(n_macs), float(w_mem), float(o_mem)
     ret = {mac_op_type_str: n_macs, w_mem_type_str: w_mem, o_mem_type_str: o_mem}
     return ret
 
@@ -197,6 +201,8 @@ def inference_cost_upsample(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, idt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
 
+    # keep in floats to remain compatible with json serialization
+    n_macs, o_mem = float(n_macs), float(o_mem)
     ret = {mac_op_type_str: n_macs, o_mem_type_str: o_mem}
     return ret
 

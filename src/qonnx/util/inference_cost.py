@@ -99,7 +99,9 @@ def inference_cost(
     :param preprocess: If set, run preprocessing steps such as shape inference,
         datatype inference and constant folding. Strongly recommended.
     :param discount_sparsity: If set, will discount op cost of MAC ops with a
-        constant zero weight, and the mem cost of constant zero weights."""
+        constant zero weight, and the mem cost of constant zero weights.
+    :param cost_breakdown: If set, include per-node (by name) and per-node-type
+        breakdowns as part of the returned inference cost dict."""
 
     combined_results = {}
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -130,26 +132,19 @@ def inference_cost(
             res["total_macs"] = macs
             if "unsupported" in res:
                 res["unsupported"] = str(res["unsupported"])
-            if output_json is not None:
-                with open(output_json, "w") as f:
-                    json.dump(res, f, sort_keys=True, indent=2)
             combined_results[i] = res
-        elif i == "optype_cost":
-            per_optype_breakdown = {}
+        else:
+            per_optype_or_node_breakdown = {}
             for optype, op_res in res.items():
                 bops, macs = compute_bops_and_macs(op_res)
                 op_res = assign_mem_bits_and_elems(op_res)
                 op_res["total_bops"] = bops
                 op_res["total_macs"] = macs
-                per_optype_breakdown[optype] = op_res
-            combined_results[i] = per_optype_breakdown
-        else:
-            per_node_breakdown = {}
-            for node_name in res.keys():
-                node_res = res[node_name]
-                node_res = assign_mem_bits_and_elems(node_res)
-                per_node_breakdown[node_name] = node_res
-            combined_results[i] = per_node_breakdown
+                per_optype_or_node_breakdown[optype] = op_res
+            combined_results[i] = per_optype_or_node_breakdown
+    if output_json is not None:
+        with open(output_json, "w") as f:
+            json.dump(combined_results, f, sort_keys=True, indent=2)
     return combined_results
 
 
