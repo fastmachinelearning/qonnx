@@ -41,6 +41,7 @@ from qonnx.transformation.general import (
 )
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
+from qonnx.transformation.channels_last import RemoveDomainFromSpecialNodes
 
 
 def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_conv_bias=False):
@@ -75,6 +76,7 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
             model.set_tensor_shape(iname, override_inpsize)
 
     cleanup_transformations = [
+        RemoveDomainFromSpecialNodes(),
         InferShapes(),
         GiveUniqueParameterTensors(),
         FoldConstants(exclude_op_types=preserve_qnt_optypes),

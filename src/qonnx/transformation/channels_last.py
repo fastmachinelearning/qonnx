@@ -30,7 +30,7 @@ import warnings
 from onnx import TensorProto, helper
 
 from qonnx.custom_op import channels_last
-from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args, to_channels_last_list
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
@@ -40,11 +40,12 @@ from qonnx.util.basic import get_by_name
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(channels_last.custom_op.keys())
+_channelsLast_special_node_types = ['Resize', 'Upsample', 'Concat']
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
 # Probably some more nodes have to be added here.
-_move_through_nodes = ["Quant", "Relu", "LeakyRelu", "Resize"]
+_move_through_nodes = ["Quant", "Relu", "LeakyRelu"]
 
 # Nodes, which do not modify the shape of the tensor,
 # And modify all values in the same way, if the second tensor is a scalar.
@@ -69,6 +70,9 @@ class ConvertToChannelsLastAndClean(Transformation):
 
     def apply(self, model):
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
+        
+        model = model.transform(RemoveDomainFromSpecialNodes())
+
         initial_model_string = model.model.SerializeToString()
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -101,12 +105,28 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
         model = model.transform(FoldConstants())
+        model = model.transform(AddDomainFromSpecialNodes())
 
         # Check if the model changed
         model_changed = initial_model_string != new_model_string
 
         return model, model_changed
 
+class RemoveDomainFromSpecialNodes(Transformation):
+
+    def apply(self, model):
+        for n in model.graph.node:
+            if n.op_type in _channelsLast_special_node_types:
+                n.domain = ""
+        return model, False
+    
+class AddDomainFromSpecialNodes(Transformation):
+
+    def apply(self, model):
+        for n in model.graph.node:
+            if n.op_type in _channelsLast_special_node_types:
+                n.domain = "qonnx.custom_op.channels_last_special"
+        return model, False
 
 class InsertChannelsLastDomainsAndTrafos(Transformation):
     """
@@ -120,7 +140,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
         # Find nodes, where the domain should be changed
         for n in graph.node:
             node_ind += 1
-            if (n.op_type in _channelsLast_node_types) and (n.domain == ""):
+            if (n.op_type in _channelsLast_node_types or n.op_type in _channelsLast_special_node_types) and (n.domain == ""):
                 running_node_index = node_ind
                 # Insert transformation nodes for input nodes
                 input_tensors = n.input
@@ -138,9 +158,31 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # Skip Conv bias since it doesn't need a transpose
                     if n.op_type == "Conv" and i == 2:
                         continue
-                    # Skip Resize scales since it does not need a transpose
-                    if n.op_type == "Resize" and (i == 1 or i == 2):
+                    # Handle Resize scales
+                    if (n.op_type == "Resize") and (i == 1 or i == 2):
+                        if i == 2:
+                            scales = model.get_initializer(inp).copy()
+                            scales = to_channels_last_list(scales)
+                            model.set_initializer(inp, scales)
+                            # old_shape = model.get_tensor_shape(n.output[0])
+                            # new_shape = to_channels_last_list(old_shape)
+                            # model.set_tensor_shape(inp, new_shape)
                         continue
+                    if (n.op_type == "Upsample") and (i == 1):
+                        scales = model.get_initializer(inp).copy()
+                        scales = to_channels_last_list(scales)
+                        model.set_initializer(inp, scales)
+                        # old_shape = model.get_tensor_shape(n.output[0])
+                        # new_shape = to_channels_last_list(old_shape)
+                        # model.set_tensor_shape(inp, new_shape)
+                        continue
+                    if (n.op_type == "Concat"):
+                        if i == 0:
+                            s = len(model.get_tensor_shape(inp))
+                            get_by_name(n.attribute, "axis").i = s - 1
+                            # t = model.get_tensor_shape(inp)
+                            # t_new = to_channels_last_list(t)
+                            # model.set_tensor_shape(inp, t_new)
                     # Get the shape of the input tensor
                     # and convert it to the shape for the intermediate tensor
                     chanFirst_shape = model.get_tensor_shape(inp)
@@ -191,7 +233,10 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     n.output[i] = outp_trans_in
 
                 # Modify domain
-                n.domain = "qonnx.custom_op.channels_last"
+                if (n.op_type in _channelsLast_node_types):
+                    n.domain = "qonnx.custom_op.channels_last"
+                if (n.op_type in _channelsLast_special_node_types):
+                    n.domain = "qonnx.custom_op.channels_last_special"
                 # Set modified flag
                 graph_modified = True
 
@@ -293,7 +338,7 @@ class MoveChanLastUpstream(Transformation):
                             # for models with branches
                             if model.is_fork_node(predecessor):
                                 # Here we are considering one branch of the fork.
-                                # This case must be handles separately since the
+                                # This case must be handled separately since the
                                 # transpose on the other branch has to be simplified as well
                                 transposes = model.find_direct_successors(predecessor)
                                 both_transpose = True if all(n.op_type == 'Transpose' for n in transposes) else False
