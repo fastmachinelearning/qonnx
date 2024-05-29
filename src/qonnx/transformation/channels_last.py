@@ -30,7 +30,7 @@ import warnings
 from onnx import TensorProto, helper
 
 from qonnx.custom_op import channels_last
-from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args, to_channels_last_list
+from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args, swap_channels_from_list
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.infer_shapes import InferShapes
@@ -70,8 +70,6 @@ class ConvertToChannelsLastAndClean(Transformation):
 
     def apply(self, model):
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
-        
-        model = model.transform(RemoveDomainFromSpecialNodes())
 
         initial_model_string = model.model.SerializeToString()
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
@@ -80,7 +78,6 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Apply MoveChanLastUpstream and fold into initializers
         model = model.transform(MoveChanLastUpstream())
         model = model.transform(FoldTransposeIntoQuantInit())
-
         # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
         # Technically only required if something changed in the previous trafo
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -102,14 +99,15 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Check if the model changed
         new_model_string = model.model.SerializeToString()
 
+        model = model.transform(RemoveDomainFromSpecialNodes())
         # Do small cleanup, which isn't done by the cleanup in the normal transformation
         model = model.transform(InferShapes())
         model = model.transform(FoldConstants())
-        model = model.transform(AddDomainFromSpecialNodes())
 
         # Check if the model changed
         model_changed = initial_model_string != new_model_string
-
+        if model_changed:
+            model = model.transform(AddDomainToSpecialNodes())
         return model, model_changed
 
 class RemoveDomainFromSpecialNodes(Transformation):
@@ -120,12 +118,12 @@ class RemoveDomainFromSpecialNodes(Transformation):
                 n.domain = ""
         return model, False
     
-class AddDomainFromSpecialNodes(Transformation):
+class AddDomainToSpecialNodes(Transformation):
 
     def apply(self, model):
         for n in model.graph.node:
             if n.op_type in _channelsLast_special_node_types:
-                n.domain = "qonnx.custom_op.channels_last_special"
+                n.domain = "modified"
         return model, False
 
 class InsertChannelsLastDomainsAndTrafos(Transformation):
@@ -134,13 +132,62 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
     """
 
     def apply(self, model):
+
+        def insert_transpose_to_output(model, outp, graph, running_node_index, n, i):
+            # Get the shape of the input tensor
+            # and convert it to the shape for the intermediate tensor
+            chanFirst_shape = model.get_tensor_shape(outp)
+            ndim = len(chanFirst_shape)
+            assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
+            chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
+            # Intermediat tensor
+            outp_trans_in = helper.make_tensor_value_info(
+                model.make_new_valueinfo_name(),
+                TensorProto.FLOAT,
+                chanLast_shape,
+            )
+            graph.value_info.append(outp_trans_in)
+            outp_trans_in = outp_trans_in.name
+
+            # ChannelsFirst -> ChannelsLast transpose
+            outp_trans_node = helper.make_node(
+                "Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim)
+            )
+            graph.node.insert(running_node_index, outp_trans_node)
+            running_node_index += 1
+
+            # Attach to original node
+            n.output[i] = outp_trans_in
+
+        def insert_transpose_to_input(model, inp, graph, running_node_index, n, i):
+            chanFirst_shape = model.get_tensor_shape(inp)
+            ndim = len(chanFirst_shape)
+            assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
+            chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
+            # Intermediate tensor
+            inp_trans_out = helper.make_tensor_value_info(
+                model.make_new_valueinfo_name(),
+                TensorProto.FLOAT,
+                chanLast_shape,
+            )
+            graph.value_info.append(inp_trans_out)
+            inp_trans_out = inp_trans_out.name
+
+            # Channels last transpose
+            inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
+            graph.node.insert(running_node_index, inp_trans_node)
+            running_node_index += 1
+
+            # Attach to original node
+            n.input[i] = inp_trans_out
+
         graph = model.graph
         node_ind = 0
         graph_modified = False
         # Find nodes, where the domain should be changed
         for n in graph.node:
             node_ind += 1
-            if (n.op_type in _channelsLast_node_types or n.op_type in _channelsLast_special_node_types) and (n.domain == ""):
+            if (n.op_type in _channelsLast_node_types) and (n.domain == ""):
                 running_node_index = node_ind
                 # Insert transformation nodes for input nodes
                 input_tensors = n.input
@@ -158,88 +205,53 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # Skip Conv bias since it doesn't need a transpose
                     if n.op_type == "Conv" and i == 2:
                         continue
-                    # Handle Resize scales
-                    if (n.op_type == "Resize") and (i == 1 or i == 2):
-                        if i == 2:
-                            scales = model.get_initializer(inp).copy()
-                            scales = to_channels_last_list(scales)
-                            model.set_initializer(inp, scales)
-                            # old_shape = model.get_tensor_shape(n.output[0])
-                            # new_shape = to_channels_last_list(old_shape)
-                            # model.set_tensor_shape(inp, new_shape)
-                        continue
-                    if (n.op_type == "Upsample") and (i == 1):
-                        scales = model.get_initializer(inp).copy()
-                        scales = to_channels_last_list(scales)
-                        model.set_initializer(inp, scales)
-                        # old_shape = model.get_tensor_shape(n.output[0])
-                        # new_shape = to_channels_last_list(old_shape)
-                        # model.set_tensor_shape(inp, new_shape)
-                        continue
-                    if (n.op_type == "Concat"):
-                        if i == 0:
-                            s = len(model.get_tensor_shape(inp))
-                            get_by_name(n.attribute, "axis").i = s - 1
-                            # t = model.get_tensor_shape(inp)
-                            # t_new = to_channels_last_list(t)
-                            # model.set_tensor_shape(inp, t_new)
-                    # Get the shape of the input tensor
-                    # and convert it to the shape for the intermediate tensor
-                    chanFirst_shape = model.get_tensor_shape(inp)
-                    ndim = len(chanFirst_shape)
-                    assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
-                    # Intermediate tensor
-                    inp_trans_out = helper.make_tensor_value_info(
-                        model.make_new_valueinfo_name(),
-                        TensorProto.FLOAT,
-                        chanLast_shape,
-                    )
-                    graph.value_info.append(inp_trans_out)
-                    inp_trans_out = inp_trans_out.name
-
-                    # channels last transpose
-                    inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
-                    graph.node.insert(running_node_index, inp_trans_node)
-                    running_node_index += 1
-
-                    # Attach to original node
-                    n.input[i] = inp_trans_out
+                    insert_transpose_to_input(model, inp, graph, running_node_index, n, i)
 
                 # Insert transformation nodes for output nodes
                 output_tensors = n.output
                 for i, outp in enumerate(output_tensors):
-                    chanFirst_shape = model.get_tensor_shape(outp)
-                    ndim = len(chanFirst_shape)
-                    assert ndim == 3 or ndim == 4, "Channels last conversion is only available for 3D and 4D tensors."
-                    chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
-                    # Intermediat tensor
-                    outp_trans_in = helper.make_tensor_value_info(
-                        model.make_new_valueinfo_name(),
-                        TensorProto.FLOAT,
-                        chanLast_shape,
-                    )
-                    graph.value_info.append(outp_trans_in)
-                    outp_trans_in = outp_trans_in.name
-
-                    # ChannelsFirst -> ChannelsLast transpose
-                    outp_trans_node = helper.make_node(
-                        "Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim)
-                    )
-                    graph.node.insert(running_node_index, outp_trans_node)
-                    running_node_index += 1
-
-                    # Attach to original node
-                    n.output[i] = outp_trans_in
+                    insert_transpose_to_output(model, outp, graph, running_node_index, n, i)
 
                 # Modify domain
-                if (n.op_type in _channelsLast_node_types):
-                    n.domain = "qonnx.custom_op.channels_last"
-                if (n.op_type in _channelsLast_special_node_types):
-                    n.domain = "qonnx.custom_op.channels_last_special"
-                # Set modified flag
+                # if (n.op_type in _channelsLast_node_types):
+                n.domain = "qonnx.custom_op.channels_last"
+                # if (n.op_type in _channelsLast_special_node_types):
+                #     n.domain = "qonnx.custom_op.channels_last_special"
+                # # Set modified flag
                 graph_modified = True
-
+            
+            if (n.op_type in _channelsLast_special_node_types) and (n.domain == ""):
+                running_node_index = node_ind
+                # Insert transformation nodes for input nodes
+                input_tensors = n.input
+                # Skip for BatchNorm and 2D input tensors,
+                # these contain only channels and need no transpose.
+                chanFirst_shape = model.get_tensor_shape(input_tensors[0])
+                for i, inp in enumerate(input_tensors):
+                    # Handle Resize scales
+                    if (n.op_type == "Resize") and (i != 0):
+                        if i == 2:
+                            scales = model.get_initializer(inp).copy()
+                            scales = swap_channels_from_list(scales)
+                            model.set_initializer(inp, scales)
+                        continue
+                    if (n.op_type == "Upsample") and (i == 1):
+                        scales = model.get_initializer(inp).copy()
+                        scales = swap_channels_from_list(scales)
+                        model.set_initializer(inp, scales)
+                        continue
+                    if (n.op_type == "Concat") and (i == 0):
+                        s = len(model.get_tensor_shape(inp))
+                        get_by_name(n.attribute, "axis").i = s - 1
+                    insert_transpose_to_input(model, inp, graph, running_node_index, n, i)
+                
+                output_tensors = n.output
+                for i, outp in enumerate(output_tensors):
+                    insert_transpose_to_output(model, outp, graph, running_node_index, n, i)
+                
+                n.domain = "modified"
+                graph_modified = True
+        
         return model, graph_modified
 
 
@@ -328,6 +340,22 @@ class MoveChanLastUpstream(Transformation):
                         second_inp_shape = model.get_tensor_shape(predecessor.input[1])
                         if second_inp_shape == [1] or second_inp_shape == []:
                             move_through_valid |= True
+
+                    if predecessor.op_type in _move_through_nodes_if_scalar:
+                        second_inp_shape = model.get_tensor_shape(predecessor.input[1])
+                        if second_inp_shape == [1] or second_inp_shape == []:
+                            move_through_valid |= True
+                    if (predecessor.op_type == "Resize"):
+                        scales = model.get_initializer(predecessor.input[2]).copy()
+                        scales = swap_channels_from_list(scales)
+                        model.set_initializer(predecessor, scales)
+                    if (predecessor.op_type == "Upsample"):
+                        scales = model.get_initializer(predecessor.input[1]).copy()
+                        scales = swap_channels_from_list(scales)
+                        model.set_initializer(predecessor, scales)
+                    if (predecessor.op_type == "Concat"):
+                        s = len(model.get_tensor_shape(predecessor))
+                        get_by_name(predecessor.attribute, "axis").i = s - 1
 
                     # Apply move through trafo if possible
                     if move_through_valid:
@@ -440,6 +468,19 @@ class MoveChanFirstDownstream(Transformation):
                         second_inp_shape = model.get_tensor_shape(successor.input[1])
                         if second_inp_shape == [1] or second_inp_shape == []:
                             move_through_valid |= True
+
+                    if (successor.op_type == "Resize"):
+                        scales = model.get_initializer(successor.input[2]).copy()
+                        scales = swap_channels_from_list(scales)
+                        model.set_initializer(successor, scales)
+                    if (successor.op_type == "Upsample"):
+                        scales = model.get_initializer(successor.input[1]).copy()
+                        scales = swap_channels_from_list(scales)
+                        model.set_initializer(successor, scales)
+                    if (successor.op_type == "Concat"):
+                        s = len(model.get_tensor_shape(successor))
+                        get_by_name(successor.attribute, "axis").i = s - 1
+
                     # Apply move through trafo if possible
                     if move_through_valid:
                         # Collect all tensors connecting n and successor

@@ -58,7 +58,7 @@ def to_channels_first_args(ndim):
     return tuple(arg_list)
 
 
-def to_channels_last_list(l):
+def swap_channels_from_list(l):
     l[1], l[-1] = l[-1], l[1]
     return l
 
