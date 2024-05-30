@@ -230,7 +230,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                 for i, inp in enumerate(input_tensors):
                     # Handle Resize scales
                     if (n.op_type == "Resize") and (i != 0):
-                        if i == 2:
+                        if (len(input_tensors) == 2 and i == 1) or (len(input_tensors) == 3 and i == 2):
                             scales = model.get_initializer(inp).copy()
                             scales = swap_channels_from_list(scales)
                             model.set_initializer(inp, scales)
@@ -346,7 +346,11 @@ class MoveChanLastUpstream(Transformation):
                         if second_inp_shape == [1] or second_inp_shape == []:
                             move_through_valid |= True
                     if (predecessor.op_type == "Resize"):
-                        scales = model.get_initializer(predecessor.input[2]).copy()
+                        if len(predecessor.input) == 2: 
+                            i = 1
+                        else: 
+                            i = 2
+                        scales = model.get_initializer(predecessor.input[i]).copy()
                         scales = swap_channels_from_list(scales)
                         model.set_initializer(predecessor, scales)
                     if (predecessor.op_type == "Upsample"):
@@ -470,7 +474,11 @@ class MoveChanFirstDownstream(Transformation):
                             move_through_valid |= True
 
                     if (successor.op_type == "Resize"):
-                        scales = model.get_initializer(successor.input[2]).copy()
+                        if len(successor.input) == 2: 
+                            i = 1
+                        else: 
+                            i = 2
+                        scales = model.get_initializer(successor.input[i]).copy()
                         scales = swap_channels_from_list(scales)
                         model.set_initializer(successor, scales)
                     if (successor.op_type == "Upsample"):
