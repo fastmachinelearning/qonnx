@@ -263,16 +263,18 @@ class ModelWrapper:
             else:
                 dtype = old_vi.type.tensor_type.elem_type
         new_vi = oh.make_tensor_value_info(tensor_name, dtype, tensor_shape)
-        # find what container tHis tensor's ValueInfo lives in
-        # if not found anywhere, we assume it's a new value_info
+        # find what container this tensor's ValueInfo lives in to replace in-place
+        # this preserves e.g. the order of input and output valueinfo's
+        # if not found anywhere, we assume it's a new (intermediate tensor) value_info
         target_container = self.graph.value_info
         if util.get_by_name(self.graph.input, tensor_name) is not None:
-            target_container = self.graph.input
-        if util.get_by_name(self.graph.output, tensor_name) is not None:
-            target_container = self.graph.output
-        # remove from target container and add new
-        util.remove_by_name(target_container, tensor_name)
-        target_container.append(new_vi)
+            util.get_by_name(self.graph.input, tensor_name).CopyFrom(new_vi)
+        elif util.get_by_name(self.graph.output, tensor_name) is not None:
+            util.get_by_name(self.graph.output, tensor_name).CopyFrom(new_vi)
+        else:
+            # remove from target container and add new
+            util.remove_by_name(target_container, tensor_name)
+            target_container.append(new_vi)
 
     def set_initializer(self, tensor_name, tensor_value):
         """Sets the initializer value for tensor with given name."""
