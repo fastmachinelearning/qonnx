@@ -69,10 +69,11 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
             override_batchsize = override_inpsize
             model = model.transform(ChangeBatchSize(override_batchsize))
         elif type(override_inpsize) is tuple:
-            override_batchsize = override_inpsize[0]
-            model = model.transform(ChangeBatchSize(override_batchsize))
-            iname = model.graph.input[0].name
-            model.set_tensor_shape(iname, override_inpsize)
+            for top_inp in model.graph.input:
+                iname = top_inp.name
+                model.set_tensor_shape(iname, override_inpsize)
+            # override_batchsize = override_inpsize[0]
+            # model = model.transform(ChangeBatchSize(override_batchsize))
 
     cleanup_transformations = [
         InferShapes(),
