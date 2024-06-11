@@ -30,7 +30,7 @@
 import numpy as np
 
 from qonnx.custom_op.registry import getCustomOp
-from qonnx.util.range_analysis import RangeInfo, calc_monotonic_range, promote_range_shape
+from qonnx.util.range_analysis import RangeInfo, calc_matmul_node_range, calc_monotonic_range, promote_range_shape
 from qonnx.util.test import download_model
 
 
@@ -74,3 +74,25 @@ def test_calc_monotonic_range():
     ctx[relu_out] = range_dict[relu_out].range[1]
     getCustomOp(qnt_node).execute_node(ctx, model.graph)
     assert (range_dict[qnt_out].range[1] == ctx[qnt_out]).all()
+
+
+def test_calc_matmul_range():
+    model_name = "FINN-TFC_W2A2"
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    matmul_node = model.get_nodes_by_op_type("MatMul")[0]
+    quant_in_node = model.get_node_from_name("Quant_4")
+    quant_in_vi = model.get_tensor_valueinfo(quant_in_node.input[0])
+    quant_act_range = RangeInfo(range=promote_range_shape((-1.0, 1.0), quant_in_vi))
+    range_dict = {quant_in_node.input[0]: quant_act_range, quant_in_node.output[0]: RangeInfo()}
+    calc_monotonic_range(quant_in_node, model, range_dict)
+    quant_w_node = model.get_node_from_name("Quant_0")
+    range_dict[quant_w_node.output[0]] = RangeInfo()
+    calc_monotonic_range(quant_w_node, model, range_dict)
+    range_dict[matmul_node.output[0]] = RangeInfo()
+    calc_matmul_node_range(matmul_node, model, range_dict)
+    assert range_dict[matmul_node.output[0]].range[0][0][0] == -233
+    assert range_dict[matmul_node.output[0]].range[1][0][0] == 233
+    assert range_dict[matmul_node.output[0]].range[0][0][1] == -288
+    assert range_dict[matmul_node.output[0]].range[1][0][1] == 288
+    assert range_dict[matmul_node.output[0]].range[0][0][-1] == -190
+    assert range_dict[matmul_node.output[0]].range[1][0][-1] == 190

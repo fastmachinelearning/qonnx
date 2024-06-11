@@ -134,3 +134,32 @@ def calc_monotonic_range(node, model, range_dict):
             running_max[oind] = np.maximum(out, running_max[oind]) if running_max[oind] is not None else out
     for oind, oname in enumerate(node.output):
         range_dict[oname].range = (running_min[oind], running_max[oind])
+
+
+# fast interval matrix enclosure based on:
+# Accelerating interval matrix multiplication by mixed precision arithmetic
+# Ozaki et al.
+# Algorithms 1 and 2, which turn are based on:
+# Rump, Siegfried M. "INTLAB—interval laboratory." Developments in reliable computing.
+# except no directed rounding (because numpy/Python has none)
+def range_to_midpoint_radius(matrix_range):
+    (matrix_min, matrix_max) = matrix_range
+    midpoint = matrix_min + 0.5 * (matrix_max - matrix_min)
+    radius = midpoint - matrix_min
+    return (midpoint, radius)
+
+
+def calc_matmul_range(range_A, range_B):
+    (midpoint_A, radius_A) = range_to_midpoint_radius(range_A)
+    (midpoint_B, radius_B) = range_to_midpoint_radius(range_B)
+    radius = np.matmul(radius_A, np.abs(midpoint_B) + radius_B) + np.matmul(np.abs(midpoint_A), radius_B)
+    out_base = np.matmul(midpoint_A, midpoint_B)
+    out_max = out_base + radius
+    out_min = out_base - radius
+    return (out_min, out_max)
+
+
+def calc_matmul_node_range(node, model, range_dict):
+    range_A = range_dict[node.input[0]].range
+    range_B = range_dict[node.input[1]].range
+    range_dict[node.output[0]].range = calc_matmul_range(range_A, range_B)
