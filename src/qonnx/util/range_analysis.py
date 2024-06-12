@@ -26,11 +26,19 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import clize
 import dataclasses as dc
 import itertools
 import numpy as np
+import pprint
+from warnings import warn
 
+from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
+from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.transformation.infer_datatypes import InferDataTypes
+from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.cleanup import cleanup_model
 from qonnx.util.onnx import valueinfo_to_tensor
 
 # walk the graph to deduce range information about each tensor
@@ -163,3 +171,191 @@ def calc_matmul_node_range(node, model, range_dict):
     range_A = range_dict[node.input[0]].range
     range_B = range_dict[node.input[1]].range
     range_dict[node.output[0]].range = calc_matmul_range(range_A, range_B)
+
+
+# use inferred output datatype to calculate output ranges
+def calc_range_outdtype(node, model, range_dict):
+    oname = node.output[0]
+    odt = model.get_tensor_datatype(oname)
+    assert odt is not None, "Cannot infer %s range, dtype annotation is missing" % oname
+    range_dict[oname].range = (odt.min(), odt.max())
+
+
+# use initializers to mark point ranges i.e. tensor with initializer X has range (X, X)
+def calc_range_all_initializers(model, range_dict):
+    all_tensor_names = model.get_all_tensor_names()
+    for tensor_name in all_tensor_names:
+        tensor_init = model.get_initializer(tensor_name)
+        if tensor_init is not None:
+            range_dict[tensor_name] = RangeInfo(range=(tensor_init, tensor_init), is_initializer=True)
+            # use % 1 == 0 to identify initializers with integer values
+            if ((tensor_init % 1) == 0).all():
+                range_dict[tensor_name].int_range = (tensor_init, tensor_init)
+                range_dict[tensor_name].scale = np.asarray([1.0], dtype=np.float32)
+                range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
+
+
+optype_to_range_calc = {
+    "Transpose": calc_monotonic_range,
+    "MatMul": calc_matmul_node_range,
+    "QuantMaxNorm": calc_range_outdtype,
+    "Flatten": calc_monotonic_range,
+    "Reshape": calc_monotonic_range,
+    "Quant": calc_monotonic_range,
+    "BipolarQuant": calc_monotonic_range,
+    "Mul": calc_monotonic_range,
+    "Sub": calc_monotonic_range,
+    "Div": calc_monotonic_range,
+    "Add": calc_monotonic_range,
+    "BatchNormalization": calc_monotonic_range,
+    "Relu": calc_monotonic_range,
+    "Pad": calc_monotonic_range,
+    "AveragePool": calc_monotonic_range,
+    "Trunc": calc_range_outdtype,
+    "MaxPool": calc_monotonic_range,
+    "Resize": calc_monotonic_range,
+    "Upsample": calc_monotonic_range,
+    "GlobalAveragePool": calc_monotonic_range,
+    "QuantizeLinear": calc_monotonic_range,
+    "DequantizeLinear": calc_monotonic_range,
+    "Clip": calc_monotonic_range,
+    "Sigmoid": calc_monotonic_range,
+    "Concat": calc_monotonic_range,
+    "Split": calc_monotonic_range,
+}
+
+REPORT_MODE_RANGE = "range"
+REPORT_MODE_STUCKCHANNEL = "stuck_channel"
+REPORT_MODE_ZEROSTUCKCHANNEL = "zerostuck_channel"
+
+report_modes = {REPORT_MODE_RANGE, REPORT_MODE_STUCKCHANNEL, REPORT_MODE_ZEROSTUCKCHANNEL}
+
+report_mode_options = clize.parameters.mapped(
+    [
+        (REPORT_MODE_RANGE, [REPORT_MODE_RANGE], "Report ranges"),
+        (REPORT_MODE_STUCKCHANNEL, [REPORT_MODE_STUCKCHANNEL], "Report stuck channels"),
+        (REPORT_MODE_ZEROSTUCKCHANNEL, [REPORT_MODE_ZEROSTUCKCHANNEL], "Report 0-stuck channels"),
+    ]
+)
+
+
+def range_analysis(
+    model_filename_or_wrapper,
+    *,
+    irange="",
+    key_filter: str = "",
+    report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
+    prettyprint=False,
+    do_cleanup=False,
+    strip_initializers_from_report=True,
+):
+    assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
+    if isinstance(model_filename_or_wrapper, ModelWrapper):
+        model = model_filename_or_wrapper
+    else:
+        model = ModelWrapper(model_filename_or_wrapper)
+    if isinstance(irange, str):
+        if irange == "":
+            range_min = None
+            range_max = None
+        else:
+            irange = eval(irange)
+            range_min, range_max = irange
+            if isinstance(range_min, list):
+                range_min = np.asarray(range_min, dtype=np.float32)
+            if isinstance(range_max, list):
+                range_max = np.asarray(range_max, dtype=np.float32)
+    elif isinstance(irange, tuple):
+        range_min, range_max = irange
+    elif isinstance(irange, RangeInfo):
+        pass
+    else:
+        assert False, "Unknown irange type"
+    if do_cleanup:
+        model = cleanup_model(model)
+    # call constant folding & shape inference, this preserves weight quantizers
+    # (but do not do extra full cleanup, in order to preserve node/tensor naming)
+    # TODO is this redundant? remove?
+    model = model.transform(InferShapes())
+    model = model.transform(FoldConstants())
+    model = model.transform(InferDataTypes())
+    range_dict = {}
+    stuck_chans = {}
+
+    # start by calculating/annotating range info for input tensors
+    for inp in model.graph.input:
+        iname = inp.name
+        if isinstance(irange, RangeInfo):
+            range_dict[iname] = irange
+        else:
+            if range_min is None or range_max is None:
+                # use idt annotation
+                idt = model.get_tensor_datatype(iname)
+                assert idt is not None, "Could not infer irange, please specify"
+                range_min = idt.min()
+                range_max = idt.max()
+            range_dict[iname] = RangeInfo(range=(range_min, range_max))
+
+    # add range info for all tensors with initializers
+    calc_range_all_initializers(model, range_dict)
+
+    # now walk the graph node by node and propagate range info
+    for node in model.graph.node:
+        dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
+        inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
+        op_ok = node.op_type in optype_to_range_calc.keys()
+        if inprange_ok and op_ok:
+            # create entries in range_dict with RangeInfo type for all outputs
+            # since range analysis functions will be assigning to the .range member of
+            # this RangeInfo directly later on
+            for node_out in node.output:
+                range_dict[node_out] = RangeInfo()
+            range_calc_fxn = optype_to_range_calc[node.op_type]
+            range_calc_fxn(node, model, range_dict)
+            # ensure all produced ranges are per-element
+            for node_out in node.output:
+                out_vi = model.get_tensor_valueinfo(node_out)
+                range_dict[node_out].range = promote_range_shape(range_dict[node_out].range, out_vi)
+            # TODO bring back stuck channel analysis after simplification is re-introduced
+        else:
+            warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
+
+    # range dict is now complete, apply filters and formatting
+    if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
+        ret = stuck_chans
+    else:
+        ret = range_dict
+        if strip_initializers_from_report:
+            # exclude all initializer ranges for reporting
+            ret = {k: v for (k, v) in ret.items() if not v.is_initializer}
+
+    # only keep tensors (keys) where filter appears in the name
+    if key_filter != "":
+        ret = {k: v for (k, v) in ret.items() if key_filter in k}
+    # only keep tensors (keys) where filter appears in the name
+    if key_filter != "":
+        ret = {k: v for (k, v) in ret.items() if key_filter in k}
+
+    if report_mode == REPORT_MODE_RANGE:
+        # TODO convert ranges in report to regular Python lists for nicer printing
+        pass
+    elif report_mode == REPORT_MODE_ZEROSTUCKCHANNEL:
+        # only leave channels that are stuck at zero
+        # value info removed since implicitly 0
+        new_ret = {}
+        for tname, schans in ret.items():
+            schans_only_zero = set([x[0] for x in schans if x[1] == 0])
+            if len(schans_only_zero) > 0:
+                new_ret[tname] = schans_only_zero
+        ret = new_ret
+    if prettyprint:
+        ret = pprint.pformat(ret, sort_dicts=False)
+    return ret
+
+
+def main():
+    clize.run(range_analysis)
+
+
+if __name__ == "__main__":
+    main()

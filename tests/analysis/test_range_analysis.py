@@ -39,8 +39,11 @@ from qonnx.util.range_analysis import (
     calc_matmul_range,
     calc_monotonic_range,
     promote_range_shape,
+    range_analysis,
 )
-from qonnx.util.test import download_model
+from qonnx.util.test import download_model, test_model_details
+
+model_details_range = {"FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}}}
 
 
 def test_promote_range_shape():
@@ -122,3 +125,11 @@ def test_calc_matmul_node_range():
     assert range_dict[matmul_node.output[0]].range[1][0][1] == 288
     assert range_dict[matmul_node.output[0]].range[0][0][-1] == -190
     assert range_dict[matmul_node.output[0]].range[1][0][-1] == 190
+
+
+@pytest.mark.parametrize("model_name", model_details_range.keys())
+def test_range_analysis_full_network(model_name):
+    current_details = {**model_details_range[model_name], **test_model_details[model_name]}
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    ret = range_analysis(model, irange=current_details["input_range"], report_mode="range")
+    assert len(ret.keys()) == current_details["range_info"]["n_dynamic_tensors"]
