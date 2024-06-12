@@ -27,10 +27,19 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import pytest
+
 import numpy as np
 
+from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp
-from qonnx.util.range_analysis import RangeInfo, calc_matmul_node_range, calc_monotonic_range, promote_range_shape
+from qonnx.util.range_analysis import (
+    RangeInfo,
+    calc_matmul_node_range,
+    calc_matmul_range,
+    calc_monotonic_range,
+    promote_range_shape,
+)
 from qonnx.util.test import download_model
 
 
@@ -76,7 +85,24 @@ def test_calc_monotonic_range():
     assert (range_dict[qnt_out].range[1] == ctx[qnt_out]).all()
 
 
-def test_calc_matmul_range():
+@pytest.mark.parametrize("shapes", [((14, 14, 200), (200, 16)), ((12, 128, 32), (12, 32, 128))])
+@pytest.mark.parametrize("A_dt", [DataType["UINT4"]])
+@pytest.mark.parametrize("B_dt", [DataType["INT4"]])
+def test_calc_matmul_range(shapes, A_dt, B_dt):
+    A_shape, B_shape = shapes
+    min_A = A_dt.min() * np.ones(A_shape)
+    max_A = A_dt.max() * np.ones(A_shape)
+    range_A = (min_A, max_A)
+    B = np.random.randint(B_dt.min(), B_dt.max(), B_shape)
+    range_B = (B, B)
+    range_C = calc_matmul_range(range_A, range_B)
+    A = np.random.randint(A_dt.min(), A_dt.max(), A_shape)
+    C = np.matmul(A, B)
+    assert (range_C[0] <= C).all()
+    assert (C <= range_C[1]).all()
+
+
+def test_calc_matmul_node_range():
     model_name = "FINN-TFC_W2A2"
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     matmul_node = model.get_nodes_by_op_type("MatMul")[0]
