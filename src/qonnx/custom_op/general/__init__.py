@@ -30,7 +30,7 @@ from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
 from qonnx.custom_op.general.genericpartition import GenericPartition
 from qonnx.custom_op.general.im2col import Im2Col
-from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
+from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC, AveragePoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
 from qonnx.custom_op.general.quant import Quant
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
@@ -42,6 +42,7 @@ custom_op = dict()
 custom_op["DebugMarker"] = DebugMarker
 custom_op["QuantAvgPool2d"] = QuantAvgPool2d
 custom_op["MaxPoolNHWC"] = MaxPoolNHWC
+custom_op["AveragePoolNHWC"] = AveragePoolNHWC
 custom_op["GenericPartition"] = GenericPartition
 custom_op["MultiThreshold"] = MultiThreshold
 custom_op["XnorPopcountMatMul"] = XnorPopcountMatMul
