@@ -29,7 +29,6 @@
 import numpy as np
 
 import qonnx.util.basic as util
-from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 
 # adapted from A. Karpathy's CS231 im2col code
@@ -208,9 +207,6 @@ class Im2Col(CustomOp):
         qnt_annotations = graph.quantization_annotation
         ret = util.get_by_name(qnt_annotations, iname, "tensor_name")
         ret = util.get_by_name(ret.quant_parameter_tensor_names, "finn_datatype", "key")
-        idt = DataType[ret.value]
-        if pad != [0, 0, 0, 0]:
-            assert idt.allowed(pad_val), "Im2Col dtype must allow pad_val"
         # check that input is NHWC
         assert x.ndim == 4, "Unexpected number of input dims for Im2Col"
         n, h, w, c = x.shape
