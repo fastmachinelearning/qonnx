@@ -80,6 +80,9 @@ class LowerConvsToMatMul(Transformation):
                 group = get_by_name(n.attribute, "group").i
                 weight_name = n.input[1]
                 W_conv = model.get_initializer(weight_name)
+                if W_conv is None:
+                    warnings.warn("Found Conv node with dynamic weight input, skipping")
+                    continue
                 ifm_ch = model.get_tensor_shape(n.input[0])[1]  # assume NCHW
                 ofm_ch = model.get_tensor_shape(n.output[0])[1]  # assume NCHW
                 ifm_dim_h = model.get_tensor_shape(n.input[0])[2]  # assume NCHW
