@@ -36,8 +36,10 @@ from warnings import warn
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
 from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.onnx import valueinfo_to_tensor
 
@@ -211,7 +213,7 @@ optype_to_range_calc = {
     "Relu": calc_monotonic_range,
     "Pad": calc_monotonic_range,
     "AveragePool": calc_monotonic_range,
-    "Trunc": calc_range_outdtype,
+    "Trunc": calc_monotonic_range,
     "MaxPool": calc_monotonic_range,
     "Resize": calc_monotonic_range,
     "Upsample": calc_monotonic_range,
@@ -222,6 +224,7 @@ optype_to_range_calc = {
     "Sigmoid": calc_monotonic_range,
     "Concat": calc_monotonic_range,
     "Split": calc_monotonic_range,
+    "Im2Col": calc_monotonic_range,
 }
 
 REPORT_MODE_RANGE = "range"
@@ -244,7 +247,9 @@ def range_analysis(
     *,
     irange="",
     key_filter: str = "",
+    save_modified_model: str = "",
     report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
+    lower_ops=False,
     prettyprint=False,
     do_cleanup=False,
     strip_initializers_from_report=True,
@@ -272,6 +277,10 @@ def range_analysis(
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
+        model = cleanup_model(model, preserve_qnt_ops=False)
+    if lower_ops:
+        model = model.transform(LowerConvsToMatMul())
+        model = model.transform(GemmToMatMul())
         model = cleanup_model(model)
     # call constant folding & shape inference, this preserves weight quantizers
     # (but do not do extra full cleanup, in order to preserve node/tensor naming)
@@ -279,6 +288,8 @@ def range_analysis(
     model = model.transform(InferShapes())
     model = model.transform(FoldConstants())
     model = model.transform(InferDataTypes())
+    if save_modified_model != "":
+        model.save(save_modified_model)
     range_dict = {}
     stuck_chans = {}
 

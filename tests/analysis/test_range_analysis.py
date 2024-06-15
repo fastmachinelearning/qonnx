@@ -43,7 +43,11 @@ from qonnx.util.range_analysis import (
 )
 from qonnx.util.test import download_model, test_model_details
 
-model_details_range = {"FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}}}
+model_details_range = {
+    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}},
+    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 54}},
+    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 183}},
+}
 
 
 def test_promote_range_shape():
@@ -131,5 +135,6 @@ def test_calc_matmul_node_range():
 def test_range_analysis_full_network(model_name):
     current_details = {**model_details_range[model_name], **test_model_details[model_name]}
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
-    ret = range_analysis(model, irange=current_details["input_range"], report_mode="range")
+    ret = range_analysis(model, irange=current_details["input_range"], report_mode="range", lower_ops=True, do_cleanup=True)
     assert len(ret.keys()) == current_details["range_info"]["n_dynamic_tensors"]
+    assert "global_out" in ret.keys()
