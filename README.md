@@ -125,6 +125,7 @@ source venv/bin/activate
 pip install -e .[qkeras,testing]
 ```
 
+### Test suite
 Run entire test suite, parallelized across CPU cores:
 ```
 pytest -n auto --verbose
