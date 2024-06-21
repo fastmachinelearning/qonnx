@@ -116,23 +116,35 @@ def test_resolve_datatype():
     assert resolve_datatype("INT8")
     assert resolve_datatype("INT16")
     assert resolve_datatype("INT32")
-    assert resolve_datatype("BINARY")
     assert resolve_datatype("FLOAT32")
 
 
 def test_input_type_error():
-    # test with invalid input to check if the TypeError works
-    try:
-        resolve_datatype(123)  # This should raise a TypeError
-    except TypeError as e:
-        pass
-    else:
-        print("Test with invalid input failed: No TypeError was raised.")
 
-    # test with invalid input to check if the TypeError works
-    try:
-        resolve_datatype(1.23)  # This should raise a TypeError
-    except TypeError as e:
-        pass
-    else:
-        print("Test with invalid input failed: No TypeError was raised.")
+    def test_resolve_datatype(input):
+        # test with invalid input to check if the TypeError works
+        try:
+            resolve_datatype(input)  # This should raise a TypeError
+        except TypeError as e:
+            pass
+        else:
+            print("Test with invalid input failed: No TypeError was raised.")
+
+    test_resolve_datatype(123)
+    test_resolve_datatype(1.23)
+    test_resolve_datatype(DataType["BIPOLAR"])
+    test_resolve_datatype(DataType["BINARY"])
+    test_resolve_datatype(DataType["TERNARY"])
+    test_resolve_datatype(DataType["UINT2"])
+    test_resolve_datatype(DataType["UINT3"])
+    test_resolve_datatype(DataType["UINT4"])
+    test_resolve_datatype(DataType["UINT8"])
+    test_resolve_datatype(DataType["UINT16"])
+    test_resolve_datatype(DataType["UINT32"])
+    test_resolve_datatype(DataType["INT2"])
+    test_resolve_datatype(DataType["INT3"])
+    test_resolve_datatype(DataType["INT4"])
+    test_resolve_datatype(DataType["INT8"])
+    test_resolve_datatype(DataType["INT16"])
+    test_resolve_datatype(DataType["INT32"])
+    test_resolve_datatype(DataType["FLOAT32"])
