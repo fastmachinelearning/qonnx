@@ -29,6 +29,7 @@
 import numpy as np
 
 from qonnx.core.datatype import DataType
+from qonnx.core.datatype import resolve_datatype
 
 
 def test_datatypes():
@@ -97,3 +98,41 @@ def test_smallest_possible():
     assert DataType.get_smallest_possible(-1) == DataType["BIPOLAR"]
     assert DataType.get_smallest_possible(-3) == DataType["INT3"]
     assert DataType.get_smallest_possible(-3.2) == DataType["FLOAT32"]
+
+
+def test_resolve_datatype():
+    assert resolve_datatype("BIPOLAR")
+    assert resolve_datatype("BINARY")
+    assert resolve_datatype("TERNARY")
+    assert resolve_datatype("UINT2")
+    assert resolve_datatype("UINT3")
+    assert resolve_datatype("UINT4")
+    assert resolve_datatype("UINT8")
+    assert resolve_datatype("UINT16")
+    assert resolve_datatype("UINT32")
+    assert resolve_datatype("INT2")
+    assert resolve_datatype("INT3")
+    assert resolve_datatype("INT4")
+    assert resolve_datatype("INT8")
+    assert resolve_datatype("INT16")
+    assert resolve_datatype("INT32")
+    assert resolve_datatype("BINARY")
+    assert resolve_datatype("FLOAT32")
+
+
+def test_input_type_error():
+    # test with invalid input to check if the TypeError works
+    try:
+        resolve_datatype(123)  # This should raise a TypeError
+    except TypeError as e:
+        pass
+    else:
+        print("Test with invalid input failed: No TypeError was raised.")
+
+    # test with invalid input to check if the TypeError works
+    try:
+        resolve_datatype(1.23)  # This should raise a TypeError
+    except TypeError as e:
+        pass
+    else:
+        print("Test with invalid input failed: No TypeError was raised.")
