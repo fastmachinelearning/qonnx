@@ -45,24 +45,15 @@ class ExtractBiasFromConv(Transformation):
                     # Extract bias
                     bias = model.get_initializer(n.input[2])
                     if bias is None:
-                        name = n.input[2]
-                        name = name.replace("out", "param")
-                        bias = model.get_initializer(name)
+                        producer = model.find_producer(n.input[2])
+                        bias = model.get_initializer(producer.input[0])
                         if bias is None:
                             warnings.warn(f"Could not extract bias from node")
                             continue
 
-                    # Find the node that provides this input
-                    bias_input_name = n.input[2]
-                    producer_node = None
-                    for pn in graph.node:
-                        if bias_input_name in pn.output:
-                            producer_node = pn
-                            break
-                    
-                    if producer_node is not None:
+                    if producer is not None:
                         # Mark the producer node for removal
-                        nodes_to_remove.append(producer_node)
+                        nodes_to_remove.append(producer)
                     
                     # Insert bias as Add node behind the Conv node
                     out_shape = model.get_tensor_shape(n.output[0])
