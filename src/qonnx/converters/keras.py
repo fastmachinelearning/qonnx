@@ -8,13 +8,18 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup_model
 
 from .qkeras.onnx import get_qkeras_onnx_handlers
-from .qkeras.qlayers import extract_quantizers_from_layer
+from .qkeras.qlayers import extract_quantizers_from_qkeras_layer
 
+from .HGQ.onnx import get_hgq_onnx_handlers
+from .HGQ.hgqlayers import HGQ_LAYERS, extract_quantizers_from_hgq_layer
+
+# NOTE: thats a list for qkeras & HGQ layers
 _unsupported_layers = [
     # These require some extra work
     "QBatchNormalization",
     "QConv2DBatchnorm",
     "QDepthwiseConv2DBatchnorm",
+    # TODO: add HGQ layers
 ]
 
 # Skip remove_identity optimizer
@@ -102,6 +107,30 @@ def _is_qkeras_model(model):
     return iterate_model(model)
 
 
+def _is_hgq_model(model):
+    """Check if the model has any HGQ layers, so we can handle the HGQ layers separately
+
+    Args:
+        model: the model we want to convert
+
+    Returns:
+        True if the model contains any HGQ layer
+    """
+
+    def iterate_model(model):
+        for layer in model.layers:
+            if isinstance(layer, tf.keras.Model):
+                found_qkeras = iterate_model(layer)
+                if found_qkeras:
+                    return True
+            elif layer.__class__.__name__ in HGQ_LAYERS:
+                return True
+
+        return False
+
+    return iterate_model(model)
+
+
 def _check_supported_layers(model):
     """Check if all the layers in the model are supported for conversion
 
@@ -117,7 +146,7 @@ def _check_supported_layers(model):
             if isinstance(layer, tf.keras.Model):
                 iterate_model(layer)
             elif layer.__class__.__name__ in _unsupported_layers:
-                raise Exception("Currently unsupported layer found in QKeras model: {}".format(layer.__class__.__name__))
+                raise Exception("Currently unsupported layer found in model: {}".format(layer.__class__.__name__))
 
     iterate_model(model)
 
@@ -134,7 +163,7 @@ def _strip_qkeras_model(model):
     quantizers = OrderedDict()
 
     def extract_quantizers(layer):
-        keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_layer(layer)
+        keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_qkeras_layer(layer)
         if layer_quantizers:
             layer_quantizers = {
                 k: None if v == "None" else v for k, v in layer_quantizers.items()
@@ -150,18 +179,43 @@ def _strip_qkeras_model(model):
 
     stripped_model = tf.keras.models.clone_model(model, clone_function=extract_quantizers)
     stripped_model.set_weights(model.get_weights())
+
     return stripped_model, quantizers
 
 
-# tests run without this function
-def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
-    for node_name, quantizers in quantizers_dict.items():
-        print(node_name, quantizers)
+def _strip_hgq_model(model):
+    """Strip a HGQ model to obtain the keras model and obtain the quant nodes.
 
-    for n in onnx_model.graph.node:
-        print(n)
+    Args:
+        model: the proxy tf.keras model from HGQ
 
-    return onnx_model.model
+    Returns:
+        The stripped model, and the quantizers in a dictionary format
+    """
+    quantizers = OrderedDict()
+
+    def extract_quantizers(layer):
+        keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_hgq_layer(layer, model)
+        if layer_quantizers:
+            layer_quantizers["input"] = layer.input.name
+            quantizers[layer_quantizers["name"]] = layer_quantizers
+
+        layer_class = tf.keras.layers.__dict__.get(keras_cls_name, None)
+        if layer_class is None:
+            raise Exception("Cannot create Keras layer from QKeras class {}".format(keras_cls_name))
+
+        return layer_class.from_config(layer_cfg)
+
+    stripped_model = tf.keras.models.clone_model(model, clone_function=extract_quantizers)
+
+    for layer in model.layers:
+        if layer.__class__.__name__ in HGQ_LAYERS:
+            # NOTE: the FixedPointQuantizer does not have weights it only has
+            # self.keep_negative, self.bits and self.integers which we extract later
+            # from the quantizer
+            continue
+        stripped_model.get_layer(layer.name).set_weights(layer.get_weights())
+    return stripped_model, quantizers
 
 
 def from_keras(
@@ -203,23 +257,28 @@ def from_keras(
 
     assert not large_model  # TODO for now, let's focus only on models that don't store tensors externally
 
+    _check_supported_layers(model)
+    keras_op_handlers = {}
     if _is_qkeras_model(model):
-        _check_supported_layers(model)
         keras_model, quantizers = _strip_qkeras_model(model)
+        keras_op_handlers.update(get_qkeras_onnx_handlers(quantizers))
+    elif _is_hgq_model(model):
+        keras_model = model
+        keras_model, quantizers = _strip_hgq_model(model)
+        keras_op_handlers.update(get_hgq_onnx_handlers(quantizers))
     else:
         keras_model, quantizers = model, {}
 
-    qkeras_op_handlers = get_qkeras_onnx_handlers(quantizers)
-
+    keras_model.summary()
     if custom_op_handlers is not None:
-        qkeras_op_handlers.update(custom_op_handlers)
+        keras_op_handlers.update(custom_op_handlers)
 
     model_proto, external_storage = tf2onnx.convert.from_keras(
         keras_model,
         input_signature=input_signature,
         opset=opset,
         custom_ops=custom_ops,
-        custom_op_handlers=qkeras_op_handlers,
+        custom_op_handlers=keras_op_handlers,
         custom_rewriter=custom_rewriter,
         inputs_as_nchw=inputs_as_nchw,
         extra_opset=extra_opset,
@@ -242,7 +301,7 @@ def from_keras(
     onnx_model.set_tensor_shape(onnx_model.graph.output[0].name, out_shape)
 
     # Set all Quant output tensors to float32 datatype, otherwise they are undefined and crash ONNX execution
-    qonnx_domain_ops = ["Quant", "Trunc", "BipolarQuant"]
+    qonnx_domain_ops = ["FixedPoint", "Quant", "Trunc", "BipolarQuant"]
     for q_op_type in qonnx_domain_ops:
         quant_nodes = onnx_model.get_nodes_by_op_type(q_op_type)
         q_node_outputs = [qn.output[0] for qn in quant_nodes]
