@@ -64,9 +64,10 @@ class ConvertToChannelsLastAndClean(Transformation):
 
     """
 
-    def __init__(self, make_input_channels_last=False):
+    def __init__(self, make_input_channels_last=False, remove_input_output_transposes=True):
         super().__init__()
         self._make_input_channels_last = make_input_channels_last
+        self._remove_input_output_transposes = remove_input_output_transposes
 
     def apply(self, model):
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
@@ -108,7 +109,54 @@ class ConvertToChannelsLastAndClean(Transformation):
         model_changed = initial_model_string != new_model_string
         if model_changed:
             model = model.transform(AddDomainToSpecialNodes())
+        
+        if self._remove_input_output_transposes:
+            model = model.transform(RemoveInputOutputTransposes(), cleanup=True)
         return model, model_changed
+
+class RemoveInputOutputTransposes(Transformation):
+
+    def apply(self, model):
+        for n in model.graph.node:
+            if n.op_type == 'Transpose':
+                if model.find_direct_predecessors(n) == None:
+                    s = model.find_direct_successors(n)  # i -> n -> s
+                    assert len(s) == 1
+                    for i, e in enumerate(s[0].input):
+                        if n.output[0] == e:
+                            s[0].input[i] = n.input[0]
+                    
+                    new_input_shape = model.get_tensor_shape(n.output[0])
+
+                    # Modify input tensor shape
+                    input_name = model.graph.input[0].name
+                    new_input = helper.make_tensor_value_info(input_name, TensorProto.FLOAT, new_input_shape)
+
+                    # Update the model graph inputs
+                    model.graph.input.remove(model.graph.input[0])
+                    model.graph.input.append(new_input)
+                    model.graph.node.remove(n)
+                    continue
+                if model.find_direct_successors(n) == None:
+                    p = model.find_direct_predecessors(n)
+                    assert len(p) == 1
+                    for i, e in enumerate(p[0].output):
+                        if n.input[0] == e:
+                            p[0].output[i] = n.output[0]
+                    
+                    new_output_shape = model.get_tensor_shape(n.input[0])
+
+                    # Modify output tensor shape
+                    output_name = model.graph.output[0].name
+                    new_output = helper.make_tensor_value_info(output_name, TensorProto.FLOAT, new_output_shape)
+
+                    # Update the model graph outputs
+                    model.graph.output.remove(model.graph.output[0])
+                    model.graph.output.append(new_output)
+
+                    model.graph.node.remove(n)
+                    continue
+        return model, False
 
 class RemoveDomainFromSpecialNodes(Transformation):
 
@@ -375,7 +423,9 @@ class MoveChanLastUpstream(Transformation):
                                 transposes = model.find_direct_successors(predecessor)
                                 both_transpose = True if all(n.op_type == 'Transpose' for n in transposes) else False
                                 assert len(transposes) == 2, "Only the case of 2 branches is handled"
-                                assert both_transpose, "The first 2 nodes of the branches must be transpose nodes"
+                                # assert both_transpose, "The first 2 nodes of the branches must be transpose nodes"
+                                if not both_transpose:
+                                    continue
                                 x2 = transposes[0] if transposes[1] == n else transposes[1]
                                 
                                 # It basically rewires the nodes and tensors in order to move 
