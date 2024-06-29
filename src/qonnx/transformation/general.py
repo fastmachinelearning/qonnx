@@ -340,8 +340,14 @@ class ApplyConfig(Transformation):
             used_configurations += [node.name]
 
             # set specified defaults
-            default_configs = {k: v for k, v in model_config["Defaults"].items() if k not in model_config}
-            default_configs = {k: v[0] for k, v in default_configs.items() if v[1] == "all" or node.op_type in v[1]}
+            default_values = []
+            for key, value in model_config["Defaults"].items():
+                assert (len(value) % 2 == 0)
+                if key not in model_config:
+                    for val, op in zip(value[::2], value[1::2]):
+                        default_values.append((key, val, op)) 
+                        assert (not (op == "all"  and len(value) > 2))
+            default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
             for attr, value in default_configs.items():
                 inst.set_nodeattr(attr, value)
 
