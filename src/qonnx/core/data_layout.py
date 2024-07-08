@@ -36,6 +36,8 @@ NWC = ["N", "W", "C"]
 NC = ["N", "C"]
 # 5-dimension video input, D for sequence depth
 NCDHW = ["N", "C", "D", "H", "W"]
+NDHWC = ["N", "D", "H", "W", "C"]
+
 UNKNOWN = []
 
 
@@ -43,7 +45,7 @@ def is_channels_last(layout):
     return layout[-1] == "C"
 
 def get_channels_last_layout_for_ndims(ndims):
-    return {5: NCDHW, 4: NHWC, 3: NWC, 2: NC}[ndims]
+    return {5: NDHWC, 4: NHWC, 3: NWC, 2: NC}[ndims]
 
 
 def get_channels_first_layout_for_ndims(ndims):
