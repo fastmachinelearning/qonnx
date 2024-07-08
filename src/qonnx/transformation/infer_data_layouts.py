@@ -53,6 +53,8 @@ def _dims_to_layout(model, node, ndims):
                 # 5D
                 elif layout == "NCDHW" and ndims == 5:
                     return DataLayout.NCDHW
+                elif layout == "NDHWC" and ndims == 5:
+                    return DataLayout.NDHWC
                 else:
                     return DataLayout.UNKNOWN
             else:
