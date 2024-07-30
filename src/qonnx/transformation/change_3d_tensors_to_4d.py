@@ -196,6 +196,12 @@ class Change3DTo4DTensors(Transformation):
                 scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
                 model.set_initializer(n.input[1], scales)
             elif node_op_type == "Resize":
+                assert ("axes" not in [x.name for x in n.attribute]), (
+                        "%s: Axes attribute is not supported." % n.name
+                        )  
+                assert (not (len(n.input) in (3, 4) and model.get_initializer(n.input[1]) is not None)), (
+                        "%s: ROI input is not supported." % n.name
+                        )    
                 if len(n.input) == 2:
                     # Resize version 10
                     scales = model.get_initializer(n.input[1])
@@ -223,13 +229,6 @@ class Change3DTo4DTensors(Transformation):
                         sizes = model.get_initializer(n.input[3])
                         sizes = np.append(sizes, np.asarray(1.0, dtype=np.int64))
                         model.set_initializer(n.input[3], sizes)
-                if len(n.input) in (3, 4) and model.get_initializer(n.input[1]) is not None:
-                    # ROI handling
-                    roi =  model.get_initializer(n.input[1])
-                    d_type = roi.dtype #float64, float32 or float16
-                    # ROI for 3d tensor: [start1, start2, start3, end1, end2, end3]
-                    roi = np.concatenate((roi[0:3], np.asarray(1.0, dtype=d_type), roi[3:6], np.asarray(1.0, dtype=d_type)), axis=None)
-                    model.set_initializer(n.input[1], roi)
                 input_shape.append(1)
 
         # Change format of each input/value_info/output tensor
