@@ -197,6 +197,102 @@ def calc_range_all_initializers(model, range_dict):
                 range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
 
 
+# integer quantized NNs often carry around "scaled integers": instead of pure
+# int operations, we typically have integers scaled by some scaling factor (which
+# may come at different granularities: tensor-wise, channel-wise...) and possibly
+# biased by some offset ("zero point" among other things)
+# the scaled-int range analysis tries to distinguish the underlying integer parts
+# of scaled-int tensors from any non-integer scaling factors and biases.
+# this analysis is meant to run as a second step after regular range analysis is
+# executed, and we already have derived elementwise (min, max) values for each
+# intermediate tensors.
+
+
+# return a list of Bool values, indicating whether each input to a node
+# has integer range info associated with it (True) or not (False)
+def check_int_inputs(node, range_dict):
+    inp_int_info = [range_dict[x].has_integer_info() for x in node.input]
+    return inp_int_info
+
+
+# for a node that already has its output scale & bias computed, compute
+# the integer range based on the full range
+def calc_intrange_from_scalebias(node, model, range_dict):
+    for oname in node.output:
+        orange = range_dict[oname]
+        if (orange.scale is None) or (orange.bias is None):
+            warn("%s.%s has no output scale/bias, skipping" % (node.name, oname))
+            continue
+        # min/max may swap places due to negative scales
+        min_cand = (orange.range[0] - orange.bias) / orange.scale
+        max_cand = (orange.range[1] - orange.bias) / orange.scale
+        orange_int_min = np.minimum(min_cand, max_cand)
+        orange_int_min = np.round(orange_int_min)
+        orange_int_max = np.maximum(min_cand, max_cand)
+        orange_int_max = np.round(orange_int_max)
+        range_dict[oname].int_range = (orange_int_min, orange_int_max)
+
+
+# propagate integer range and scale/bias info for ReLU
+def calc_intrange_relu(node, model, range_dict):
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not any(inp_int_info):
+        # must have at least one input with integer info, otherwise no point
+        warn(node.name + " has no integer info on inputs, cannot propagate")
+        return
+    irange_inf = range_dict[node.input[0]]
+    # we'll use the ReLU output range to infer the integer parts
+    # * output range can only come from the ReLU identity part (input > 0)
+    # * scale and bias are always left unchanged, unless stuck channel
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # S and B are identical between input and output
+    range_dict[node.output[0]].scale = irange_inf.scale
+    range_dict[node.output[0]].bias = irange_inf.bias
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
+# propagate integer range and scale/bias info for Quant
+def calc_intrange_quant(node, model, range_dict):
+    # get quantizer parameters
+    q_scale = model.get_initializer(node.input[1])
+    q_zeropt = model.get_initializer(node.input[2])
+    q_bitwidth = model.get_initializer(node.input[3])
+    scale_ok = not (q_scale is None)
+    zeropt_ok = not (q_zeropt is None)
+    bitwidth_ok = not (q_bitwidth is None)
+    if not (scale_ok and zeropt_ok and bitwidth_ok):
+        warn("%s has non-constant quantizer inputs, skipping" % node.name)
+        return
+    # we need to do a little style conversion for the scale/bias:
+    # intrange calculations here represent quant tensors as Mx+N (x: int tensor, M: scale, N: bias)
+    # whereas Quant nodes represent them as S(x-Z) (x: int tensor, S: scale, Z: zeropoint)
+    # it follows that M = S and N = -SZ
+    # TODO broadcast these to element shape?
+    range_dict[node.output[0]].scale = q_scale
+    range_dict[node.output[0]].bias = -(q_scale * q_zeropt)
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
+# propagates scale/bias info as-is without any changes
+# but recalculate the int range info based on actual shapes
+def calc_intrange_identity(node, model, range_dict):
+    n_dyn_inps = [(model.get_initializer(x) is None) for x in node.input].count(True)
+    assert n_dyn_inps == 1, "Identity int range prop needs a single dynamic input"
+    irange_inf = range_dict[node.input[0]]
+    for o in node.output:
+        range_dict[o].scale = irange_inf.scale
+        range_dict[o].bias = irange_inf.bias
+        # derive integer ranges from the full range using scale & bias info
+        orange_inf = range_dict[o]
+        int_min = (orange_inf.range[0] - orange_inf.bias) / orange_inf.scale
+        int_max = (orange_inf.range[1] - orange_inf.bias) / orange_inf.scale
+        int_min = np.round(int_min)
+        int_max = np.round(int_max)
+        orange_inf.int_range = (int_min, int_max)
+        range_dict[o] = orange_inf
+
+
 optype_to_range_calc = {
     "Transpose": calc_monotonic_range,
     "MatMul": calc_matmul_node_range,
