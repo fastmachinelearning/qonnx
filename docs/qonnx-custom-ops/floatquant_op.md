@@ -22,7 +22,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dt><tt>has_nan</tt> : int (default is 0)</dt>
 <dd>Integer value interpreted as boolean, defines whether the representation  supports not-a-number (NaN) values. The ability to represent NaN values will   decrease the representable numerical range.</dd>
 
-<dt><tt>has_subnormal</tt> : int (default is 0)</dt>
+<dt><tt>has_subnormal</tt> : int (default is 1)</dt>
 <dd>Integer value interpreted as boolean, defines whether the representation  supports subnormal values. Subnormal values have an exponent value of 0 and are interpreted to have a leading significand digit of zero rather than one. Supporting subnormals will increase the complexity of the required arithmetic datapath.</dd>
 
 <dt><tt>saturation</tt> : int (default is 1)</dt>
