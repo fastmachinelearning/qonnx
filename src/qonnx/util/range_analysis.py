@@ -31,6 +31,7 @@ import dataclasses as dc
 import itertools
 import numpy as np
 import pprint
+from onnx import ValueInfoProto
 from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -76,12 +77,16 @@ def is_dyn_input(x, model):
     return model.get_initializer(x) is None and x != ""
 
 
-def promote_range_shape(tensor_range: tuple, tensor_vi):
+def promote_range_shape(tensor_range: tuple, tensor_vi_or_shape):
     # ensure the range has the apropriate (per-element shape)
     # i.e. range = (range_min, range_max) where range_min and
     # range_max have the same shape as the original tensor
-    proto_tensor = valueinfo_to_tensor(tensor_vi)
-    tensor_shape = proto_tensor.shape
+    if isinstance(tensor_vi_or_shape, ValueInfoProto):
+        proto_tensor = valueinfo_to_tensor(tensor_vi_or_shape)
+        tensor_shape = proto_tensor.shape
+    else:
+        tensor_shape = tensor_vi_or_shape
+        proto_tensor = np.zeros(tensor_shape, np.float32)
     if isinstance(tensor_range[0], np.ndarray) and tensor_range[0].shape == tensor_shape:
         return tensor_range
     else:
@@ -281,6 +286,9 @@ def calc_intrange_identity(node, model, range_dict):
     assert n_dyn_inps == 1, "Identity int range prop needs a single dynamic input"
     irange_inf = range_dict[node.input[0]]
     for o in node.output:
+        # TODO this will break for nodes that can change the output shape
+        # when the scale/bias are not scalars but tensors, they will also change
+        # shape after e.g. Transpose/Reshape/...
         range_dict[o].scale = irange_inf.scale
         range_dict[o].bias = irange_inf.bias
         # derive integer ranges from the full range using scale & bias info
@@ -293,6 +301,142 @@ def calc_intrange_identity(node, model, range_dict):
         range_dict[o] = orange_inf
 
 
+def is_point_interval(range_inf):
+    return (range_inf.range[0] == range_inf.range[1]).all()
+
+
+def interval_prod(interval_a, interval_b):
+    a_min, a_max = interval_a
+    b_min, b_max = interval_b
+    c0, c1, c2, c3 = a_min * b_min, a_min * b_max, a_max * b_min, a_max * b_max
+    c_min = np.minimum(c3, np.minimum(c2, np.minimum(c1, c0)))
+    c_max = np.maximum(c3, np.maximum(c2, np.maximum(c1, c0)))
+    return (c_min, c_max)
+
+
+def calc_intrange_add(node, model, range_dict):
+    # our ability to do scaled-int range propagation depends on whether all
+    # inputs have an integer component already
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not any(inp_int_info):
+        # must have at least one input with integer info, otherwise no point
+        warn(node.name + " has no integer info on inputs, cannot propagate")
+        return
+    elif all(inp_int_info):
+        # when all inputs are int, we can combine the scale factors into a single one
+        # if there is an integer relationship between the scale factors
+        irange_0 = range_dict[node.input[0]]
+        irange_1 = range_dict[node.input[1]]
+        # TODO: extend to integer relationship - for now only handle equal
+        # if not, we'll fallback to mix of integer and non-integer operands
+        if (irange_0.scale == irange_1.scale).all():
+            # s*[i0_min, i0_max] + b0 + s*[i1_min, i1_max] + b1
+            # = s*[i0_min+i1_min, i0_max+i1_max] + b0 + b1
+            range_dict[node.output[0]].scale = irange_0.scale
+            range_dict[node.output[0]].bias = irange_0.bias + irange_1.bias
+            range_dict[node.output[0]].int_range = (
+                irange_0.int_range[0] + irange_1.int_range[0],
+                irange_0.int_range[1] + irange_1.int_range[1],
+            )
+            return
+    # mix of integer and non-integer operands
+    # [f_min, f_max] + s*[i_min, i_max] + b
+    # = s*[i_min, i_max] + [f_min+b, f_max+b]
+    # we can only handle this when the non-integer operand is a point interval
+    # f_min = f_max = f which simplifies the expression to:
+    #  = s*[i_min, i_max] + f + b
+    irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
+    if not is_point_interval(irange_nonint):
+        warn(node.name + " has non-int input which is not point interval, cannot propagate")
+        return
+    irange_int = range_dict[node.input[inp_int_info.index(True)]]
+    range_dict[node.output[0]].int_range = irange_int.int_range
+    range_dict[node.output[0]].scale = irange_int.scale
+    range_dict[node.output[0]].bias = irange_int.bias + irange_nonint.range[0]
+
+
+def calc_intrange_mul(node, model, range_dict):
+    # our ability to do scaled-int range propagation depends on whether all
+    # inputs have an integer component already
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not any(inp_int_info):
+        # must have at least one input with integer info, otherwise no point
+        warn(node.name + " has no integer info on inputs, cannot propagate")
+        return
+    elif all(inp_int_info):
+        # when all inputs are int and biases are zero, we can multiply the
+        # scale factors to get the output scale factor, and similarly multiply
+        # the input int intervals to get the output int interval
+        # s0*[i0_min, i0_max] * s1*[i1_min, i1_max]
+        # = s0*s1*interval_prod([i0_min, i0_max], [i1_min_, i1_max])
+        irange_0 = range_dict[node.input[0]]
+        irange_1 = range_dict[node.input[1]]
+        if (irange_0.bias == 0).all() and (irange_1.bias == 0).all():
+            range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
+            range_dict[node.output[0]].bias = 0
+            range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
+            return
+        else:
+            warn("Found multiplication of nonzero-bias ints, cannot propagate")
+            # TODO could potentially treat this as a mix of int&nonint but
+            # need to identify which input to treat as nonint
+            return
+    # mix of integer and non-integer operands
+    # [f_min, f_max] * (s*[i_min, i_max] + b)
+    # = s*[i_min, i_max]*[f_min, f_max] + b*[f_min, f_max]
+    # we can only handle this when the non-integer operand is a point interval
+    # f_min = f_max = f which simplifies the expression to:
+    #  = f*s*[i_min, i_max] + b*f
+    irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
+    if not is_point_interval(irange_nonint):
+        warn(node.name + " has non-int input which is not point interval, cannot propagate")
+        return
+    irange_int = range_dict[node.input[inp_int_info.index(True)]]
+    range_dict[node.output[0]].int_range = irange_int.int_range
+    range_dict[node.output[0]].scale = irange_int.scale * irange_nonint.range[0]
+    range_dict[node.output[0]].bias = irange_int.bias * irange_nonint.range[0]
+
+
+def calc_intrange_matmul(node, model, range_dict):
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not all(inp_int_info):
+        warn(node.name + " does not have all-integer inputs, cannot propagate")
+        return
+    for node_in in node.input:
+        irange_inf = range_dict[node_in]
+        # be extra conservative for now: no negative scales, no biases
+        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
+        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
+    # TODO need to do an extra check - scales must be at most channelwise for both sides,
+    # can't be elementwise. otherwise we cannot do scaled-int range analysis
+    orange_inf = range_dict[node.output[0]]
+    int_range_dict = {}
+    for node_out in node.output:
+        int_range_dict[node_out] = RangeInfo()
+    # use integer components of input ranges for new range computation
+    for node_in in node.input:
+        int_range_dict[node_in] = RangeInfo(
+            range=range_dict[node_in].int_range, is_initializer=range_dict[node_in].is_initializer
+        )
+    range_calc_fxn = optype_to_range_calc[node.op_type]
+    range_calc_fxn(node, model, int_range_dict)
+    int_orange_inf = int_range_dict[node.output[0]]
+    # now deduce the output scale factor and bias from all available info
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = int_orange_inf.range
+
+
+# handler functions for regular range analysis
 optype_to_range_calc = {
     "Transpose": calc_monotonic_range,
     "MatMul": calc_matmul_node_range,
@@ -323,6 +467,31 @@ optype_to_range_calc = {
     "Im2Col": calc_monotonic_range,
 }
 
+# handler functions for scaled-integer range analysis
+optype_to_intrange_calc = {
+    "MatMul": calc_intrange_matmul,
+    "Add": calc_intrange_add,
+    "Mul": calc_intrange_mul,
+    "Relu": calc_intrange_relu,
+    "Quant": calc_intrange_quant,
+    "Pad": calc_intrange_identity,
+    "MaxPool": calc_intrange_identity,
+    "Reshape": calc_intrange_identity,
+}
+
+
+# walk the graph node by node and propagate scaled-int range info
+# assumes that regular range analysis was already carried out
+def calc_intrange(model, range_dict):
+    for node in model.graph.node:
+        op_ok = node.op_type in optype_to_intrange_calc.keys()
+        if op_ok:
+            range_calc_fxn = optype_to_intrange_calc[node.op_type]
+            range_calc_fxn(node, model, range_dict)
+        else:
+            warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
+
+
 REPORT_MODE_RANGE = "range"
 REPORT_MODE_STUCKCHANNEL = "stuck_channel"
 REPORT_MODE_ZEROSTUCKCHANNEL = "zerostuck_channel"
@@ -349,6 +518,7 @@ def range_analysis(
     prettyprint=False,
     do_cleanup=False,
     strip_initializers_from_report=True,
+    scaled_int=False,
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -426,6 +596,10 @@ def range_analysis(
             # TODO bring back stuck channel analysis after simplification is re-introduced
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
+
+    # if scaled-int range prop is enabled, call as postproc
+    if scaled_int:
+        calc_intrange(model, range_dict)
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
