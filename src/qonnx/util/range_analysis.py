@@ -36,8 +36,10 @@ from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
+from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
+from qonnx.transformation.general import ConvertSubToAdd
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
@@ -345,11 +347,16 @@ def calc_intrange_add(node, model, range_dict):
     # we can only handle this when the non-integer operand is a point interval
     # f_min = f_max = f which simplifies the expression to:
     #  = s*[i_min, i_max] + f + b
-    irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-    if not is_point_interval(irange_nonint):
-        warn(node.name + " has non-int input which is not point interval, cannot propagate")
-        return
-    irange_int = range_dict[node.input[inp_int_info.index(True)]]
+    if all(inp_int_info):
+        # TODO treat whichever one is point interval as the nonint
+        irange_int = range_dict[node.input[0]]
+        irange_nonint = range_dict[node.input[1]]
+    else:
+        irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
+        if not is_point_interval(irange_nonint):
+            warn(node.name + " has non-int input which is not point interval, cannot propagate")
+            return
+        irange_int = range_dict[node.input[inp_int_info.index(True)]]
     range_dict[node.output[0]].int_range = irange_int.int_range
     range_dict[node.output[0]].scale = irange_int.scale
     range_dict[node.output[0]].bias = irange_int.bias + irange_nonint.range[0]
@@ -547,6 +554,8 @@ def range_analysis(
     if lower_ops:
         model = model.transform(LowerConvsToMatMul())
         model = model.transform(GemmToMatMul())
+        model = model.transform(BatchNormToAffine())
+        model = model.transform(ConvertSubToAdd())
         model = cleanup_model(model)
     # call constant folding & shape inference, this preserves weight quantizers
     # (but do not do extra full cleanup, in order to preserve node/tensor naming)
