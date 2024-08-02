@@ -49,6 +49,18 @@ model_details_range = {
     "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 183}},
 }
 
+model_details_scaledint = {
+    "FINN-TFC_W2A2": {
+        "scaledint_input_range": RangeInfo(
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
+    },
+}
+
 
 def test_promote_range_shape():
     tshape = (2, 2)
@@ -137,4 +149,19 @@ def test_range_analysis_full_network(model_name):
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     ret = range_analysis(model, irange=current_details["input_range"], report_mode="range", lower_ops=True, do_cleanup=True)
     assert len(ret.keys()) == current_details["range_info"]["n_dynamic_tensors"]
+    assert "global_out" in ret.keys()
+
+
+@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+def test_range_analysis_full_network_scaledint(model_name):
+    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    ret = range_analysis(
+        model,
+        irange=current_details["scaledint_input_range"],
+        report_mode="range",
+        lower_ops=True,
+        do_cleanup=True,
+        scaled_int=True,
+    )
     assert "global_out" in ret.keys()
