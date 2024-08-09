@@ -53,6 +53,7 @@ model_details_range = {
 model_details_scaledint = {
     "FINN-TFC_W2A2": {
         "scaledint_input_range": RangeInfo(
+            shape=(1, 1, 28, 28),
             range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
             int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
             scale=np.asarray(1.0 / 255.0, dtype=np.float32),
@@ -98,8 +99,8 @@ def test_calc_monotonic_range():
     relu_out = relu_node.output[0]
     relu_in_shape = tuple(model.get_tensor_shape(relu_in))
     relu_in_vi = model.get_tensor_valueinfo(relu_in)
-    relu_in_range = RangeInfo(range=promote_range_shape((-1.0, 1.0), relu_in_vi))
-    range_dict = {relu_in: relu_in_range, relu_out: RangeInfo()}
+    relu_in_range = RangeInfo(shape=relu_in_shape, range=promote_range_shape((-1.0, 1.0), relu_in_vi))
+    range_dict = {relu_in: relu_in_range, relu_out: RangeInfo(shape=relu_in_shape)}
     calc_monotonic_range(relu_node, model, range_dict)
     assert range_dict[relu_out].range[0].shape == relu_in_shape
     assert range_dict[relu_out].range[1].shape == relu_in_shape
@@ -107,7 +108,7 @@ def test_calc_monotonic_range():
     assert (range_dict[relu_out].range[1] == 1).all()
     qnt_node = model.find_consumer(relu_out)
     qnt_out = qnt_node.output[0]
-    range_dict[qnt_out] = RangeInfo()
+    range_dict[qnt_out] = RangeInfo(shape=model.get_tensor_shape(qnt_out))
     calc_monotonic_range(qnt_node, model, range_dict)
     assert range_dict[qnt_out].range[0].shape == relu_in_shape
     assert range_dict[qnt_out].range[1].shape == relu_in_shape
@@ -141,13 +142,16 @@ def test_calc_matmul_node_range():
     matmul_node = model.get_nodes_by_op_type("MatMul")[0]
     quant_in_node = model.get_node_from_name("Quant_4")
     quant_in_vi = model.get_tensor_valueinfo(quant_in_node.input[0])
-    quant_act_range = RangeInfo(range=promote_range_shape((-1.0, 1.0), quant_in_vi))
-    range_dict = {quant_in_node.input[0]: quant_act_range, quant_in_node.output[0]: RangeInfo()}
+    quant_in_shape = model.get_tensor_shape(quant_in_node.input[0])
+    quant_act_range = RangeInfo(shape=quant_in_shape, range=promote_range_shape((-1.0, 1.0), quant_in_vi))
+    range_dict = {quant_in_node.input[0]: quant_act_range, quant_in_node.output[0]: RangeInfo(shape=quant_in_shape)}
     calc_monotonic_range(quant_in_node, model, range_dict)
     quant_w_node = model.get_node_from_name("Quant_0")
-    range_dict[quant_w_node.output[0]] = RangeInfo()
+    quant_w_shape = model.get_tensor_shape(quant_w_node.output[0])
+    range_dict[quant_w_node.output[0]] = RangeInfo(shape=quant_w_shape)
     calc_monotonic_range(quant_w_node, model, range_dict)
-    range_dict[matmul_node.output[0]] = RangeInfo()
+    matmul_out_shape = model.get_tensor_shape(matmul_node.output[0])
+    range_dict[matmul_node.output[0]] = RangeInfo(shape=matmul_out_shape)
     calc_matmul_node_range(matmul_node, model, range_dict)
     assert range_dict[matmul_node.output[0]].range[0][0][0] == -233
     assert range_dict[matmul_node.output[0]].range[1][0][0] == 233

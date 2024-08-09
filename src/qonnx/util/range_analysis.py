@@ -55,6 +55,8 @@ from qonnx.util.onnx import valueinfo_to_tensor
 # RangeInfo dataclass: we will use instances of this to represent the range information for tensors
 @dc.dataclass
 class RangeInfo:
+    # full shape of the tensor
+    shape: tuple = None
     # the range encountered in practice when observing tensors during inference
     range: tuple = None
     # (optional) the underlying integer range for tensor, if applicable
@@ -207,7 +209,9 @@ def calc_range_all_initializers(model, range_dict):
     for tensor_name in all_tensor_names:
         tensor_init = model.get_initializer(tensor_name)
         if tensor_init is not None:
-            range_dict[tensor_name] = RangeInfo(range=(tensor_init, tensor_init), is_initializer=True)
+            range_dict[tensor_name] = RangeInfo(
+                shape=tensor_init.shape, range=(tensor_init, tensor_init), is_initializer=True
+            )
             # use % 1 == 0 to identify initializers with integer values
             if ((tensor_init % 1) == 0).all():
                 range_dict[tensor_name].int_range = (tensor_init, tensor_init)
@@ -434,7 +438,9 @@ def calc_intrange_matmul(node, model, range_dict):
     # use integer components of input ranges for new range computation
     for node_in in node.input:
         int_range_dict[node_in] = RangeInfo(
-            range=range_dict[node_in].int_range, is_initializer=range_dict[node_in].is_initializer
+            shape=range_dict[node_in].shape,
+            range=range_dict[node_in].int_range,
+            is_initializer=range_dict[node_in].is_initializer,
         )
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
@@ -591,7 +597,8 @@ def range_analysis(
                 assert idt is not None, "Could not infer irange, please specify"
                 range_min = idt.min()
                 range_max = idt.max()
-            range_dict[iname] = RangeInfo(range=(range_min, range_max))
+            ishape = model.get_tensor_shape(iname)
+            range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
 
     # add range info for all tensors with initializers
     calc_range_all_initializers(model, range_dict)
@@ -606,7 +613,7 @@ def range_analysis(
             # since range analysis functions will be assigning to the .range member of
             # this RangeInfo directly later on
             for node_out in node.output:
-                range_dict[node_out] = RangeInfo()
+                range_dict[node_out] = RangeInfo(shape=model.get_tensor_shape(node_out))
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             # ensure all produced ranges are per-element
