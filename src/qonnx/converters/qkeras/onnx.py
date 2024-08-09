@@ -4,7 +4,7 @@ from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
 
 from .quantizers import get_quant_params
-
+from qonnx.custom_op.general.quant import quant
 
 def get_qkeras_onnx_handlers(all_quantizers):
     """Returns the handlers for each kind of layer
@@ -58,6 +58,23 @@ def qlayer_handler(ctx, node, name, args):
         quant_params = get_quant_params(weights, quantizers["kernel_initializer"]['config']['quantizer'])
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
+        qweights = quant(inp_tensor=np.array(weights), 
+                         scale=np.array(quant_params['inputs']['scale']),
+                         zeropt=np.array(quant_params['inputs']['zero_point']),
+                         bitwidth=np.array(quant_params['inputs']['bit_width']),
+                         signed=quant_params['attributes']['signed'],
+                         narrow=quant_params['attributes']['narrow'],
+                         rounding_mode=quant_params['attributes']['rounding_mode']
+                    )
+        assert np.array_equal(weights, qweights), f"""Weights of tensor {node.name} are not representable with the given quantization settings.
+                                                      The original weight tensor is: {np.array(weights)} and the quantized tensor is: {qweights}; 
+                                                      scale: {np.array(quant_params['inputs']['scale'])}, 
+                                                      zeropt: {np.array(quant_params['inputs']['zero_point'])}, 
+                                                      bitwidth: {np.array(quant_params['inputs']['bit_width'])},
+                                                      signed: {quant_params['attributes']['signed']},
+                                                      narrow: {quant_params['attributes']['narrow']},
+                                                      rounding_mode: {quant_params['attributes']['rounding_mode']}
+                                                      """
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_kernel_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
