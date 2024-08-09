@@ -90,7 +90,7 @@ def test_pruning_mnv1():
     # do cleanup including folding quantized weights
     model = cleanup_model(model, False)
     inp, golden = get_golden_in_and_output("MobileNetv1-w4a4")
-    cost0 = inference_cost(model, discount_sparsity=False)
+    cost0 = inference_cost(model, discount_sparsity=False)["total_cost"]
     assert cost0["op_mac_SCALEDINT<8>_SCALEDINT<8>"] == 10645344.0
     assert cost0["mem_w_SCALEDINT<8>"] == 864.0
     assert cost0["op_mac_SCALEDINT<4>_SCALEDINT<4>"] == 556357408.0
@@ -105,7 +105,7 @@ def test_pruning_mnv1():
     }
 
     model = model.transform(PruneChannels(prune_spec))
-    cost1 = inference_cost(model, discount_sparsity=False)
+    cost1 = inference_cost(model, discount_sparsity=False)["total_cost"]
     assert cost1["op_mac_SCALEDINT<8>_SCALEDINT<8>"] == 7318674.0
     assert cost1["mem_w_SCALEDINT<8>"] == 594.0
     assert cost1["op_mac_SCALEDINT<4>_SCALEDINT<4>"] == 546053216.0

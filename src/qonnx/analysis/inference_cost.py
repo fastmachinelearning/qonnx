@@ -117,6 +117,8 @@ def inference_cost_conv(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, wdt_name)
     w_mem_type_str = "mem_w_%s" % (wdt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
+    # keep in floats to remain compatible with json serialization
+    n_macs, w_mem, o_mem = float(n_macs), float(w_mem), float(o_mem)
     ret = {mac_op_type_str: n_macs, w_mem_type_str: w_mem, o_mem_type_str: o_mem}
     return ret
 
@@ -161,6 +163,8 @@ def inference_cost_matmul(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, wdt_name)
     w_mem_type_str = "mem_w_%s" % (wdt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
+    # keep in floats to remain compatible with json serialization
+    n_macs, w_mem, o_mem = float(n_macs), float(w_mem), float(o_mem)
     ret = {mac_op_type_str: n_macs, w_mem_type_str: w_mem, o_mem_type_str: o_mem}
     return ret
 
@@ -197,14 +201,16 @@ def inference_cost_upsample(model, node, discount_sparsity):
     mac_op_type_str = "op_mac_%s_%s" % (idt_name, idt_name)
     o_mem_type_str = "mem_o_%s" % (odt_name)
 
+    # keep in floats to remain compatible with json serialization
+    n_macs, o_mem = float(n_macs), float(o_mem)
     ret = {mac_op_type_str: n_macs, o_mem_type_str: o_mem}
     return ret
 
 
-def inference_cost(model, discount_sparsity=True):
+def inference_cost(model, discount_sparsity=True, cost_breakdown=False):
     "Ensure all nodes have unique names prior to calling this analysis pass."
 
-    node_costs = {}
+    ret, node_costs, nodes_per_optype = {}, {}, {}
     zero_cost_ops = [
         "MaxPool",
         "AveragePool",
@@ -240,13 +246,24 @@ def inference_cost(model, discount_sparsity=True):
         if node.op_type in inference_cost_fxn_map.keys():
             node_cost = inference_cost_fxn_map[node.op_type](model, node, discount_sparsity)
             node_costs[node.name] = node_cost
+            if node.op_type not in nodes_per_optype.keys():
+                new_optype = {}
+                new_optype[node.name] = node_cost
+                nodes_per_optype[node.op_type] = new_optype
+            else:
+                nodes_per_optype[node.op_type][node.name] = node_cost
         elif node.op_type in zero_cost_ops:
             continue
         else:
             unsupported_ops.add(node.op_type)
-
-    ret = aggregate_dict_keys(node_costs)
-    ret["unsupported"] = unsupported_ops
-    ret["discount_sparsity"] = discount_sparsity
-
+    total = aggregate_dict_keys(node_costs)
+    total["unsupported"] = unsupported_ops
+    total["discount_sparsity"] = discount_sparsity
+    ret["total_cost"] = total
+    if cost_breakdown:
+        optype_cost = {}
+        for optype, resources in nodes_per_optype.items():
+            optype_cost[optype] = aggregate_dict_keys(resources)
+        ret["optype_cost"] = optype_cost
+        ret["node_cost"] = node_costs
     return ret
