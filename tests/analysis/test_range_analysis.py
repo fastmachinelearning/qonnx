@@ -40,7 +40,7 @@ from qonnx.util.range_analysis import (
     calc_monotonic_range,
     promote_range_shape,
     range_analysis,
-    unbroadcast,
+    unbroadcast_tensor,
 )
 from qonnx.util.test import download_model, test_model_details
 
@@ -64,17 +64,17 @@ model_details_scaledint = {
 }
 
 
-def test_unbroadcast():
+def test_unbroadcast_tensor():
     x_vec = np.asarray([0.1, -0.2, 0.3])
     x2 = np.broadcast_to(x_vec, (4, 3))
     x3 = np.broadcast_to(x_vec, (4, 5, 3))
-    assert (unbroadcast(x2) == x_vec).all()
-    assert (unbroadcast(x3) == x_vec).all()
+    assert (unbroadcast_tensor(x2) == x_vec).all()
+    assert (unbroadcast_tensor(x3) == x_vec).all()
     x_scalar = np.asarray([0.1])
     x2 = np.broadcast_to(x_scalar, (4, 3))
     x3 = np.broadcast_to(x_scalar, (4, 5, 3))
-    assert (unbroadcast(x2) == x_scalar).all()
-    assert (unbroadcast(x3) == x_scalar).all()
+    assert (unbroadcast_tensor(x2) == x_scalar).all()
+    assert (unbroadcast_tensor(x3) == x_scalar).all()
 
 
 def test_promote_range_shape():

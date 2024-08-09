@@ -49,7 +49,39 @@ from qonnx.util.onnx import valueinfo_to_tensor
 # walk the graph to deduce range information about each tensor
 # assumptions:
 # - layout and shape inference already completed
-# - range info is generated per-element (broadcasted to this shape even if identical entries)
+# - range info is generated per-element, if un-broadcasting is enabled,
+#   identical elements along axes will be de-duplicated back to a shape broadcastable
+#   to the elementwise shape
+
+
+# try to recover original broadcasted array by applying np.unique along all
+# the axes, and keeping the ones that reduce that dimension to 1
+def unbroadcast_tensor(array):
+    if array is None:
+        return None
+    ret_cand = array
+    for dim_ind in range(array.ndim):
+        new_cand = np.unique(ret_cand, axis=dim_ind)
+        if new_cand.shape[dim_ind] == 1:
+            ret_cand = new_cand
+    return ret_cand
+
+
+# range (tuple of tensors) version of unbroadcast_tensor
+def unbroadcast_range(range):
+    if range is None:
+        return None
+    unb_0 = unbroadcast_tensor(range[0])
+    unb_1 = unbroadcast_tensor(range[1])
+    return (unb_0, unb_1)
+
+
+# apply unbroadcasting to all RangeInfo in dict
+def unbroadcast_range_dict(range_dict: dict):
+    ret_dict = {}
+    for key, val in range_dict.items():
+        ret_dict[key] = val.unbroadcast()
+    return ret_dict
 
 
 # RangeInfo dataclass: we will use instances of this to represent the range information for tensors
@@ -75,27 +107,28 @@ class RangeInfo:
         integer_props = [self.int_range, self.scale, self.bias]
         return all([x is not None for x in integer_props])
 
+    def unbroadcast(self):
+        return RangeInfo(
+            shape=self.shape,
+            range=unbroadcast_range(self.range),
+            int_range=unbroadcast_range(self.int_range),
+            scale=unbroadcast_tensor(self.scale),
+            bias=unbroadcast_tensor(self.bias),
+            is_initializer=self.is_initializer,
+        )
+
 
 def is_dyn_input(x, model):
     # return True if a given tensor has no initializer (=dynamic), False otherwise
     return model.get_initializer(x) is None and x != ""
 
 
-# try to recover original broadcasted array by applying np.unique along all
-# the axes, and keeping the ones that reduce that dimension to 1
-def unbroadcast(array):
-    ret_cand = array
-    for dim_ind in range(array.ndim):
-        new_cand = np.unique(ret_cand, axis=dim_ind)
-        if new_cand.shape[dim_ind] == 1:
-            ret_cand = new_cand
-    return ret_cand
-
-
 def promote_range_shape(tensor_range: tuple, tensor_vi_or_shape):
     # ensure the range has the apropriate (per-element shape)
     # i.e. range = (range_min, range_max) where range_min and
     # range_max have the same shape as the original tensor
+    if tensor_range is None:
+        return None
     if isinstance(tensor_vi_or_shape, ValueInfoProto):
         proto_tensor = valueinfo_to_tensor(tensor_vi_or_shape)
         tensor_shape = proto_tensor.shape
@@ -506,12 +539,19 @@ optype_to_intrange_calc = {
 
 # walk the graph node by node and propagate scaled-int range info
 # assumes that regular range analysis was already carried out
-def calc_intrange(model, range_dict):
+def calc_intrange(model, range_dict, do_unbroadcast):
     for node in model.graph.node:
         op_ok = node.op_type in optype_to_intrange_calc.keys()
         if op_ok:
             range_calc_fxn = optype_to_intrange_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
+            for node_out in node.output:
+                if do_unbroadcast:
+                    range_dict[node_out] = range_dict[node_out].unbroadcast()
+                else:
+                    # ensure all produced ranges are per-element
+                    out_vi = model.get_tensor_valueinfo(node_out)
+                    range_dict[node_out].int_range = promote_range_shape(range_dict[node_out].int_range, out_vi)
         else:
             warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
 
@@ -543,6 +583,7 @@ def range_analysis(
     do_cleanup=False,
     strip_initializers_from_report=True,
     scaled_int=False,
+    do_unbroadcast=False
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -603,6 +644,10 @@ def range_analysis(
     # add range info for all tensors with initializers
     calc_range_all_initializers(model, range_dict)
 
+    # cleanup input/initializer ranges before start
+    if do_unbroadcast:
+        range_dict = unbroadcast_range_dict(range_dict)
+
     # now walk the graph node by node and propagate range info
     for node in model.graph.node:
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
@@ -616,17 +661,21 @@ def range_analysis(
                 range_dict[node_out] = RangeInfo(shape=model.get_tensor_shape(node_out))
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
-            # ensure all produced ranges are per-element
+
             for node_out in node.output:
-                out_vi = model.get_tensor_valueinfo(node_out)
-                range_dict[node_out].range = promote_range_shape(range_dict[node_out].range, out_vi)
+                if do_unbroadcast:
+                    range_dict[node_out] = range_dict[node_out].unbroadcast()
+                else:
+                    # ensure all produced ranges are per-element
+                    out_vi = model.get_tensor_valueinfo(node_out)
+                    range_dict[node_out].range = promote_range_shape(range_dict[node_out].range, out_vi)
             # TODO bring back stuck channel analysis after simplification is re-introduced
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
 
     # if scaled-int range prop is enabled, call as postproc
     if scaled_int:
-        calc_intrange(model, range_dict)
+        calc_intrange(model, range_dict, do_unbroadcast)
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
