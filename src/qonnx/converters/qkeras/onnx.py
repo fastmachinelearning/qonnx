@@ -55,7 +55,7 @@ def qlayer_handler(ctx, node, name, args):
     quantizers = all_quantizers[keras_name]
     if quantizers.get("kernel_quantizer"):
         weights = node.inputs[1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(weights, quantizers["kernel_quantizer"])
+        quant_params = get_quant_params(weights, quantizers["kernel_initializer"]['config']['quantizer'])
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
         for key in quant_params["inputs"].keys():
@@ -63,8 +63,18 @@ def qlayer_handler(ctx, node, name, args):
             np_val = np.asarray(quant_params["inputs"][key])
             ctx.make_const(name, np_val)
             input_nodes.append(name)
-        ctx.insert_new_node_on_input(
+        quant_node = ctx.insert_new_node_on_input(
             node, "Quant", input_nodes, name=node.name + "_kernel_quantizer", **attr, domain="qonnx"
+        )
+        scale_node = ctx.make_const(
+            name = node.name + "_kernel_scale",
+            np_val = quant_params['inputs']['scale'].astype(np.float32)
+        )
+        ctx.insert_new_node_on_output(
+            op_type = "Mul", 
+            output_name = quant_node.output[0],
+            name = node.name + "_kernel_requantizer",
+            inputs = [quant_node.output[0], scale_node.name]
         )
 
     if quantizers.get("bias_quantizer") and len(node.input) == 3:

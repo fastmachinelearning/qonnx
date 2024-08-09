@@ -1,9 +1,9 @@
 import qkeras
 import six
-
+import numpy as np
 
 def get_quant_params(tensor, qkeras_quantizer):
-    if isinstance(qkeras_quantizer, str):
+    if isinstance(qkeras_quantizer, (str, dict)):
         qkeras_quantizer = qkeras.get_quantizer(qkeras_quantizer)
 
     return handler_map[qkeras_quantizer.__class__.__name__](tensor, qkeras_quantizer)
@@ -34,11 +34,15 @@ def convert_quantized_bits(tensor, quantizer):
     signed = int(config["keep_negative"])
     narrow = int(config["symmetric"])
     qscale = _get_quantizer_scale(tensor, quantizer)
-    assert qscale == 1, "Non-unity alpha is not yet supported"
-    scale = 1.0 / 2 ** (int(config["bits"]) - int(config["integer"] + signed))
+    if not isinstance(qscale, np.ndarray):
+        qscale = np.array(qscale) 
+    scale = qscale / 2 ** (int(config["bits"]) - int(config["integer"] + signed))
     zero_point = 0
     bit_width = int(config["bits"])
-    rounding_mode = "ROUND"
+    if config['alpha'] == "auto_po2":
+        rounding_mode = "ROUND_UP"
+    else:
+        rounding_mode = "HALF_EVEN"
 
     settings = {
         "attributes": {"signed": signed, "narrow": narrow, "rounding_mode": rounding_mode},

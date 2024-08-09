@@ -135,7 +135,7 @@ def resolve_rounding_mode(mode_string):
     """Resolve the rounding mode string of Quant and Trunc ops
     to the corresponding numpy functions."""
     normalized_mode_string = mode_string.upper()
-    if normalized_mode_string == "ROUND" or normalized_mode_string == "HALF_TO_EVEN":
+    if normalized_mode_string == "ROUND" or normalized_mode_string == "HALF_EVEN":
         return np.round
     elif normalized_mode_string == "CEIL":
         return np.ceil
