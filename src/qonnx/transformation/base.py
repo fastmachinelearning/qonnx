@@ -114,8 +114,6 @@ class NodeLocalTransformation(Transformation):
         else:
             new_nodes_and_bool = [self.applyNodeLocal(node) for node in old_nodes]
 
-
-
         # extract nodes and check if the transformation needs to run again
         # Note: .pop() had initially reversed the node order
         run_again = False
