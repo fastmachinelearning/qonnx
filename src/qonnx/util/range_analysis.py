@@ -79,6 +79,17 @@ def is_dyn_input(x, model):
     return model.get_initializer(x) is None and x != ""
 
 
+# try to recover original broadcasted array by applying np.unique along all
+# the axes, and keeping the ones that reduce that dimension to 1
+def unbroadcast(array):
+    ret_cand = array
+    for dim_ind in range(array.ndim):
+        new_cand = np.unique(ret_cand, axis=dim_ind)
+        if new_cand.shape[dim_ind] == 1:
+            ret_cand = new_cand
+    return ret_cand
+
+
 def promote_range_shape(tensor_range: tuple, tensor_vi_or_shape):
     # ensure the range has the apropriate (per-element shape)
     # i.e. range = (range_min, range_max) where range_min and
