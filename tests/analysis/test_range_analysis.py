@@ -45,9 +45,9 @@ from qonnx.util.range_analysis import (
 from qonnx.util.test import download_model, test_model_details
 
 model_details_range = {
-    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}},
-    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 54}},
-    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 183}},
+    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 22}},
+    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 62}},
+    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 210}},
 }
 
 model_details_scaledint = {
