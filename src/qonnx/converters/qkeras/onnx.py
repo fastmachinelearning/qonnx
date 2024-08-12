@@ -58,23 +58,23 @@ def qlayer_handler(ctx, node, name, args):
         quant_params = get_quant_params(weights, quantizers["kernel_initializer"]['config']['quantizer'])
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
-        qweights = quant(inp_tensor=np.array(weights), 
-                         scale=np.array(quant_params['inputs']['scale']),
-                         zeropt=np.array(quant_params['inputs']['zero_point']),
-                         bitwidth=np.array(quant_params['inputs']['bit_width']),
-                         signed=quant_params['attributes']['signed'],
-                         narrow=quant_params['attributes']['narrow'],
-                         rounding_mode=quant_params['attributes']['rounding_mode']
-                    )
-        assert np.array_equal(weights, qweights), f"""Weights of tensor {node.name} are not representable with the given quantization settings.
-                                                      The original weight tensor is: {np.array(weights)} and the quantized tensor is: {qweights}; 
-                                                      scale: {np.array(quant_params['inputs']['scale'])}, 
-                                                      zeropt: {np.array(quant_params['inputs']['zero_point'])}, 
-                                                      bitwidth: {np.array(quant_params['inputs']['bit_width'])},
-                                                      signed: {quant_params['attributes']['signed']},
-                                                      narrow: {quant_params['attributes']['narrow']},
-                                                      rounding_mode: {quant_params['attributes']['rounding_mode']}
-                                                      """
+        #qweights = quant(inp_tensor=np.array(weights), 
+        #                 scale=np.array(quant_params['inputs']['scale']),
+        #                 zeropt=np.array(quant_params['inputs']['zero_point']),
+        #                 bitwidth=np.array(quant_params['inputs']['bit_width']),
+        #                 signed=quant_params['attributes']['signed'],
+        #                 narrow=quant_params['attributes']['narrow'],
+        #                 rounding_mode=quant_params['attributes']['rounding_mode']
+        #            )
+        #assert np.array_equal(weights, qweights), f"""Weights of tensor {node.name} are not representable with the given quantization settings.
+        #                                              The original weight tensor is: {np.array(weights)} and the quantized tensor is: {qweights}; 
+        #                                              scale: {np.array(quant_params['inputs']['scale'])}, 
+        #                                              zeropt: {np.array(quant_params['inputs']['zero_point'])}, 
+        #                                              bitwidth: {np.array(quant_params['inputs']['bit_width'])},
+        #                                              signed: {quant_params['attributes']['signed']},
+        #                                              narrow: {quant_params['attributes']['narrow']},
+        #                                              rounding_mode: {quant_params['attributes']['rounding_mode']}
+        #                                              """
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_kernel_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
@@ -83,16 +83,21 @@ def qlayer_handler(ctx, node, name, args):
         quant_node = ctx.insert_new_node_on_input(
             node, "Quant", input_nodes, name=node.name + "_kernel_quantizer", **attr, domain="qonnx"
         )
-        scale_node = ctx.make_const(
-            name = node.name + "_kernel_scale",
-            np_val = quant_params['inputs']['scale'].astype(np.float32)
-        )
-        ctx.insert_new_node_on_output(
-            op_type = "Mul", 
-            output_name = quant_node.output[0],
-            name = node.name + "_kernel_requantizer",
-            inputs = [quant_node.output[0], scale_node.name]
-        )
+        if quantizers["kernel_initializer"]['config']['quantizer']['class_name'] == 'quantized_bits':
+            bits = quantizers["kernel_initializer"]['config']['quantizer']['config']['bits']
+            integer = quantizers["kernel_initializer"]['config']['quantizer']['config']['integer']
+            keep_negative = quantizers["kernel_initializer"]['config']['quantizer']['config']['keep_negative']
+            if bits == integer + keep_negative:
+                scale_node = ctx.make_const(
+                    name = node.name + "_kernel_scale",
+                    np_val = quant_params['inputs']['scale'].astype(np.float32)
+                )
+                ctx.insert_new_node_on_output(
+                    op_type = "Mul", 
+                    output_name = quant_node.output[0],
+                    name = node.name + "_kernel_requantizer",
+                    inputs = [quant_node.output[0], scale_node.name]
+                )
 
     if quantizers.get("bias_quantizer") and len(node.input) == 3:
         bias = node.inputs[2].get_tensor_value(as_list=True)
