@@ -37,10 +37,7 @@ from qonnx.custom_op.registry import getCustomOp
 
 class AttrTestOp(CustomOp):
     def get_nodeattr_types(self):
-        my_attrs = {
-            "tensor_attr": ("t", True, np.asarray([])),
-            "strings_attr": ("strings", True, [""])
-        }
+        my_attrs = {"tensor_attr": ("t", True, np.asarray([])), "strings_attr": ("strings", True, [""])}
         return my_attrs
 
     def make_shape_compatible_op(self, model):
@@ -105,4 +102,3 @@ def test_attr():
     strings_attr_prod[0] = "test"
     inst.set_nodeattr("strings_attr", strings_attr_prod)
     assert inst.get_nodeattr("strings_attr") == ["test"] + strings_attr[1:]
-
