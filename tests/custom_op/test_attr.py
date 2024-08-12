@@ -37,7 +37,8 @@ from qonnx.custom_op.registry import getCustomOp
 
 class AttrTestOp(CustomOp):
     def get_nodeattr_types(self):
-        return {"tensor_attr": ("t", True, np.asarray([]))}
+        my_attrs = {"tensor_attr": ("t", True, np.asarray([])), "strings_attr": ("strings", True, [""])}
+        return my_attrs
 
     def make_shape_compatible_op(self, model):
         param_tensor = self.get_nodeattr("tensor_attr")
@@ -70,6 +71,7 @@ def test_attr():
     strarr = np.array2string(w, separator=", ")
     w_str = strarr.replace("[", "{").replace("]", "}").replace(" ", "")
     tensor_attr_str = f"int8{wshp_str} {w_str}"
+    strings_attr = ["a", "bc", "def"]
 
     input = f"""
     <
@@ -86,9 +88,17 @@ def test_attr():
     model = oprs.parse_model(input)
     model = ModelWrapper(model)
     inst = getCustomOp(model.graph.node[0])
+
     w_prod = inst.get_nodeattr("tensor_attr")
     assert (w_prod == w).all()
     w = w - 1
     inst.set_nodeattr("tensor_attr", w)
     w_prod = inst.get_nodeattr("tensor_attr")
     assert (w_prod == w).all()
+
+    inst.set_nodeattr("strings_attr", strings_attr)
+    strings_attr_prod = inst.get_nodeattr("strings_attr")
+    assert strings_attr_prod == strings_attr
+    strings_attr_prod[0] = "test"
+    inst.set_nodeattr("strings_attr", strings_attr_prod)
+    assert inst.get_nodeattr("strings_attr") == ["test"] + strings_attr[1:]
