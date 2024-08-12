@@ -4,6 +4,9 @@ import numpy as np
 import onnx
 import os
 import tensorflow as tf
+tf.config.run_functions_eagerly(True)
+tf.keras.utils.set_random_seed(42)
+np.random.seed(42)
 from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
@@ -323,7 +326,67 @@ def test_qkeras_qdense_4(quantizers, request):
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
     os.remove(model_path)
 
+@pytest.mark.parametrize("bits,signed,alpha",[
+    (8, True,  [1.000, 1.000, 1.000, 1.000]),
+    (8, False, [1.000, 1.000, 1.000, 1.000]),
+    (4, True,  [1.000, 1.000, 1.000, 1.000]),
+    (4, False, [1.000, 1.000, 1.000, 1.000]),
+    (8, True,  [0.125, 0.250, 0.500, 1.000]),
+    (8, False, [0.125, 0.250, 0.500, 1.000]),
+    (5, True,  [0.250, 0.250, 0.125, 0.125]),
+    (5, False, [0.250, 0.250, 0.125, 0.125]),
+    (4, True,  [0.125, 0.250, 0.500, 1.000]),
+    (4, False, [0.125, 0.250, 0.500, 1.000]),
+    (3, True,  [0.125, 0.125, 0.250, 0.125]),
+    (3, False, [0.125, 0.125, 0.250, 0.125])
+])
+def test_qkeras_tensor_alpha(bits, signed, alpha, request):
+    random_state = np.random.RandomState(seed=42)
+    max_val = np.array(alpha) * 2**(bits-signed)
+    min_val = -(max_val + 1)
+    w1 = random_state.randint(low=min_val, high=max_val, size=(3, 4))
+    b1 = np.array([0.0, 0.0, 0.0, 0.0])
+    x = x_in = tf.keras.layers.Input(shape=3)
+    x = QActivation(
+        quantized_bits(bits=4, integer=3, keep_negative=True)
+    )(x)
+    x = QDense(
+        4,
+        kernel_quantizer=quantized_bits(
+            bits=bits, integer=(bits-signed), keep_negative=signed, alpha=alpha
+        ),
+    )(x)
+    x = QActivation(quantized_relu(bits=3, integer=3))(x)
+    model = tf.keras.Model(inputs=[x_in], outputs=[x])
+    model.compile()
+    model.layers[2].set_weights([w1, b1])
+    onnx_model, _ = from_keras(model)
+    model_path = f"model_test_qkeras_tensor_alpha_{request.node.callspec.id}.onnx"
+    onnx.save(onnx_model, model_path)
+    onnx_model = ModelWrapper(onnx_model)
 
+    data = np.array(
+        [
+            [[0.0, 0.0, 0.0]],
+            [[0.0, 1.0, 2.0]],
+            [[2.0, 1.0, 0.0]],
+            [[4.0, 4.0, 4.0]],
+            [[7.0, 7.0, 7.0]],
+            [[6.0, 0.0, 7.0]],
+            [[3.0, 3.0, 3.0]],
+            [[7.0, 0.0, 0.0]],
+            [[0.0, 7.0, 0.0]],
+            [[0.0, 0.0, 7.0]],
+        ]
+    ).astype(np.float32)
+    for x in data:
+        y_qkeras = model.predict(x, verbose=0)
+        idict = {onnx_model.graph.input[0].name: x}
+        odict = oxe.execute_onnx(onnx_model, idict, True)
+        y_qonnx = odict[onnx_model.graph.output[0].name]
+        assert np.array_equal(y_qkeras, y_qonnx)
+    os.remove(model_path)
+    
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qconv2d_1(quantizers, request):
     kq, bq = quantizers
