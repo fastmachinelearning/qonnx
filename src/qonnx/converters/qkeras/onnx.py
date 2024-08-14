@@ -1,9 +1,14 @@
+import logging
 import numpy as np
 from tf2onnx.late_rewriters import channel_order_rewriters
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
 
+from qonnx.custom_op.general.quant import quant
+
 from .quantizers import get_quant_params
+
+logger = logging.getLogger(__name__)
 
 
 def get_qkeras_onnx_handlers(all_quantizers):
@@ -47,6 +52,23 @@ def _extract_node_name(onnx_node, keras_quantizers):
     return None
 
 
+def check_tensor_is_representable(tensor, quant_params, node):
+    "Gives a Warning iftensor is not representable with the providede quantization settings"
+    qtensor = quant(
+        inp_tensor=np.array(tensor),
+        scale=np.array(quant_params["inputs"]["scale"]),
+        zeropt=np.array(quant_params["inputs"]["zero_point"]),
+        bitwidth=np.array(quant_params["inputs"]["bit_width"]),
+        signed=quant_params["attributes"]["signed"],
+        narrow=quant_params["attributes"]["narrow"],
+        rounding_mode=quant_params["attributes"]["rounding_mode"],
+    )
+    if not np.array_equal(tensor, qtensor):
+        logger.warn(
+            f"Tensor of node: {node.name} is not representable with the provided quantization settings: {quant_params}"
+        )
+
+
 def qlayer_handler(ctx, node, name, args):
     all_quantizers = args[0]
     keras_name = _extract_node_name(node, all_quantizers)
@@ -57,9 +79,9 @@ def qlayer_handler(ctx, node, name, args):
     if quantizers.get("kernel_quantizer_cfg"):
         weights = node.inputs[1].get_tensor_value(as_list=True)
         quant_params = get_quant_params(weights, quantizers["kernel_quantizer_cfg"])
+        check_tensor_is_representable(weights, quant_params, node)
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
-
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_kernel_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
@@ -86,6 +108,7 @@ def qlayer_handler(ctx, node, name, args):
     if quantizers.get("bias_quantizer_cfg") and len(node.input) == 3:
         bias = node.inputs[-1].get_tensor_value(as_list=True)
         quant_params = get_quant_params(bias, quantizers["bias_quantizer_cfg"])
+        check_tensor_is_representable(bias, quant_params, node)
         attr = quant_params["attributes"]
         input_nodes = [node.input[-1]]
         for key in quant_params["inputs"].keys():
