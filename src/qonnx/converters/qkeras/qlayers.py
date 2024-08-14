@@ -113,10 +113,10 @@ def extract_qlayer(layer):
     quantizers['bias_quantizer_cfg'] = bias_quant_cfg
 
     # For some reason downstream can't handle auto_po2, so we just calculate the scale value now
-    if kernel_quant_cfg['config']['alpha'] == "auto_po2":
+    if kernel_quant_cfg is not None and kernel_quant_cfg['config']['alpha'] == "auto_po2":
         layer.kernel_quantizer_internal(layer.kernel) # sets .scale (see auto_po2)
         quantizers['kernel_quantizer_cfg']['config']['alpha'] = layer.kernel_quantizer_internal.scale.numpy().flatten().tolist()
-    if bias_quant_cfg['config']['alpha'] == "auto_po2":
+    if bias_quant_cfg is not None and bias_quant_cfg['config']['alpha'] == "auto_po2":
         layer.bias_quantizer_internal(layer.bias)
         quantizers['bias_quantizer_cfg']['config']['alpha'] = layer.bias_quantizer_internal.scale.numpy().flatten().tolist()
     quantizers.pop('kernel_quantizer', None)
