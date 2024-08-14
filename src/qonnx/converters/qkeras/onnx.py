@@ -53,28 +53,13 @@ def qlayer_handler(ctx, node, name, args):
     if not keras_name:
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
-    if quantizers.get("kernel_quantizer"):
+    
+    if quantizers.get("kernel_quantizer_cfg"):
         weights = node.inputs[1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(weights, quantizers["kernel_initializer"]['config']['quantizer'])
+        quant_params = get_quant_params(weights, quantizers['kernel_quantizer_cfg'])
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
-        #qweights = quant(inp_tensor=np.array(weights), 
-        #                 scale=np.array(quant_params['inputs']['scale']),
-        #                 zeropt=np.array(quant_params['inputs']['zero_point']),
-        #                 bitwidth=np.array(quant_params['inputs']['bit_width']),
-        #                 signed=quant_params['attributes']['signed'],
-        #                 narrow=quant_params['attributes']['narrow'],
-        #                 rounding_mode=quant_params['attributes']['rounding_mode']
-        #            )
-        #assert np.array_equal(weights, qweights), f"""Weights of tensor {node.name} are not representable with the given quantization settings.
-        #                                              The original weight tensor is: {np.array(weights)} and the quantized tensor is: {qweights}; 
-        #                                              scale: {np.array(quant_params['inputs']['scale'])}, 
-        #                                              zeropt: {np.array(quant_params['inputs']['zero_point'])}, 
-        #                                              bitwidth: {np.array(quant_params['inputs']['bit_width'])},
-        #                                              signed: {quant_params['attributes']['signed']},
-        #                                              narrow: {quant_params['attributes']['narrow']},
-        #                                              rounding_mode: {quant_params['attributes']['rounding_mode']}
-        #                                              """
+
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_kernel_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
@@ -83,10 +68,10 @@ def qlayer_handler(ctx, node, name, args):
         quant_node = ctx.insert_new_node_on_input(
             node, "Quant", input_nodes, name=node.name + "_kernel_quantizer", **attr, domain="qonnx"
         )
-        if quantizers["kernel_initializer"]['config']['quantizer']['class_name'] == 'quantized_bits':
-            bits = quantizers["kernel_initializer"]['config']['quantizer']['config']['bits']
-            integer = quantizers["kernel_initializer"]['config']['quantizer']['config']['integer']
-            keep_negative = quantizers["kernel_initializer"]['config']['quantizer']['config']['keep_negative']
+        if quantizers['kernel_quantizer_cfg']['class_name'] == 'quantized_bits':
+            bits = quantizers['kernel_quantizer_cfg']['config']['bits']
+            integer = quantizers['kernel_quantizer_cfg']['config']['integer']
+            keep_negative = quantizers['kernel_quantizer_cfg']['config']['keep_negative']
             if bits == integer + keep_negative:
                 scale_node = ctx.make_const(
                     name = node.name + "_kernel_scale",
@@ -99,17 +84,32 @@ def qlayer_handler(ctx, node, name, args):
                     inputs = [quant_node.output[0], scale_node.name]
                 )
 
-    if quantizers.get("bias_quantizer") and len(node.input) == 3:
-        bias = node.inputs[2].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
+    if quantizers.get("bias_quantizer_cfg") and len(node.input) == 3:
+        bias = node.inputs[-1].get_tensor_value(as_list=True)
+        quant_params = get_quant_params(bias, quantizers['bias_quantizer_cfg'])
         attr = quant_params["attributes"]
-        input_nodes = [node.input[2]]
+        input_nodes = [node.input[-1]]
         for key in quant_params["inputs"].keys():
             name = f"{node.name}_bias_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
             ctx.make_const(name, np_val)
             input_nodes.append(name)
         ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
+        if quantizers['bias_quantizer_cfg']['class_name'] == 'quantized_bits':
+            bits = quantizers['bias_quantizer_cfg']['config']['bits']
+            integer = quantizers['bias_quantizer_cfg']['config']['integer']
+            keep_negative = quantizers['bias_quantizer_cfg']['config']['keep_negative']
+            if bits == integer + keep_negative:
+                scale_node = ctx.make_const(
+                    name = node.name + "_bias_scale",
+                    np_val = quant_params['inputs']['scale'].astype(np.float32)
+                )
+                ctx.insert_new_node_on_output(
+                    op_type = "Mul", 
+                    output_name = quant_node.output[0],
+                    name = node.name + "_bias_requantizer",
+                    inputs = [quant_node.output[0], scale_node.name]
+                )
 
     if quantizers.get("activation"):
         dtypes = [ctx.get_dtype(node.output[0])]
@@ -141,6 +141,9 @@ def qact_handler(ctx, node, name, args):
     quantizers = all_quantizers[keras_name]
     if quantizers.get("activation"):
         dtypes = [ctx.get_dtype(node.output[0])]
+        if "auto" in quantizers['activation']:
+            if not node.graph.get_node_by_output(node.input[0]).is_const():
+                raise AttributeError(f'Automatic quantizers (auto/auto_po2) must have a const input. Invalid topology at node: {name}.')
         quant_params = get_quant_params(None, quantizers["activation"])
         attr = quant_params["attributes"]
         input_nodes = [node.output[0]]
@@ -180,9 +183,9 @@ def bias_handler(ctx, node, name, args):
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
 
-    if quantizers.get("bias_quantizer"):
+    if quantizers.get("bias_quantizer_cfg"):
         bias = node.inputs[1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(bias, quantizers["bias_quantizer"])
+        quant_params = get_quant_params(bias, quantizers["bias_quantizer_cfg"])
         attr = quant_params["attributes"]
         input_nodes = [node.input[1]]
         for key in quant_params["inputs"].keys():
