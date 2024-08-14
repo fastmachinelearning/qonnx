@@ -101,26 +101,28 @@ def _replace_activation(quant_act):
 
 def extract_qlayer(layer):
     quantizers = layer.get_quantization_config()
-    
+
     keras_config = layer.get_config()
 
     kernel_quant_cfg = keras_config.pop("kernel_quantizer", None)
     bias_quant_cfg = keras_config.pop("bias_quantizer", None)
     keras_config.pop("kernel_range", None)
     keras_config.pop("bias_range", None)
-    
-    quantizers['kernel_quantizer_cfg'] = kernel_quant_cfg
-    quantizers['bias_quantizer_cfg'] = bias_quant_cfg
+
+    quantizers["kernel_quantizer_cfg"] = kernel_quant_cfg
+    quantizers["bias_quantizer_cfg"] = bias_quant_cfg
 
     # For some reason downstream can't handle auto_po2, so we just calculate the scale value now
-    if kernel_quant_cfg is not None and kernel_quant_cfg['config']['alpha'] == "auto_po2":
-        layer.kernel_quantizer_internal(layer.kernel) # sets .scale (see auto_po2)
-        quantizers['kernel_quantizer_cfg']['config']['alpha'] = layer.kernel_quantizer_internal.scale.numpy().flatten().tolist()
-    if bias_quant_cfg is not None and bias_quant_cfg['config']['alpha'] == "auto_po2":
+    if kernel_quant_cfg is not None and kernel_quant_cfg["config"]["alpha"] == "auto_po2":
+        layer.kernel_quantizer_internal(layer.kernel)  # sets .scale (see auto_po2)
+        quantizers["kernel_quantizer_cfg"]["config"]["alpha"] = (
+            layer.kernel_quantizer_internal.scale.numpy().flatten().tolist()
+        )
+    if bias_quant_cfg is not None and bias_quant_cfg["config"]["alpha"] == "auto_po2":
         layer.bias_quantizer_internal(layer.bias)
-        quantizers['bias_quantizer_cfg']['config']['alpha'] = layer.bias_quantizer_internal.scale.numpy().flatten().tolist()
-    quantizers.pop('kernel_quantizer', None)
-    quantizers.pop('bias_quantizer', None)
+        quantizers["bias_quantizer_cfg"]["config"]["alpha"] = layer.bias_quantizer_internal.scale.numpy().flatten().tolist()
+    quantizers.pop("kernel_quantizer", None)
+    quantizers.pop("bias_quantizer", None)
 
     # Check if activation is quantized
     if _is_keras_quantizer(keras_config["activation"]):

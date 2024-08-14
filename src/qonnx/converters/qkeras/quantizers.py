@@ -1,6 +1,6 @@
+import numpy as np
 import qkeras
 import six
-import numpy as np
 import tensorflow as tf
 
 
@@ -26,6 +26,7 @@ def _get_scale_from_alpha(tensor, quantizer):
 def _get_quantizer_scale(tensor, quantizer):
     # call the quantizer on the tensor to get its scale
     import numpy as np
+
     quantizer(np.array(tensor).astype(np.float32))
     return quantizer.scale
 
@@ -36,7 +37,7 @@ def convert_quantized_bits(tensor, quantizer):
     narrow = int(config["symmetric"])
     qscale = _get_quantizer_scale(tensor, quantizer)
     if not isinstance(qscale, (np.ndarray, tf.Tensor)):
-        qscale = np.array(qscale) 
+        qscale = np.array(qscale)
     scale = qscale / 2 ** (int(config["bits"]) - int(config["integer"] + signed))
     zero_point = 0
     bit_width = int(config["bits"])

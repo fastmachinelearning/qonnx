@@ -4,8 +4,6 @@ import numpy as np
 import onnx
 import os
 import tensorflow as tf
-tf.keras.utils.set_random_seed(42)
-np.random.seed(42)
 from qkeras import QActivation, QConv2D, QDense, binary, quantized_bits, quantized_relu, ternary
 from tensorflow.keras.layers import Activation, Conv2D, Dense, Flatten, Input
 from tensorflow.keras.models import Model
@@ -14,6 +12,10 @@ import qonnx.core.onnx_exec as oxe
 from qonnx.converters import from_keras
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
+
+# For reproducibility
+tf.keras.utils.set_random_seed(42)
+np.random.seed(42)
 
 act_quantizers = [
     quantized_bits(8, 4, 0, alpha=1),
@@ -65,16 +67,20 @@ def test_qkeras_qactivation(quantizer, request):
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
     os.remove(model_path)
 
-@pytest.mark.parametrize("quantizer", [
-    quantized_relu(bits=4, integer=4), 
-    quantized_bits(bits=4, integer=4, keep_negative=False, alpha=1),
-    ])
-def test_qkeras_quantizers_rounding_modes(quantizer, request):  
+
+@pytest.mark.parametrize(
+    "quantizer",
+    [
+        quantized_relu(bits=4, integer=4),
+        quantized_bits(bits=4, integer=4, keep_negative=False, alpha=1),
+    ],
+)
+def test_qkeras_quantizers_rounding_modes(quantizer, request):
     x = x_in = Input((10,), name="input")
     x = QActivation(activation=quantizer)(x)
     model = Model(inputs=[x_in], outputs=[x])
     model.compile()
-    
+
     onnx_model, _ = from_keras(model)
     model_path = f"model_test_qkeras_quantizers_rounding_modes_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -88,9 +94,10 @@ def test_qkeras_quantizers_rounding_modes(quantizer, request):
     assert np.array_equal(y_qkeras, y_qonnx)
     os.remove(model_path)
 
+
 @pytest.mark.parametrize("bias", [5.5, 2.5, 1.6, 1.1, 1.0, -1.0, -1.1, -1.6, -2.5, -5.5])
 def test_qkeras_quantizers_autopo2_rounding_modes(bias, request):
-    kq = bq = quantized_bits(4, 4, 1, alpha='auto_po2')
+    kq = bq = quantized_bits(4, 4, 1, alpha="auto_po2")
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
     x = x_in = Input((10), name="input")
     x = QDense(
@@ -117,6 +124,7 @@ def test_qkeras_quantizers_autopo2_rounding_modes(bias, request):
     y_qkeras = model.predict(x_test, verbose=0)
     assert np.array_equal(y_qkeras, y_qonnx)
     os.remove(model_path)
+
 
 # pairs of quantizers for kernel and bias
 kb_quantizers = [
@@ -377,35 +385,35 @@ def test_qkeras_qdense_4(quantizers, request):
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
     os.remove(model_path)
 
-@pytest.mark.parametrize("bits,signed,alpha",[
-    (8, True,  [1.000, 1.000, 1.000, 1.000]),
-    (8, False, [1.000, 1.000, 1.000, 1.000]),
-    (4, True,  [1.000, 1.000, 1.000, 1.000]),
-    (4, False, [1.000, 1.000, 1.000, 1.000]),
-    (8, True,  [0.125, 0.250, 0.500, 1.000]),
-    (8, False, [0.125, 0.250, 0.500, 1.000]),
-    (5, True,  [0.250, 0.250, 0.125, 0.125]),
-    (5, False, [0.250, 0.250, 0.125, 0.125]),
-    (4, True,  [0.125, 0.250, 0.500, 1.000]),
-    (4, False, [0.125, 0.250, 0.500, 1.000]),
-    (3, True,  [0.125, 0.125, 0.250, 0.125]),
-    (3, False, [0.125, 0.125, 0.250, 0.125])
-])
+
+@pytest.mark.parametrize(
+    "bits,signed,alpha",
+    [
+        (8, True, [1.000, 1.000, 1.000, 1.000]),
+        (8, False, [1.000, 1.000, 1.000, 1.000]),
+        (4, True, [1.000, 1.000, 1.000, 1.000]),
+        (4, False, [1.000, 1.000, 1.000, 1.000]),
+        (8, True, [0.125, 0.250, 0.500, 1.000]),
+        (8, False, [0.125, 0.250, 0.500, 1.000]),
+        (5, True, [0.250, 0.250, 0.125, 0.125]),
+        (5, False, [0.250, 0.250, 0.125, 0.125]),
+        (4, True, [0.125, 0.250, 0.500, 1.000]),
+        (4, False, [0.125, 0.250, 0.500, 1.000]),
+        (3, True, [0.125, 0.125, 0.250, 0.125]),
+        (3, False, [0.125, 0.125, 0.250, 0.125]),
+    ],
+)
 def test_qkeras_tensor_alpha(bits, signed, alpha, request):
     random_state = np.random.RandomState(seed=42)
-    max_val = np.array(alpha) * 2**(bits-signed)
+    max_val = np.array(alpha) * 2 ** (bits - signed)
     min_val = -(max_val + 1)
     w1 = random_state.randint(low=min_val, high=max_val, size=(3, 4))
     b1 = np.array([0.0, 0.0, 0.0, 0.0])
     x = x_in = tf.keras.layers.Input(shape=3)
-    x = QActivation(
-        quantized_bits(bits=4, integer=3, keep_negative=True)
-    )(x)
+    x = QActivation(quantized_bits(bits=4, integer=3, keep_negative=True))(x)
     x = QDense(
         4,
-        kernel_quantizer=quantized_bits(
-            bits=bits, integer=(bits-signed), keep_negative=signed, alpha=alpha
-        ),
+        kernel_quantizer=quantized_bits(bits=bits, integer=(bits - signed), keep_negative=signed, alpha=alpha),
     )(x)
     x = QActivation(quantized_relu(bits=3, integer=3))(x)
     model = tf.keras.Model(inputs=[x_in], outputs=[x])
@@ -437,7 +445,8 @@ def test_qkeras_tensor_alpha(bits, signed, alpha, request):
         y_qonnx = odict[onnx_model.graph.output[0].name]
         assert np.array_equal(y_qkeras, y_qonnx)
     os.remove(model_path)
-    
+
+
 @pytest.mark.parametrize("quantizers", kb_quantizers, ids=kb_quantizers_ids)
 def test_qkeras_qconv2d_1(quantizers, request):
     kq, bq = quantizers
