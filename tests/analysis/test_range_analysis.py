@@ -35,10 +35,10 @@ from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp
 from qonnx.util.range_analysis import (
     RangeInfo,
+    broadcast_range,
     calc_matmul_node_range,
     calc_matmul_range,
     calc_monotonic_range,
-    promote_range_shape,
     range_analysis,
     unbroadcast_tensor,
 )
@@ -83,10 +83,10 @@ def test_promote_range_shape():
     tmax = 1
     trange_minimal = (tmin, tmax)
     trange_full = (np.zeros(tshape), np.ones(tshape))
-    ret = promote_range_shape(trange_minimal, tshape)
+    ret = broadcast_range(trange_minimal, tshape)
     assert (ret[0] == trange_full[0]).all()
     assert (ret[1] == trange_full[1]).all()
-    ret = promote_range_shape(trange_full, tshape)
+    ret = broadcast_range(trange_full, tshape)
     assert (ret[0] == trange_full[0]).all()
     assert (ret[1] == trange_full[1]).all()
 
@@ -99,7 +99,7 @@ def test_calc_monotonic_range():
     relu_out = relu_node.output[0]
     relu_in_shape = tuple(model.get_tensor_shape(relu_in))
     relu_in_vi = model.get_tensor_valueinfo(relu_in)
-    relu_in_range = RangeInfo(shape=relu_in_shape, range=promote_range_shape((-1.0, 1.0), relu_in_vi))
+    relu_in_range = RangeInfo(shape=relu_in_shape, range=broadcast_range((-1.0, 1.0), relu_in_vi))
     range_dict = {relu_in: relu_in_range, relu_out: RangeInfo(shape=relu_in_shape)}
     calc_monotonic_range(relu_node, model, range_dict)
     assert range_dict[relu_out].range[0].shape == relu_in_shape
@@ -143,7 +143,7 @@ def test_calc_matmul_node_range():
     quant_in_node = model.get_node_from_name("Quant_4")
     quant_in_vi = model.get_tensor_valueinfo(quant_in_node.input[0])
     quant_in_shape = model.get_tensor_shape(quant_in_node.input[0])
-    quant_act_range = RangeInfo(shape=quant_in_shape, range=promote_range_shape((-1.0, 1.0), quant_in_vi))
+    quant_act_range = RangeInfo(shape=quant_in_shape, range=broadcast_range((-1.0, 1.0), quant_in_vi))
     range_dict = {quant_in_node.input[0]: quant_act_range, quant_in_node.output[0]: RangeInfo(shape=quant_in_shape)}
     calc_monotonic_range(quant_in_node, model, range_dict)
     quant_w_node = model.get_node_from_name("Quant_0")

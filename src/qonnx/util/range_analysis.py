@@ -84,6 +84,32 @@ def unbroadcast_range_dict(range_dict: dict):
     return ret_dict
 
 
+def is_dyn_input(x, model):
+    # return True if a given tensor has no initializer (=dynamic), False otherwise
+    return model.get_initializer(x) is None and x != ""
+
+
+def broadcast_range(tensor_range: tuple, tensor_vi_or_shape):
+    # ensure the range has the apropriate (per-element shape)
+    # i.e. range = (range_min, range_max) where range_min and
+    # range_max have the same shape as the original tensor
+    if tensor_range is None:
+        return None
+    if isinstance(tensor_vi_or_shape, ValueInfoProto):
+        proto_tensor = valueinfo_to_tensor(tensor_vi_or_shape)
+        tensor_shape = proto_tensor.shape
+    else:
+        tensor_shape = tensor_vi_or_shape
+        proto_tensor = np.zeros(tensor_shape, np.float32)
+    if isinstance(tensor_range[0], np.ndarray) and tensor_range[0].shape == tensor_shape:
+        return tensor_range
+    else:
+        # fix shape using numpy broadcasting
+        range_min = np.broadcast_to(tensor_range[0], proto_tensor)
+        range_max = np.broadcast_to(tensor_range[1], proto_tensor)
+        return (range_min, range_max)
+
+
 # RangeInfo dataclass: we will use instances of this to represent the range information for tensors
 @dc.dataclass
 class RangeInfo:
@@ -117,31 +143,15 @@ class RangeInfo:
             is_initializer=self.is_initializer,
         )
 
-
-def is_dyn_input(x, model):
-    # return True if a given tensor has no initializer (=dynamic), False otherwise
-    return model.get_initializer(x) is None and x != ""
-
-
-def promote_range_shape(tensor_range: tuple, tensor_vi_or_shape):
-    # ensure the range has the apropriate (per-element shape)
-    # i.e. range = (range_min, range_max) where range_min and
-    # range_max have the same shape as the original tensor
-    if tensor_range is None:
-        return None
-    if isinstance(tensor_vi_or_shape, ValueInfoProto):
-        proto_tensor = valueinfo_to_tensor(tensor_vi_or_shape)
-        tensor_shape = proto_tensor.shape
-    else:
-        tensor_shape = tensor_vi_or_shape
-        proto_tensor = np.zeros(tensor_shape, np.float32)
-    if isinstance(tensor_range[0], np.ndarray) and tensor_range[0].shape == tensor_shape:
-        return tensor_range
-    else:
-        # fix shape using numpy broadcasting
-        range_min = tensor_range[0] + np.zeros_like(proto_tensor)
-        range_max = tensor_range[1] + np.zeros_like(proto_tensor)
-        return (range_min, range_max)
+    def broadcast(self):
+        return RangeInfo(
+            shape=self.shape,
+            range=broadcast_range(self.range, self.shape),
+            int_range=broadcast_range(self.int_range, self.shape),
+            scale=np.broadcast_to(self.scale, self.shape),
+            bias=np.broadcast_to(self.bias, self.shape),
+            is_initializer=self.is_initializer,
+        )
 
 
 # range computation for monotonic functions:
@@ -182,7 +192,7 @@ def calc_monotonic_range(node, model, range_dict):
     for inp in dyn_inps:
         irange = range_dict[inp].range
         inp_vi = model.get_tensor_valueinfo(inp)
-        proto_vectors.append(promote_range_shape(irange, inp_vi))
+        proto_vectors.append(broadcast_range(irange, inp_vi))
     # process all combinations of prototype vectors for dynamic inputs
     running_min = [None for i in range(len(node.output))]
     running_max = [None for i in range(len(node.output))]
@@ -551,7 +561,7 @@ def calc_intrange(model, range_dict, do_unbroadcast):
                 else:
                     # ensure all produced ranges are per-element
                     out_vi = model.get_tensor_valueinfo(node_out)
-                    range_dict[node_out].int_range = promote_range_shape(range_dict[node_out].int_range, out_vi)
+                    range_dict[node_out].int_range = broadcast_range(range_dict[node_out].int_range, out_vi)
         else:
             warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
 
@@ -597,10 +607,6 @@ def range_analysis(
         else:
             irange = eval(irange)
             range_min, range_max = irange
-            if isinstance(range_min, list):
-                range_min = np.asarray(range_min, dtype=np.float32)
-            if isinstance(range_max, list):
-                range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
     elif isinstance(irange, RangeInfo):
@@ -629,6 +635,10 @@ def range_analysis(
     # start by calculating/annotating range info for input tensors
     for inp in model.graph.input:
         iname = inp.name
+        if not isinstance(range_min, np.ndarray):
+            range_min = np.asarray(range_min, dtype=np.float32)
+        if not isinstance(range_max, np.ndarray):
+            range_max = np.asarray(range_max, dtype=np.float32)
         if isinstance(irange, RangeInfo):
             range_dict[iname] = irange
         else:
@@ -668,7 +678,7 @@ def range_analysis(
                 else:
                     # ensure all produced ranges are per-element
                     out_vi = model.get_tensor_valueinfo(node_out)
-                    range_dict[node_out].range = promote_range_shape(range_dict[node_out].range, out_vi)
+                    range_dict[node_out].range = broadcast_range(range_dict[node_out].range, out_vi)
             # TODO bring back stuck channel analysis after simplification is re-introduced
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
