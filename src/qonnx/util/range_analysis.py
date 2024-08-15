@@ -105,8 +105,8 @@ def broadcast_range(tensor_range: tuple, tensor_vi_or_shape):
         return tensor_range
     else:
         # fix shape using numpy broadcasting
-        range_min = np.broadcast_to(tensor_range[0], proto_tensor)
-        range_max = np.broadcast_to(tensor_range[1], proto_tensor)
+        range_min = np.broadcast_to(tensor_range[0], proto_tensor.shape)
+        range_max = np.broadcast_to(tensor_range[1], proto_tensor.shape)
         return (range_min, range_max)
 
 
@@ -192,6 +192,7 @@ def calc_monotonic_range(node, model, range_dict):
     for inp in dyn_inps:
         irange = range_dict[inp].range
         inp_vi = model.get_tensor_valueinfo(inp)
+        # this handler is execution-based so make sure we have per-element ranges
         proto_vectors.append(broadcast_range(irange, inp_vi))
     # process all combinations of prototype vectors for dynamic inputs
     running_min = [None for i in range(len(node.output))]
@@ -233,8 +234,10 @@ def calc_matmul_range(range_A, range_B):
 
 
 def calc_matmul_node_range(node, model, range_dict):
-    range_A = range_dict[node.input[0]].range
-    range_B = range_dict[node.input[1]].range
+    # matmul range is execution-based so broadcast to elementwise shapes
+    # otherwise we'll get shape mismatch problems for np.matmul
+    range_A = range_dict[node.input[0]].broadcast().range
+    range_B = range_dict[node.input[1]].broadcast().range
     range_dict[node.output[0]].range = calc_matmul_range(range_A, range_B)
 
 
@@ -438,7 +441,7 @@ def calc_intrange_mul(node, model, range_dict):
         irange_1 = range_dict[node.input[1]]
         if (irange_0.bias == 0).all() and (irange_1.bias == 0).all():
             range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
-            range_dict[node.output[0]].bias = 0
+            range_dict[node.output[0]].bias = np.asarray(0, dtype=np.float32)
             range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
             return
         else:
@@ -593,7 +596,7 @@ def range_analysis(
     do_cleanup=False,
     strip_initializers_from_report=True,
     scaled_int=False,
-    do_unbroadcast=False
+    do_unbroadcast=True
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -607,8 +610,16 @@ def range_analysis(
         else:
             irange = eval(irange)
             range_min, range_max = irange
+            if not isinstance(range_min, np.ndarray):
+                range_min = np.asarray(range_min, dtype=np.float32)
+            if not isinstance(range_max, np.ndarray):
+                range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
+        if not isinstance(range_min, np.ndarray):
+            range_min = np.asarray(range_min, dtype=np.float32)
+        if not isinstance(range_max, np.ndarray):
+            range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, RangeInfo):
         pass
     else:
@@ -635,10 +646,6 @@ def range_analysis(
     # start by calculating/annotating range info for input tensors
     for inp in model.graph.input:
         iname = inp.name
-        if not isinstance(range_min, np.ndarray):
-            range_min = np.asarray(range_min, dtype=np.float32)
-        if not isinstance(range_max, np.ndarray):
-            range_max = np.asarray(range_max, dtype=np.float32)
         if isinstance(irange, RangeInfo):
             range_dict[iname] = irange
         else:
