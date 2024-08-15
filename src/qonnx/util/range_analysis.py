@@ -101,13 +101,10 @@ def broadcast_range(tensor_range: tuple, tensor_vi_or_shape):
     else:
         tensor_shape = tensor_vi_or_shape
         proto_tensor = np.zeros(tensor_shape, np.float32)
-    if isinstance(tensor_range[0], np.ndarray) and tensor_range[0].shape == tensor_shape:
-        return tensor_range
-    else:
-        # fix shape using numpy broadcasting
-        range_min = np.broadcast_to(tensor_range[0], proto_tensor.shape)
-        range_max = np.broadcast_to(tensor_range[1], proto_tensor.shape)
-        return (range_min, range_max)
+    # fix shape using numpy broadcasting
+    range_min = np.broadcast_to(tensor_range[0], proto_tensor.shape).astype(proto_tensor.dtype)
+    range_max = np.broadcast_to(tensor_range[1], proto_tensor.shape).astype(proto_tensor.dtype)
+    return (range_min, range_max)
 
 
 # RangeInfo dataclass: we will use instances of this to represent the range information for tensors
