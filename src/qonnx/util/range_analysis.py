@@ -124,6 +124,8 @@ class RangeInfo:
     bias: np.ndarray = None
     # whether this particular range is always fixed (due to its tensor having an initializer)
     is_initializer: bool = False
+    # history of nodes suitable for later removal during streamlining
+    history: list = dc.field(default_factory=lambda: [])
 
     def has_integer_info(self) -> bool:
         # whether the RangeInfo has its int_range, scale and bias populated
@@ -633,6 +635,35 @@ optype_to_intrange_calc = {
 }
 
 
+# whether the node could be considered for removal during final streamlining
+# for now, only single-input-single-output Mul and Add nodes
+def node_suitable_for_removal(model, node):
+    def is_tensor_initializer(model, tensor_name):
+        result = model.get_initializer(tensor_name) != None
+        return result.all() if isinstance(result, np.ndarray) else result
+
+    suitable = False
+    if node.op_type in ["Mul", "Add"]:
+        if len(node.input) == 2:
+            if not is_tensor_initializer(model, node.input[0]) and is_tensor_initializer(model, node.input[1]):
+                suitable = True
+    return suitable
+
+
+def update_node_outputs_streamline_history(model, range_dict, node):
+    merged_history = []
+    if not node.op_type == "Quant":
+        for inp in node.input:
+            inp_history = range_dict[inp].history
+            merged_history.extend(inp_history)
+        merged_history = list(set(merged_history))
+
+    if node_suitable_for_removal(model, node):
+        merged_history.append(node.name)
+    for out in node.output:
+        range_dict[out].history = merged_history
+
+
 # walk the graph node by node and propagate scaled-int range info
 # assumes that regular range analysis was already carried out
 def calc_intrange(model, range_dict, do_unbroadcast):
@@ -641,6 +672,7 @@ def calc_intrange(model, range_dict, do_unbroadcast):
         if op_ok:
             range_calc_fxn = optype_to_intrange_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
+            update_node_outputs_streamline_history(model, range_dict, node)
             for node_out in node.output:
                 if do_unbroadcast:
                     range_dict[node_out] = range_dict[node_out].unbroadcast()
