@@ -629,6 +629,7 @@ optype_to_intrange_calc = {
     "MaxPool": calc_intrange_eltwise_monotonic,
     "Reshape": calc_intrange_eltwise_monotonic,
     "Transpose": calc_intrange_eltwise_monotonic,
+    "Im2Col": calc_intrange_eltwise_monotonic,
 }
 
 
