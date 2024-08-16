@@ -640,7 +640,7 @@ optype_to_intrange_calc = {
 def node_suitable_for_removal(model, node):
     def is_tensor_initializer(model, tensor_name):
         result = model.get_initializer(tensor_name) != None
-        return result.all if isinstance(result, np.ndarray) else result
+        return result.all() if isinstance(result, np.ndarray) else result
 
     suitable = False
     if node.op_type in ["Mul", "Add"]:
