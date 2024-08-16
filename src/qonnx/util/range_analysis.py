@@ -465,10 +465,10 @@ def calc_intrange_mul(node, model, range_dict):
 def check_matmul_for_intrange_prop(node, range_dict):
     irange_0_inf = range_dict[node.input[0]]
     irange_1_inf = range_dict[node.input[1]]
-    if None in [irange_0_inf.bias, irange_0_inf.scale, irange_0_inf.int_range]:
+    if not irange_0_inf.has_integer_info():
         warn(f"Input 0 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
         return False
-    if None in [irange_1_inf.bias, irange_1_inf.scale, irange_1_inf.int_range]:
+    if not irange_1_inf.has_integer_info():
         warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
         return False
     # ensure range information is un-broadcasted so we can check shapes etc properly

@@ -61,6 +61,16 @@ model_details_scaledint = {
             is_initializer=False,
         )
     },
+    "FINN-CNV_W2A2": {
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 3, 32, 32),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
+    },
 }
 
 
