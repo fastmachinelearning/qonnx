@@ -52,10 +52,27 @@ class LowerConvsToMatMul(Transformation):
                 continue
 
             # extract parameters of node
-            (cnv_input, cnv_output, cnv_input_datatype, cnv_output_datatype,
-             k_h, k_w, stride_h, stride_w, group, weight_name, W_conv, ifm_ch,
-             ofm_ch, ifm_dim_h, ifm_dim_w, ofm_dim_h, ofm_dim_w, dilation, pad) =\
-                self.extract_conv_params(model, node)
+            (
+                cnv_input,
+                cnv_output,
+                cnv_input_datatype,
+                cnv_output_datatype,
+                k_h,
+                k_w,
+                stride_h,
+                stride_w,
+                group,
+                weight_name,
+                W_conv,
+                ifm_ch,
+                ofm_ch,
+                ifm_dim_h,
+                ifm_dim_w,
+                ofm_dim_h,
+                ofm_dim_w,
+                dilation,
+                pad,
+            ) = self.extract_conv_params(model, node)
 
             # if depthwise conv create sparse matrix and variable "dw"
             # to store as attribute in Im2Col that indicates that the created
@@ -122,9 +139,16 @@ class LowerConvsToMatMul(Transformation):
                 im2col_out = im2col_out.name
                 model.set_tensor_datatype(im2col_out, cnv_input_datatype)
                 im2col_node = helper.make_node(
-                    "Im2Col", [inp_trans_out], [im2col_out], domain="qonnx.custom_op.general",
-                    stride=[stride_h, stride_w], kernel_size=[k_h, k_w], pad_amount=pad,
-                    input_shape="(1,{},{},{})".format(ifm_dim_h, ifm_dim_w, ifm_ch), depthwise=dw, dilations=dilation
+                    "Im2Col",
+                    [inp_trans_out],
+                    [im2col_out],
+                    domain="qonnx.custom_op.general",
+                    stride=[stride_h, stride_w],
+                    kernel_size=[k_h, k_w],
+                    pad_amount=pad,
+                    input_shape="(1,{},{},{})".format(ifm_dim_h, ifm_dim_w, ifm_ch),
+                    depthwise=dw,
+                    dilations=dilation,
                 )
                 nodes_to_insert.append(im2col_node)
 
@@ -144,7 +168,6 @@ class LowerConvsToMatMul(Transformation):
         return (model, graph_modified)
 
     def extract_conv_params(self, model, node):
-
         cnv_input = node.input[0]
         cnv_output = node.output[0]
         cnv_input_datatype = model.get_tensor_datatype(cnv_input)
@@ -179,6 +202,24 @@ class LowerConvsToMatMul(Transformation):
         if len(pad) == 2:  # only one dimension should be padded
             assert ifm_dim_h == 1 or ifm_dim_w == 1, "Padding is assumed to be 1D, image is 2D"
 
-        return (cnv_input, cnv_output, cnv_input_datatype, cnv_output_datatype, k_h, k_w, stride_h,
-                stride_w, group, weight_name, W_conv, ifm_ch, ofm_ch, ifm_dim_h, ifm_dim_w, ofm_dim_h,
-                ofm_dim_w, dilation, pad)
+        return (
+            cnv_input,
+            cnv_output,
+            cnv_input_datatype,
+            cnv_output_datatype,
+            k_h,
+            k_w,
+            stride_h,
+            stride_w,
+            group,
+            weight_name,
+            W_conv,
+            ifm_ch,
+            ofm_ch,
+            ifm_dim_h,
+            ifm_dim_w,
+            ofm_dim_h,
+            ofm_dim_w,
+            dilation,
+            pad,
+        )

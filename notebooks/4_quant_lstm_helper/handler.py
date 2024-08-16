@@ -1,32 +1,23 @@
 # Copyright (C) 2023, Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from abc import ABC
-from copy import copy
-
 import torch
-from torch import Tensor
+from abc import ABC
+from brevitas.export.common.handler.qcdq import (
+    DQMixin,
+    QCDQActQuantProxyHandlerMixin,
+    QCDQBiasQuantProxyHandlerMixin,
+    QCDQDecoupledWeightQuantProxyHandlerMixin,
+    QCDQMixin,
+    QCDQTruncQuantProxyHandlerMixin,
+    QCDQWeightQuantProxyHandlerMixin,
+)
+from brevitas.export.onnx.handler import ONNXBaseHandler, QuantLSTMLayerHandler
 
-from brevitas.export.common.handler.base import QuantAxisMixin
-from brevitas.export.common.handler.qcdq import DQMixin
-from brevitas.export.common.handler.qcdq import QCDQActQuantProxyHandlerMixin
-from brevitas.export.common.handler.qcdq import QCDQBiasQuantProxyHandlerMixin
-from brevitas.export.common.handler.qcdq import QCDQDecoupledWeightQuantProxyHandlerMixin
-from brevitas.export.common.handler.qcdq import QCDQMixin
-from brevitas.export.common.handler.qcdq import QCDQTruncQuantProxyHandlerMixin
-from brevitas.export.common.handler.qcdq import QCDQWeightQuantProxyHandlerMixin
-from brevitas.export.common.handler.qcdq import ZeroPointHandlerMixin
-from brevitas.export.onnx.handler import ONNXBaseHandler
-from brevitas.export.onnx.handler import QuantLSTMLayerHandler
-
-from ..function import DequantizeLinearFn
-from ..function import IntClipFn
-from ..function import QuantizeLinearFn
-from ..function import BrevitasQuantLSTMCellFn
+from ..function import BrevitasQuantLSTMCellFn, DequantizeLinearFn, IntClipFn, QuantizeLinearFn
 
 
 class StdDQONNXMixin(DQMixin, ABC):
-
     def dequantize_fn(self, x, scale, zero_point, axis):
         return DequantizeLinearFn.apply(x, scale, zero_point, axis)
 
@@ -40,7 +31,6 @@ class StdDQONNXMixin(DQMixin, ABC):
 
 
 class StdQCDQONNXMixin(QCDQMixin, StdDQONNXMixin, ABC):
-
     @property
     def clip_over_integers(self):
         return True
@@ -59,8 +49,8 @@ class StdQCDQONNXMixin(QCDQMixin, StdDQONNXMixin, ABC):
 
     def validate(self, module):
         self.validate_8b_bit_width(module.bit_width(), le_then=True)
-        assert module.bit_width() > 1., 'Binary quant not supported'
-        assert module.rounding_mode.upper() == 'ROUND', 'Only round to nearest even supported'
+        assert module.bit_width() > 1.0, "Binary quant not supported"
+        assert module.rounding_mode.upper() == "ROUND", "Only round to nearest even supported"
 
     def quantize_fn(self, x, scale, zero_point, dtype, axis):
         return QuantizeLinearFn.apply(x, scale, zero_point, dtype, axis)
@@ -69,55 +59,47 @@ class StdQCDQONNXMixin(QCDQMixin, StdDQONNXMixin, ABC):
         return IntClipFn.apply(x, min_val, max_val)
 
 
-class StdQCDQONNXWeightQuantProxyHandler(StdQCDQONNXMixin,
-                                         QCDQWeightQuantProxyHandlerMixin,
-                                         ONNXBaseHandler):
+class StdQCDQONNXWeightQuantProxyHandler(StdQCDQONNXMixin, QCDQWeightQuantProxyHandlerMixin, ONNXBaseHandler):
     pass
 
 
-class StdQCDQONNXDecoupledWeightQuantProxyHandler(StdQCDQONNXMixin,
-                                                  QCDQDecoupledWeightQuantProxyHandlerMixin,
-                                                  ONNXBaseHandler):
+class StdQCDQONNXDecoupledWeightQuantProxyHandler(
+    StdQCDQONNXMixin, QCDQDecoupledWeightQuantProxyHandlerMixin, ONNXBaseHandler
+):
     pass
 
 
-class StdQCDQONNXActQuantProxyHandler(StdQCDQONNXMixin,
-                                      QCDQActQuantProxyHandlerMixin,
-                                      ONNXBaseHandler):
+class StdQCDQONNXActQuantProxyHandler(StdQCDQONNXMixin, QCDQActQuantProxyHandlerMixin, ONNXBaseHandler):
     pass
 
 
-class StdQCDQONNXBiasQuantProxyHandler(StdDQONNXMixin,
-                                       QCDQBiasQuantProxyHandlerMixin,
-                                       ONNXBaseHandler):
+class StdQCDQONNXBiasQuantProxyHandler(StdDQONNXMixin, QCDQBiasQuantProxyHandlerMixin, ONNXBaseHandler):
     pass
 
 
-class StdQCDQONNXTruncQuantProxyHandler(StdQCDQONNXMixin,
-                                        QCDQTruncQuantProxyHandlerMixin,
-                                        ONNXBaseHandler):
+class StdQCDQONNXTruncQuantProxyHandler(StdQCDQONNXMixin, QCDQTruncQuantProxyHandlerMixin, ONNXBaseHandler):
     pass
 
 
 class StdQCDQONNXQuantLSTMLayerHandler(QuantLSTMLayerHandler):
-
     def quantized_cell_symbolic_execution(
-            self,
-            quant_input,
-            quant_hidden_state,
-            quant_cell_state,
-            quant_weight_ii,
-            quant_weight_if,
-            quant_weight_ic,
-            quant_weight_io,
-            quant_weight_hi,
-            quant_weight_hf,
-            quant_weight_hc,
-            quant_weight_ho,
-            quant_bias_input,
-            quant_bias_forget,
-            quant_bias_cell,
-            quant_bias_output):
+        self,
+        quant_input,
+        quant_hidden_state,
+        quant_cell_state,
+        quant_weight_ii,
+        quant_weight_if,
+        quant_weight_ic,
+        quant_weight_io,
+        quant_weight_hi,
+        quant_weight_hf,
+        quant_weight_hc,
+        quant_weight_ho,
+        quant_bias_input,
+        quant_bias_forget,
+        quant_bias_cell,
+        quant_bias_output,
+    ):
         return BrevitasQuantLSTMCellFn.apply(
             quant_input,
             quant_hidden_state,
@@ -134,7 +116,8 @@ class StdQCDQONNXQuantLSTMLayerHandler(QuantLSTMLayerHandler):
             quant_bias_forget,
             quant_bias_cell,
             quant_bias_output,
-            *self.symbolic_kwargs.values())
+            *self.symbolic_kwargs.values()
+        )
         # raise RuntimeError(
         #     "Quantized LSTM cell is not supported for ONNX QCDQ "
         #     "(weights only quantization is). Use export_qonnx.")
