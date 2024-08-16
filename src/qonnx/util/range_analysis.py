@@ -39,7 +39,7 @@ from qonnx.core.onnx_exec import execute_node
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
-from qonnx.transformation.general import ConvertSubToAdd
+from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
@@ -547,6 +547,46 @@ def calc_intrange_matmul(node, model, range_dict):
     range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
+def calc_intrange_eltwise_monotonic(node, model, range_dict):
+    # for nodes such as Im2Col, Reshape, Transpose the scale/bias/per-element output ranges
+    # are sourced from the scale/bias/per-element input ranges but the pattern can be complicated
+    # strategy: use regular range analysis (which will execute the node on the corners of the input
+    # range) using the integer range as the input, which gives us the output integer range. then figure
+    # out the scale/bias based on the output integer range.
+    orange_inf = range_dict[node.output[0]]
+    int_range_dict = {}
+    for node_out in node.output:
+        oshape = model.get_tensor_shape(node_out)
+        int_range_dict[node_out] = RangeInfo(shape=oshape)
+    # use integer components of input ranges for new range computation
+    for node_in in node.input:
+        if not (range_dict[node_in].int_range is None):
+            int_range_dict[node_in] = RangeInfo(
+                shape=range_dict[node_in].shape,
+                range=range_dict[node_in].int_range,
+                is_initializer=range_dict[node_in].is_initializer,
+            )
+        else:
+            # the shape-related input for Reshape, Transpose etc may give rise to this case
+            int_range_dict[node_in] = range_dict[node_in]
+    range_calc_fxn = optype_to_range_calc[node.op_type]
+    range_calc_fxn(node, model, int_range_dict)
+    int_orange_inf = int_range_dict[node.output[0]]
+    # now deduce the output scale factor and bias from all available info
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = int_orange_inf.range
+
+
 # handler functions for regular range analysis
 optype_to_range_calc = {
     "Transpose": calc_monotonic_range,
@@ -585,9 +625,10 @@ optype_to_intrange_calc = {
     "Mul": calc_intrange_mul,
     "Relu": calc_intrange_relu,
     "Quant": calc_intrange_quant,
-    "Pad": calc_intrange_identity,
-    "MaxPool": calc_intrange_identity,
-    "Reshape": calc_intrange_identity,
+    "Pad": calc_intrange_eltwise_monotonic,
+    "MaxPool": calc_intrange_eltwise_monotonic,
+    "Reshape": calc_intrange_eltwise_monotonic,
+    "Transpose": calc_intrange_eltwise_monotonic,
 }
 
 
@@ -672,6 +713,7 @@ def range_analysis(
         model = model.transform(GemmToMatMul())
         model = model.transform(BatchNormToAffine())
         model = model.transform(ConvertSubToAdd())
+        model = model.transform(ConvertDivToMul())
         model = cleanup_model(model)
     # call constant folding & shape inference, this preserves weight quantizers
     # (but do not do extra full cleanup, in order to preserve node/tensor naming)

@@ -183,3 +183,4 @@ def test_range_analysis_full_network_scaledint(model_name):
         scaled_int=True,
     )
     assert "global_out" in ret.keys()
+    assert ret["global_out"].int_range is not None
