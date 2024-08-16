@@ -43,6 +43,14 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
+from qonnx.util.test import download_model
+
+
+def test_conv_lowering_quant_weights():
+    model_name = "FINN-CNV_W2A2"
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    model = model.transform(LowerConvsToMatMul())
+    assert model.get_nodes_by_op_type("Conv") == []
 
 
 def test_conv_lowering_convmnist():
