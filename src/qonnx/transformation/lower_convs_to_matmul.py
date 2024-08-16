@@ -51,6 +51,10 @@ class LowerConvsToMatMul(Transformation):
                 warnings.warn("Found Conv node with bias, skipping")
                 continue
 
+            if model.get_initializer(node.input[1]) is None:
+                warnings.warn("Found Conv node with non-initialized weight, skipping")
+                continue
+
             # extract parameters of node
             (
                 cnv_input,
