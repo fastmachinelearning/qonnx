@@ -462,10 +462,54 @@ def calc_intrange_mul(node, model, range_dict):
     range_dict[node.output[0]].bias = irange_int.bias * irange_nonint.range[0]
 
 
+def check_matmul_for_intrange_prop(node, range_dict):
+    irange_0_inf = range_dict[node.input[0]]
+    irange_1_inf = range_dict[node.input[1]]
+    if None in [irange_0_inf.bias, irange_0_inf.scale, irange_0_inf.int_range]:
+        warn(f"Input 0 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    if None in [irange_1_inf.bias, irange_1_inf.scale, irange_1_inf.int_range]:
+        warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    # ensure range information is un-broadcasted so we can check shapes etc properly
+    irange_0_inf = irange_0_inf.unbroadcast()
+    irange_1_inf = irange_1_inf.unbroadcast()
+    # for the output dot product to have a non-dynamic scale & bias, we need to put
+    # some constraints on the scale & bias for the inputs
+    # for now: no biases, TODO figure out if we can have shared bias in some cases
+    i0_zerobias_ok = (irange_0_inf.bias == 0).all()
+    if not i0_zerobias_ok:
+        warn(f"Input 0 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    i1_zerobias_ok = (irange_1_inf.bias == 0).all()
+    if not i1_zerobias_ok:
+        warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    # for a MatMul of shape (MxK) x (KxN) with scaling: we cannot have scales along the
+    # dot product dimension, but per-tensor or per-dot-product are fine
+    # i.e. either the scale is a scalar, or it has a non-1-shaped dimension for either
+    # M (for input 0) or N (input 1) dimensions
+    if irange_0_inf.scale.size != 1:
+        acceptable_scale_i0 = [1] * irange_0_inf.ndim
+        acceptable_scale_i0[-2] = irange_0_inf.shape[-2]
+        if list(irange_0_inf.scale.shape) != acceptable_scale_i0:
+            warn(f"Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)}, can't do scaled-int propagation")
+            return False
+    if irange_1_inf.scale.size != 1:
+        acceptable_scale_i1 = [1] * irange_1_inf.ndim
+        acceptable_scale_i1[-1] = irange_1_inf.shape[-1]
+        if list(irange_1_inf.scale.shape) != acceptable_scale_i1:
+            warn(f"Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)}, can't do scaled-int propagation")
+            return False
+    return True
+
+
 def calc_intrange_matmul(node, model, range_dict):
     inp_int_info = check_int_inputs(node, range_dict)
     if not all(inp_int_info):
         warn(node.name + " does not have all-integer inputs, cannot propagate")
+        return
+    if not check_matmul_for_intrange_prop(node, range_dict):
         return
     for node_in in node.input:
         irange_inf = range_dict[node_in]
@@ -593,7 +637,7 @@ def range_analysis(
     do_cleanup=False,
     strip_initializers_from_report=True,
     scaled_int=False,
-    do_unbroadcast=True
+    do_unbroadcast=False,
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
