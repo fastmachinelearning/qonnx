@@ -64,6 +64,7 @@ class LowerConvsToMatMul(Transformation):
                 group,
                 weight_name,
                 conv_weight_inp_name,
+                conv_weight_q_scale_name,
                 W_conv,
                 ifm_ch,
                 ofm_ch,
@@ -110,7 +111,19 @@ class LowerConvsToMatMul(Transformation):
             W_matmul = W_matmul.T
             model.set_initializer(weight_name, W_matmul)
             if weight_name != conv_weight_inp_name:
+                # required for convs with quantized weights
                 model.set_tensor_shape(conv_weight_inp_name, W_matmul.shape)
+            if conv_weight_q_scale_name is not None:
+                # required for convs with quantized weights
+                scale_weight_q = model.get_initializer(conv_weight_q_scale_name)
+                # scale shape is originally [OFM, IFM, k_H, k_W]
+                # transpose into [OFM, k_H, k_W, IFM]
+                scale_weight_q = scale_weight_q.transpose(0, 2, 3, 1)
+                # reshape into [OFM][k_h*k_w*IFM] matrix
+                scale_weight_q = scale_weight_q.reshape(ofm_ch, -1)
+                # transpose to be shape-compatible with weight matrix
+                scale_weight_q = scale_weight_q.T
+                model.set_initializer(conv_weight_q_scale_name, scale_weight_q)
 
             # create new intermediate values
             inp_trans_out = helper.make_tensor_value_info(
@@ -186,6 +199,7 @@ class LowerConvsToMatMul(Transformation):
         group = get_by_name(node.attribute, "group").i
         weight_name = node.input[1]
         conv_weight_inp_name = node.input[1]
+        conv_weight_q_scale_name = None
         W_conv = model.get_initializer(weight_name)
         if W_conv is None:
             # check to see if there is an immediate quantizer node feeding the weight input
@@ -193,6 +207,7 @@ class LowerConvsToMatMul(Transformation):
             if not (w_producer is None) and w_producer.op_type == "Quant":
                 W_conv = model.get_initializer(w_producer.input[0])
                 weight_name = w_producer.input[0]
+                conv_weight_q_scale_name = w_producer.input[1]
         ifm_ch = model.get_tensor_shape(cnv_input)[1]  # assume NCHW
         ofm_ch = model.get_tensor_shape(cnv_output)[1]  # assume NCHW
         ifm_dim_h = model.get_tensor_shape(cnv_input)[2]  # assume NCHW
@@ -228,6 +243,7 @@ class LowerConvsToMatMul(Transformation):
             group,
             weight_name,
             conv_weight_inp_name,
+            conv_weight_q_scale_name,
             W_conv,
             ifm_ch,
             ofm_ch,
