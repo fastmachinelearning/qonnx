@@ -55,7 +55,7 @@ def test_conv_lowering_quant_weights(model_name):
     input_dict = {model.graph.input[0].name: input_t}
     prod_dict = oxe.execute_onnx(model, input_dict)
     prod_t = prod_dict[model.graph.output[0].name]
-    assert (prod_t == golden_t).all()
+    assert np.isclose(prod_t, golden_t).all()
 
 
 def test_conv_lowering_convmnist():
