@@ -138,5 +138,9 @@ class RemoveIdentityOps(Transformation):
                     remove_node_and_rewire(model, n)
                     graph_modified = True
                     break
+            elif n.op_type == "Identity":
+                remove_node_and_rewire(model, n)
+                graph_modified = True
+                break
         model = model.transform(InferShapes())
         return (model, graph_modified)
