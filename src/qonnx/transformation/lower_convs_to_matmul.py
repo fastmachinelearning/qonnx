@@ -86,6 +86,8 @@ class LowerConvsToMatMul(Transformation):
             dw = False
             if group == ifm_ch and ofm_ch == ifm_ch:
                 W_sparse = np.zeros((ofm_ch, ifm_ch, k_h, k_w))  # (OFM, IFM, k_H, k_W)
+                # TODO: if the convolution is quantized with a non-zero zeropoint we
+                # should be using the zeropoint value here instead of np.zeros
                 for ch in range(ifm_ch):
                     W_sparse[ch][ch] = W_conv[ch][0]  # W_conv = [OFM, IFM, k_H, k_W]
                 W_conv = W_sparse.astype(np.float32)
@@ -116,14 +118,15 @@ class LowerConvsToMatMul(Transformation):
             if conv_weight_q_scale_name is not None:
                 # required for convs with quantized weights
                 scale_weight_q = model.get_initializer(conv_weight_q_scale_name)
-                # scale shape is originally [OFM, IFM, k_H, k_W]
-                # transpose into [OFM, k_H, k_W, IFM]
-                scale_weight_q = scale_weight_q.transpose(0, 2, 3, 1)
-                # reshape into [OFM][k_h*k_w*IFM] matrix
-                scale_weight_q = scale_weight_q.reshape(ofm_ch, -1)
-                # transpose to be shape-compatible with weight matrix
-                scale_weight_q = scale_weight_q.T
-                model.set_initializer(conv_weight_q_scale_name, scale_weight_q)
+                if scale_weight_q.ndim > 0:
+                    # scale shape is originally [OFM, IFM, k_H, k_W]
+                    # transpose into [OFM, k_H, k_W, IFM]
+                    scale_weight_q = scale_weight_q.transpose(0, 2, 3, 1)
+                    # reshape into [OFM][k_h*k_w*IFM] matrix
+                    scale_weight_q = scale_weight_q.reshape(ofm_ch, -1)
+                    # transpose to be shape-compatible with weight matrix
+                    scale_weight_q = scale_weight_q.T
+                    model.set_initializer(conv_weight_q_scale_name, scale_weight_q)
 
             # create new intermediate values
             inp_trans_out = helper.make_tensor_value_info(
