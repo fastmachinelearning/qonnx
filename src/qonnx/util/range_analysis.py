@@ -708,7 +708,7 @@ def range_analysis(
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
-        model = cleanup_model(model, preserve_qnt_ops=False)
+        model = cleanup_model(model, preserve_qnt_ops=True)
     if lower_ops:
         model = model.transform(LowerConvsToMatMul())
         model = model.transform(GemmToMatMul())
