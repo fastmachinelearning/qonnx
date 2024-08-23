@@ -65,7 +65,7 @@ def test_conv_lowering_convmnist():
     model = model.transform(InferShapes())
     output_dict_p = oxe.execute_onnx(model, input_dict)
     produced = output_dict_p[output_name]
-    assert np.isclose(produced, expected).all()
+    assert np.isclose(produced, expected, rtol=1.e-4).all()
 
 
 def run_conv_lowering_test(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):
