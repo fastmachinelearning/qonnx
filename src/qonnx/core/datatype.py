@@ -376,7 +376,6 @@ class ScaledIntType(IntType):
 
 
 def resolve_datatype(name):
-
     if not isinstance(name, str):
         raise TypeError(f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'")
 
