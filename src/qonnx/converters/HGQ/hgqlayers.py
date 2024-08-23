@@ -1,12 +1,18 @@
-import HGQ
-import qkeras
-from qkeras.quantizers import BaseQuantizer
 import tensorflow as tf
+
+
+class HGQIdentity(tf.keras.layers.Layer):
+    def __init__(self, name, dtype):
+        super(HGQIdentity, self).__init__(name=name, dtype=dtype)
+
+    def call(self, inputs):
+        return inputs
 
 
 # TODO: this should be implemented in HGQ so we can import it here
 # from HGQ.utils import REGISTERED_LAYERS as HGQ_LAYERS
 HGQ_LAYERS = ["FixedPointQuantizer"]
+
 
 def extract_quantizers_from_hgq_layer(layer, model):
     """ """
@@ -22,23 +28,21 @@ def extract_quantizers_from_hgq_layer(layer, model):
 
 
 def extract_FixedPointQuantizer(layer, model):
-
     quantizers = layer.get_config()
 
     if "overrides" not in quantizers:
         # TODO: add support for FixedPointQuantizer which dont override
-        raise ValueError(f"Not supported: FixedPointQuantizer has no layers to override")
+        raise ValueError("Not supported: FixedPointQuantizer has no layers to override")
 
     quantizers["inputs"] = {
         "keep_negative": layer.keep_negative.numpy(),
         "bits": layer.bits.numpy(),
         "integer_bits": layer.integers.numpy(),
     }
-    keras_config = {'name': quantizers["name"], 'dtype': 'float32'}
+    quantizers["keras_layer"] = "FixedPointQuantizer"
+    keras_config = {"name": quantizers["name"], "dtype": "float32"}
 
-    return "Identity", keras_config, quantizers
+    return "HGQIdentity", keras_config, quantizers
 
 
-handler_map = {
-    "FixedPointQuantizer": extract_FixedPointQuantizer 
-}
+handler_map = {"FixedPointQuantizer": extract_FixedPointQuantizer}

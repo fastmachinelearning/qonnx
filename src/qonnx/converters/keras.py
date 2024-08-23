@@ -7,11 +7,10 @@ from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup_model
 
+from .HGQ.hgqlayers import HGQ_LAYERS, HGQIdentity, extract_quantizers_from_hgq_layer
+from .HGQ.onnx import get_hgq_onnx_handlers
 from .qkeras.onnx import get_qkeras_onnx_handlers
 from .qkeras.qlayers import extract_quantizers_from_qkeras_layer
-
-from .HGQ.onnx import get_hgq_onnx_handlers
-from .HGQ.hgqlayers import HGQ_LAYERS, extract_quantizers_from_hgq_layer
 
 # NOTE: thats a list for qkeras & HGQ layers
 _unsupported_layers = [
@@ -193,6 +192,8 @@ def _strip_hgq_model(model):
         The stripped model, and the quantizers in a dictionary format
     """
     quantizers = OrderedDict()
+    layer_dict = tf.keras.layers.__dict__
+    layer_dict["HGQIdentity"] = HGQIdentity
 
     def extract_quantizers(layer):
         keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_hgq_layer(layer, model)
@@ -200,14 +201,13 @@ def _strip_hgq_model(model):
             layer_quantizers["input"] = layer.input.name
             quantizers[layer_quantizers["name"]] = layer_quantizers
 
-        layer_class = tf.keras.layers.__dict__.get(keras_cls_name, None)
+        layer_class = layer_dict.get(keras_cls_name, None)
         if layer_class is None:
             raise Exception("Cannot create Keras layer from QKeras class {}".format(keras_cls_name))
 
         return layer_class.from_config(layer_cfg)
 
     stripped_model = tf.keras.models.clone_model(model, clone_function=extract_quantizers)
-
     for layer in model.layers:
         if layer.__class__.__name__ in HGQ_LAYERS:
             # NOTE: the FixedPointQuantizer does not have weights it only has
@@ -259,13 +259,15 @@ def from_keras(
 
     _check_supported_layers(model)
     keras_op_handlers = {}
+    is_HGQ = False
     if _is_qkeras_model(model):
         keras_model, quantizers = _strip_qkeras_model(model)
         keras_op_handlers.update(get_qkeras_onnx_handlers(quantizers))
     elif _is_hgq_model(model):
-        keras_model = model
         keras_model, quantizers = _strip_hgq_model(model)
         keras_op_handlers.update(get_hgq_onnx_handlers(quantizers))
+        keras_model = model
+        is_HGQ = True
     else:
         keras_model, quantizers = model, {}
 
@@ -309,7 +311,7 @@ def from_keras(
             if tensor.name in q_node_outputs:
                 tensor.type.tensor_type.elem_type = 1
 
-    onnx_model = cleanup_model(onnx_model)
+    onnx_model = cleanup_model(onnx_model, is_HGQ=is_HGQ)
     onnx_model.model = add_value_info_for_constants(onnx_model.model)
 
     if output_path is not None:

@@ -27,9 +27,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
-from onnx import TensorProto, helper
-
 from HGQ.proxy.fixed_point_quantizer import gfixed_quantizer
+from onnx import TensorProto, helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
@@ -37,7 +36,7 @@ from qonnx.custom_op.base import CustomOp
 
 class FixedPoint(CustomOp):
     """Generic quantization operation for HGQ FixedPoint layer to QONNX.
-    
+
     Takes four inputs:
 
     - input tensor to quantize
@@ -92,28 +91,7 @@ class FixedPoint(CustomOp):
         return finn_dt
 
     def get_output_dtype(self, model):
-        node = self.onnx_node
-        # scale, zero-point and bitwidth must be read from initializers
-        integer_bits = model.get_initializer(node.input[1])
-        keep_negative = model.get_initializer(node.input[2])
-        bits = model.get_initializer(node.input[3])
-        assert integer_bits is not None, "Found unspecified scale for Quant node: " + str(node)
-        assert keep_negative is not None, "Found unspecified zero point for Quant node: " + str(node)
-        assert bits is not None, "Found unspecified bitwidth for Quant node: " + str(node)
-        # extract the bitwidth (assume scalar)
-        assert bitwidth.ndim == 0, "Bitwidth must be scalar for Quant node: " + str(node)
-        bitwidth = bitwidth.item()
-        assert int(bitwidth) == bitwidth, "Bitwidth must be integer for Quant node: " + str(node)
-        bitwidth = int(bitwidth)
-        # determine the FINN DataType
-        unit_scale = np.all(scale == 1.0)
-        zero_zeropt = np.all(zeropt == 0.0)
-        assert zero_zeropt, "Only zero_point=0 Quant nodes supported for now"
-        if unit_scale and zero_zeropt:
-            finn_dt = self.get_integer_datatype(model)
-        else:
-            finn_dt = self.get_scaled_integer_datatype(model)
-        return finn_dt
+        raise NotImplementedError("get_output_dtype for FixedPoint is not implemented")
 
     def infer_node_datatype(self, model):
         try:
@@ -127,15 +105,15 @@ class FixedPoint(CustomOp):
         node = self.onnx_node
         # save inputs
         inp_tensor = context[node.input[0]]
-        integer_bits = context[node.input[1]]
-        keep_negative = context[node.input[2]]
-        bits = context[node.input[3]]
+        # TODO: we assume here an order that the name of the input[1] = keep_negative etc.
+        keep_negative = context[node.input[1]]
+        bits = context[node.input[2]]
+        integer_bits = context[node.input[3]]
         # save attributes
         RND = self.get_nodeattr("RND")
         SAT = self.get_nodeattr("SAT")
         # calculate output
-        ret = gfixed_quantizer(
-            inp_tensor, keep_negative, bits, integer_bits, RND=RND, SAT=SAT)
+        ret = gfixed_quantizer(inp_tensor, keep_negative, bits, integer_bits, RND=RND, SAT=SAT)
         # ensure output is ndarray (even if 0d)
         # since numpy silently flattens 0d arrays to scalars
         # more: https://github.com/numpy/numpy/issues/13105

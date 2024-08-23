@@ -13,11 +13,9 @@ def get_hgq_onnx_handlers(all_quantizers):
         Dictionary containing the handler information for every type of layer
     """
     return {
-        # NOTE: we replace the StatefulPartitionedCall layers with Identity layers
+        # NOTE: we replace the StatefulPartitionedCall layers with HGQIdentity layers
         # after them we are adding now FixedPoint layers for the quantitzation
-        "Identity": (
-            FixedPoint, ["FixedPoint", all_quantizers]
-        ),
+        "StatefulPartitionedCall": (FixedPoint, ["FixedPoint", all_quantizers]),
     }
 
 
@@ -30,9 +28,7 @@ def _extract_node_name(onnx_node, keras_quantizers):
 
     """
     onnx_name = onnx_node.name
-    print(onnx_node)
     keras_names = keras_quantizers.keys()
-    print(keras_names, onnx_name)
     for keras_name in keras_names:
         match = "/" + keras_name + "/"
         if match in onnx_name:
@@ -52,7 +48,6 @@ def FixedPoint(ctx, node, name, args):
         quant_params = get_quant_params(None, quantizers)
         attr = quant_params["attributes"]
         input_nodes = [node.output[0]]
-        print(node.input[0])
         for key in quantizers["inputs"].keys():
             name = f"{node.name}_FixedPointQuantizer_quantizer_{key}"
             np_val = np.asarray(quant_params["inputs"][key])
@@ -61,7 +56,7 @@ def FixedPoint(ctx, node, name, args):
         quant_fixed_node = ctx.make_node(
             "FixedPoint",
             input_nodes,
-            dtypes=None, # TODO: we have to get the type here
+            dtypes=None,  # TODO: we have to get the type here
             name=node.name + "_FixedPoint_quantizer",
             attr=attr,
             domain="qonnx",
