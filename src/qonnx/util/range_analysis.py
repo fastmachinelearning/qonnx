@@ -127,6 +127,10 @@ class RangeInfo:
     # history of nodes suitable for later removal during streamlining
     history: list = dc.field(default_factory=lambda: [])
 
+    def is_point_interval(self):
+        # whether this is a point interval (min=max for all elements)
+        return (self.range[0] == self.range[1]).all()
+
     def has_integer_info(self) -> bool:
         # whether the RangeInfo has its int_range, scale and bias populated
         integer_props = [self.int_range, self.scale, self.bias]
@@ -363,10 +367,6 @@ def calc_intrange_identity(node, model, range_dict):
         range_dict[o] = orange_inf
 
 
-def is_point_interval(range_inf):
-    return (range_inf.range[0] == range_inf.range[1]).all()
-
-
 def interval_prod(interval_a, interval_b):
     a_min, a_max = interval_a
     b_min, b_max = interval_b
@@ -376,15 +376,43 @@ def interval_prod(interval_a, interval_b):
     return (c_min, c_max)
 
 
+# return a list of Bool values, indicating whether each input to a node
+# has a point interval associated with it (True) or not (False)
+def check_point_interval_inputs(node, range_dict):
+    inp_pointinterval_info = [range_dict[x].is_point_interval() for x in node.input]
+    return inp_pointinterval_info
+
+
 def calc_intrange_add(node, model, range_dict):
-    # our ability to do scaled-int range propagation depends on whether all
+    # our ability to do scaled-int range propagation depends on whether (some)
     # inputs have an integer component already
     inp_int_info = check_int_inputs(node, range_dict)
     if not any(inp_int_info):
         # must have at least one input with integer info, otherwise no point
         warn(node.name + " has no integer info on inputs, cannot propagate")
         return
-    elif all(inp_int_info):
+
+    # we can do scaled-int range propagation for addition in two cases:
+    # 1) when one of the intervals is a point interval (always treated as extra bias)
+    # 2) when both intervals have matching scales
+    ptint_info = check_point_interval_inputs(node, range_dict)
+
+    if any(ptint_info):
+        # point interval will go into bias
+        ptint_inpname = node.input[ptint_info.index(True)]
+        irange_ptint = range_dict[ptint_inpname]
+        nonptint_inpname = node.input[ptint_info.index(False)]
+        irange_nonptint = range_dict[nonptint_inpname]
+        # the non-point interval must have int info
+        if irange_nonptint.int_range is None:
+            warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
+            return
+        # f + s*[i_min, i_max] + b so absorb the point interval into bias
+        # = s*[i_min, i_max] + (f + b)
+        range_dict[node.output[0]].int_range = irange_nonptint.int_range
+        range_dict[node.output[0]].scale = irange_nonptint.scale
+        range_dict[node.output[0]].bias = irange_nonptint.bias + irange_ptint.range[0]
+    else:
         # when all inputs are int, we can combine the scale factors into a single one
         # if there is an integer relationship between the scale factors
         irange_0 = range_dict[node.input[0]]
@@ -400,36 +428,40 @@ def calc_intrange_add(node, model, range_dict):
                 irange_0.int_range[0] + irange_1.int_range[0],
                 irange_0.int_range[1] + irange_1.int_range[1],
             )
+        else:
+            warn(node.name + " incompatible scales for int intervals, cannot propagate")
             return
-    # mix of integer and non-integer operands
-    # [f_min, f_max] + s*[i_min, i_max] + b
-    # = s*[i_min, i_max] + [f_min+b, f_max+b]
-    # we can only handle this when the non-integer operand is a point interval
-    # f_min = f_max = f which simplifies the expression to:
-    #  = s*[i_min, i_max] + f + b
-    if all(inp_int_info):
-        # TODO treat whichever one is point interval as the nonint
-        irange_int = range_dict[node.input[0]]
-        irange_nonint = range_dict[node.input[1]]
-    else:
-        irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-        if not is_point_interval(irange_nonint):
-            warn(node.name + " has non-int input which is not point interval, cannot propagate")
-            return
-        irange_int = range_dict[node.input[inp_int_info.index(True)]]
-    range_dict[node.output[0]].int_range = irange_int.int_range
-    range_dict[node.output[0]].scale = irange_int.scale
-    range_dict[node.output[0]].bias = irange_int.bias + irange_nonint.range[0]
 
 
 def calc_intrange_mul(node, model, range_dict):
-    # our ability to do scaled-int range propagation depends on whether all
+    # our ability to do scaled-int range propagation depends on whether (some)
     # inputs have an integer component already
     inp_int_info = check_int_inputs(node, range_dict)
     if not any(inp_int_info):
         # must have at least one input with integer info, otherwise no point
         warn(node.name + " has no integer info on inputs, cannot propagate")
         return
+
+    # we can do scaled-int range propagation for multiplication in two cases:
+    # 1) when one of the intervals is a point interval (incorporated into scale and bias)
+    # 2) when both int intervals have zero-valued bias
+    ptint_info = check_point_interval_inputs(node, range_dict)
+
+    if any(ptint_info):
+        # point interval will go into scale and bias
+        ptint_inpname = node.input[ptint_info.index(True)]
+        irange_ptint = range_dict[ptint_inpname]
+        nonptint_inpname = node.input[ptint_info.index(False)]
+        irange_nonptint = range_dict[nonptint_inpname]
+        # the non-point interval must have int info
+        if irange_nonptint.int_range is None:
+            warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
+            return
+        # f * (s*[i_min, i_max] + b)
+        # = f*s*[i_min, i_max] + (f * b)
+        range_dict[node.output[0]].int_range = irange_nonptint.int_range
+        range_dict[node.output[0]].scale = irange_nonptint.scale * irange_ptint.range[0]
+        range_dict[node.output[0]].bias = irange_nonptint.bias * irange_ptint.range[0]
     elif all(inp_int_info):
         # when all inputs are int and biases are zero, we can multiply the
         # scale factors to get the output scale factor, and similarly multiply
@@ -442,26 +474,12 @@ def calc_intrange_mul(node, model, range_dict):
             range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
             range_dict[node.output[0]].bias = np.asarray(0, dtype=np.float32)
             range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
-            return
         else:
-            warn("Found multiplication of nonzero-bias ints, cannot propagate")
-            # TODO could potentially treat this as a mix of int&nonint but
-            # need to identify which input to treat as nonint
+            warn(node.name + " nonzero biases for Mul, cannot propagate")
             return
-    # mix of integer and non-integer operands
-    # [f_min, f_max] * (s*[i_min, i_max] + b)
-    # = s*[i_min, i_max]*[f_min, f_max] + b*[f_min, f_max]
-    # we can only handle this when the non-integer operand is a point interval
-    # f_min = f_max = f which simplifies the expression to:
-    #  = f*s*[i_min, i_max] + b*f
-    irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-    if not is_point_interval(irange_nonint):
-        warn(node.name + " has non-int input which is not point interval, cannot propagate")
+    else:
+        warn(node.name + " unsupported pattern, cannot propagate")
         return
-    irange_int = range_dict[node.input[inp_int_info.index(True)]]
-    range_dict[node.output[0]].int_range = irange_int.int_range
-    range_dict[node.output[0]].scale = irange_int.scale * irange_nonint.range[0]
-    range_dict[node.output[0]].bias = irange_int.bias * irange_nonint.range[0]
 
 
 def check_matmul_for_intrange_prop(node, range_dict):
