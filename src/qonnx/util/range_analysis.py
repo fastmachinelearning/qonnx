@@ -124,8 +124,9 @@ class RangeInfo:
     bias: np.ndarray = None
     # whether this particular range is always fixed (due to its tensor having an initializer)
     is_initializer: bool = False
-    # history of nodes suitable for later removal during streamlining
-    history: list = dc.field(default_factory=lambda: [])
+    # history of scale/bias tensors suitable for later removal during streamlining
+    history_scale: list = dc.field(default_factory=lambda: [])
+    history_bias: list = dc.field(default_factory=lambda: [])
 
     def is_point_interval(self):
         # whether this is a point interval (min=max for all elements)
@@ -321,6 +322,9 @@ def calc_intrange_relu(node, model, range_dict):
     range_dict[node.output[0]].scale = irange_inf.scale
     range_dict[node.output[0]].bias = irange_inf.bias
     calc_intrange_from_scalebias(node, model, range_dict)
+    # scale/bias history is not altered
+    range_dict[node.output[0]].history_scale = irange_inf.history_scale
+    range_dict[node.output[0]].history_bias = irange_inf.history_bias
 
 
 # propagate integer range and scale/bias info for Quant
@@ -343,6 +347,16 @@ def calc_intrange_quant(node, model, range_dict):
     range_dict[node.output[0]].scale = q_scale
     range_dict[node.output[0]].bias = -(q_scale * q_zeropt)
     calc_intrange_from_scalebias(node, model, range_dict)
+    # Quant nodes override the history for scale and bias, and sets them to
+    # what was locally specified if they were not 1 and 0
+    if (q_scale == 1).all():
+        range_dict[node.output[0]].history_scale = []
+    else:
+        range_dict[node.output[0]].history_scale = [node.input[1]]
+    if (q_zeropt == 0).all():
+        range_dict[node.output[0]].history_bias = []
+    else:
+        range_dict[node.output[0]].history_bias = [node.input[2]]
 
 
 # propagates scale/bias info as-is without any changes
@@ -365,6 +379,9 @@ def calc_intrange_identity(node, model, range_dict):
         int_max = np.round(int_max)
         orange_inf.int_range = (int_min, int_max)
         range_dict[o] = orange_inf
+        # scale/bias history is not altered
+        range_dict[o].history_scale = irange_inf.history_scale
+        range_dict[o].history_bias = irange_inf.history_bias
 
 
 def interval_prod(interval_a, interval_b):
@@ -412,6 +429,9 @@ def calc_intrange_add(node, model, range_dict):
         range_dict[node.output[0]].int_range = irange_nonptint.int_range
         range_dict[node.output[0]].scale = irange_nonptint.scale
         range_dict[node.output[0]].bias = irange_nonptint.bias + irange_ptint.range[0]
+        # scale history remains the same, bias history updated with nonint param
+        range_dict[node.output[0]].history_scale = irange_nonptint.history_scale
+        range_dict[node.output[0]].history_bias = irange_nonptint.history_bias + [ptint_inpname]
     else:
         # when all inputs are int, we can combine the scale factors into a single one
         # if there is an integer relationship between the scale factors
@@ -428,6 +448,9 @@ def calc_intrange_add(node, model, range_dict):
                 irange_0.int_range[0] + irange_1.int_range[0],
                 irange_0.int_range[1] + irange_1.int_range[1],
             )
+            # scale history remains the same, bias history inherits from both sides
+            range_dict[node.output[0]].history_scale = irange_0.history_scale
+            range_dict[node.output[0]].history_bias = irange_0.history_bias + irange_1.history_bias
         else:
             warn(node.name + " incompatible scales for int intervals, cannot propagate")
             return
@@ -462,6 +485,10 @@ def calc_intrange_mul(node, model, range_dict):
         range_dict[node.output[0]].int_range = irange_nonptint.int_range
         range_dict[node.output[0]].scale = irange_nonptint.scale * irange_ptint.range[0]
         range_dict[node.output[0]].bias = irange_nonptint.bias * irange_ptint.range[0]
+        # scale history updated with the nonint param, bias history remains
+        # (even though the bias changes, don't want to track the same tensor for both bias and scale histories)
+        range_dict[node.output[0]].history_scale = irange_nonptint.history_scale + [ptint_inpname]
+        range_dict[node.output[0]].history_bias = irange_nonptint.history_bias
     elif all(inp_int_info):
         # when all inputs are int and biases are zero, we can multiply the
         # scale factors to get the output scale factor, and similarly multiply
@@ -474,6 +501,9 @@ def calc_intrange_mul(node, model, range_dict):
             range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
             range_dict[node.output[0]].bias = np.asarray(0, dtype=np.float32)
             range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
+            # bias history remains the same (should be empty), scale history inherits from both sides
+            range_dict[node.output[0]].history_scale = irange_0.history_scale + irange_1.history_scale
+            range_dict[node.output[0]].history_bias = irange_0.history_bias
         else:
             warn(node.name + " nonzero biases for Mul, cannot propagate")
             return
@@ -565,6 +595,11 @@ def calc_intrange_matmul(node, model, range_dict):
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
     range_dict[node.output[0]].int_range = int_orange_inf.range
+    # inherit scale/bias history from both sides
+    range_dict[node.output[0]].history_scale = (
+        range_dict[node.input[0]].history_scale + range_dict[node.input[1]].history_scale
+    )
+    range_dict[node.output[0]].history_bias = range_dict[node.input[0]].history_bias + range_dict[node.input[1]].history_bias
 
 
 def calc_intrange_eltwise_monotonic(node, model, range_dict):
@@ -605,6 +640,14 @@ def calc_intrange_eltwise_monotonic(node, model, range_dict):
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
     range_dict[node.output[0]].int_range = int_orange_inf.range
+    # inherit scale/bias history from all inputs (most will be empty)
+    aggr_history_scale = []
+    aggr_history_bias = []
+    for node_in in node.input:
+        aggr_history_scale += range_dict[node_in].history_scale
+        aggr_history_bias += range_dict[node_in].history_bias
+    range_dict[node.output[0]].history_scale = aggr_history_scale
+    range_dict[node.output[0]].history_bias = aggr_history_bias
 
 
 # handler functions for regular range analysis
@@ -653,35 +696,6 @@ optype_to_intrange_calc = {
 }
 
 
-# whether the node could be considered for removal during final streamlining
-# for now, only single-input-single-output Mul and Add nodes
-def node_suitable_for_removal(model, node):
-    def is_tensor_initializer(model, tensor_name):
-        result = model.get_initializer(tensor_name) != None
-        return result.all() if isinstance(result, np.ndarray) else result
-
-    suitable = False
-    if node.op_type in ["Mul", "Add"]:
-        if len(node.input) == 2:
-            if not is_tensor_initializer(model, node.input[0]) and is_tensor_initializer(model, node.input[1]):
-                suitable = True
-    return suitable
-
-
-def update_node_outputs_streamline_history(model, range_dict, node):
-    merged_history = []
-    if not node.op_type == "Quant":
-        for inp in node.input:
-            inp_history = range_dict[inp].history
-            merged_history.extend(inp_history)
-        merged_history = list(set(merged_history))
-
-    if node_suitable_for_removal(model, node):
-        merged_history.append(node.name)
-    for out in node.output:
-        range_dict[out].history = merged_history
-
-
 # walk the graph node by node and propagate scaled-int range info
 # assumes that regular range analysis was already carried out
 def calc_intrange(model, range_dict, do_unbroadcast):
@@ -690,7 +704,6 @@ def calc_intrange(model, range_dict, do_unbroadcast):
         if op_ok:
             range_calc_fxn = optype_to_intrange_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
-            update_node_outputs_streamline_history(model, range_dict, node)
             for node_out in node.output:
                 if do_unbroadcast:
                     range_dict[node_out] = range_dict[node_out].unbroadcast()
@@ -782,6 +795,11 @@ def range_analysis(
         iname = inp.name
         if isinstance(irange, RangeInfo):
             range_dict[iname] = irange
+            # capture any non-1/non-0 input scale/bias as part of history
+            if not (irange.scale is None) and (irange.scale != 1).all():
+                range_dict[iname].history_scale = [iname]
+            if not (irange.bias is None) and (irange.bias != 0).all():
+                range_dict[iname].history_bias = [iname]
         else:
             if range_min is None or range_max is None:
                 # use idt annotation
