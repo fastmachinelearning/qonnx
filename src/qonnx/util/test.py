@@ -145,15 +145,20 @@ def qonnx_download_model():
     clize.run(download_model)
 
 
-def get_golden_in_and_output(test_model):
-    model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
-    rng = np.random.RandomState(42)
+def get_random_input(test_model, seed=42):
+    rng = np.random.RandomState(seed)
     input_shape = test_model_details[test_model]["input_shape"]
     (low, high) = test_model_details[test_model]["input_range"]
     size = np.prod(np.asarray(input_shape))
     input_tensor = rng.uniform(low=low, high=high, size=size)
     input_tensor = input_tensor.astype(np.float32)
     input_tensor = input_tensor.reshape(input_shape)
+    return input_tensor
+
+
+def get_golden_in_and_output(test_model, seed=42):
+    model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
+    input_tensor = get_random_input(test_model, seed=seed)
     input_dict = {model.graph.input[0].name: input_tensor}
     golden_output_dict = oxe.execute_onnx(model, input_dict)
     golden_result = golden_output_dict[model.graph.output[0].name]
