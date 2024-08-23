@@ -28,12 +28,12 @@
 
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
+from qonnx.custom_op.general.FixedPoint import FixedPoint
 from qonnx.custom_op.general.genericpartition import GenericPartition
 from qonnx.custom_op.general.im2col import Im2Col
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
 from qonnx.custom_op.general.quant import Quant
-from qonnx.custom_op.general.FixedPoint import FixedPoint
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.trunc import Trunc
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
@@ -51,4 +51,3 @@ custom_op["Quant"] = Quant
 custom_op["Trunc"] = Trunc
 custom_op["BipolarQuant"] = BipolarQuant
 custom_op["FixedPoint"] = FixedPoint
-
