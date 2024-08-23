@@ -125,6 +125,10 @@ class RangeInfo:
     # whether this particular range is always fixed (due to its tensor having an initializer)
     is_initializer: bool = False
 
+    def is_point_interval(self):
+        # whether this is a point interval (min=max for all elements)
+        return (self.range[0] == self.range[1]).all()
+
     def has_integer_info(self) -> bool:
         # whether the RangeInfo has its int_range, scale and bias populated
         integer_props = [self.int_range, self.scale, self.bias]
@@ -361,10 +365,6 @@ def calc_intrange_identity(node, model, range_dict):
         range_dict[o] = orange_inf
 
 
-def is_point_interval(range_inf):
-    return (range_inf.range[0] == range_inf.range[1]).all()
-
-
 def interval_prod(interval_a, interval_b):
     a_min, a_max = interval_a
     b_min, b_max = interval_b
@@ -411,7 +411,7 @@ def calc_intrange_add(node, model, range_dict):
         irange_nonint = range_dict[node.input[1]]
     else:
         irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-        if not is_point_interval(irange_nonint):
+        if not irange_nonint.is_point_interval():
             warn(node.name + " has non-int input which is not point interval, cannot propagate")
             return
         irange_int = range_dict[node.input[inp_int_info.index(True)]]
@@ -453,7 +453,7 @@ def calc_intrange_mul(node, model, range_dict):
     # f_min = f_max = f which simplifies the expression to:
     #  = f*s*[i_min, i_max] + b*f
     irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-    if not is_point_interval(irange_nonint):
+    if not irange_nonint.is_point_interval():
         warn(node.name + " has non-int input which is not point interval, cannot propagate")
         return
     irange_int = range_dict[node.input[inp_int_info.index(True)]]
