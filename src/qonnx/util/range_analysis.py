@@ -601,7 +601,6 @@ optype_to_range_calc = {
     "Div": calc_monotonic_range,
     "Add": calc_monotonic_range,
     "BatchNormalization": calc_monotonic_range,
-    "Relu": calc_monotonic_range,
     "Pad": calc_monotonic_range,
     "AveragePool": calc_monotonic_range,
     "Trunc": calc_monotonic_range,
@@ -611,11 +610,36 @@ optype_to_range_calc = {
     "GlobalAveragePool": calc_monotonic_range,
     "QuantizeLinear": calc_monotonic_range,
     "DequantizeLinear": calc_monotonic_range,
-    "Clip": calc_monotonic_range,
-    "Sigmoid": calc_monotonic_range,
     "Concat": calc_monotonic_range,
     "Split": calc_monotonic_range,
     "Im2Col": calc_monotonic_range,
+    # Monotonic activation functions: This list is not completer yet, there are
+    # some not supported/produced by export, so they are not verified and thus
+    # not added here.
+    "Identity": calc_monotonic_range,
+    "Relu": calc_monotonic_range,
+    "LeakyRelu": calc_monotonic_range,
+    "Clip": calc_monotonic_range,
+    "Selu": calc_monotonic_range,
+    "Celu": calc_monotonic_range,
+    "Elu": calc_monotonic_range,
+    "Sigmoid": calc_monotonic_range,
+    "HardSigmoid": calc_monotonic_range,
+    "Tanh": calc_monotonic_range,
+    "Softplus": calc_monotonic_range,
+    "Exp": calc_monotonic_range,
+    "Log": calc_monotonic_range,
+    "Sqrt": calc_monotonic_range,
+    "Erf": calc_monotonic_range,
+    "Floor": calc_monotonic_range,
+    "Ceil": calc_monotonic_range,
+    "Round": calc_monotonic_range,
+    "Sign": calc_monotonic_range,
+    # Treat MultiThreshold as monotonic. This might be necessary for iterated
+    # rounds of activation function to MultiThreshold conversion to absorb
+    # chains of monotonic activation functions into MultiThreshold
+    # TODO: Check whether this is actually ok...
+    "MultiThreshold": calc_monotonic_range,
 }
 
 # handler functions for scaled-integer range analysis
@@ -630,6 +654,11 @@ optype_to_intrange_calc = {
     "Reshape": calc_intrange_eltwise_monotonic,
     "Transpose": calc_intrange_eltwise_monotonic,
     "Im2Col": calc_intrange_eltwise_monotonic,
+    # Treat MultiThreshold as monotonic. This might be necessary for iterated
+    # rounds of activation function to MultiThreshold conversion to absorb
+    # chains of monotonic activation functions into MultiThreshold
+    # TODO: Check whether this is actually ok...
+    "MultiThreshold": calc_intrange_eltwise_monotonic,
 }
 
 
@@ -808,7 +837,10 @@ def range_analysis(
         ret = new_ret
     if prettyprint:
         ret = pprint.pformat(ret, sort_dicts=False)
-    return ret
+    # Return the range information and the transformed model as we might have
+    # added, removed or renamed some tensors above, and thus we need the new
+    # model to match tensor names from range information.
+    return ret, model
 
 
 def main():
