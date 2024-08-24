@@ -37,6 +37,7 @@ from warnings import warn
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
+from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd
@@ -773,6 +774,10 @@ def range_analysis(
     if do_cleanup:
         model = cleanup_model(model, preserve_qnt_ops=True)
     if lower_ops:
+        # extract non-unit scale/bias from Quant nodes
+        # this will be important for streamlining (such that we have the possibility of
+        # doing different scale/biases on the input and output sides)
+        model = model.transform(ExtractQuantScaleZeroPt())
         model = model.transform(LowerConvsToMatMul())
         model = model.transform(GemmToMatMul())
         model = model.transform(BatchNormToAffine())
@@ -781,7 +786,6 @@ def range_analysis(
         model = cleanup_model(model)
     # call constant folding & shape inference, this preserves weight quantizers
     # (but do not do extra full cleanup, in order to preserve node/tensor naming)
-    # TODO is this redundant? remove?
     model = model.transform(InferShapes())
     model = model.transform(FoldConstants())
     model = model.transform(InferDataTypes())
