@@ -71,6 +71,16 @@ model_details_scaledint = {
             is_initializer=False,
         )
     },
+    "MobileNetv1-w4a4": {
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 3, 224, 224),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
+    },
 }
 
 
