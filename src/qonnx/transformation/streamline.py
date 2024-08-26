@@ -40,8 +40,9 @@ from qonnx.util.range_analysis import unbroadcast_tensor
 
 def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
     not_initializer = model.get_initializer(tname) is None
+    not_toplevel = not (tname in [x.name for x in model.graph.output])
     consumer_is_quant = all([x.op_type == "Quant" for x in model.find_consumers(tname)])
-    return not_initializer and consumer_is_quant
+    return not_initializer and consumer_is_quant and not_toplevel
 
 
 class Streamline(Transformation):
@@ -50,14 +51,17 @@ class Streamline(Transformation):
     transformation for every tensor feeding a dynamic quantizer (Quant node).
     """
 
-    def __init__(self, scaledint_range_dict, tensor_filter=default_streamline_tensor_filter):
+    def __init__(self, scaledint_range_dict, tensor_filter=default_streamline_tensor_filter, include_toplevel_outs=True):
         super().__init__()
         self.scaledint_range_dict = scaledint_range_dict
         self.tensor_filter = tensor_filter
+        self.include_toplevel_outs = include_toplevel_outs
 
     def apply(self, model: ModelWrapper):
         tensor_filter = partial(self.tensor_filter, model)
         tensor_list = list(filter(tensor_filter, model.get_all_tensor_names()))
+        if self.include_toplevel_outs:
+            tensor_list += [x.name for x in model.graph.output]
         for tensor_name in tensor_list:
             model = model.transform(ExtractAggregateScaleBias(self.scaledint_range_dict, tensor_name))
         return model, False
