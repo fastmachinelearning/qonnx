@@ -284,6 +284,39 @@ def check_int_inputs(node, range_dict):
     return inp_int_info
 
 
+# for nodes that directly "pick" their output elements from input elements,
+# e.g permutation with or without repetition, we try to infer output scale and bias
+# by executing that node with its input scale/bias as the input. if scale/bias on an
+# input is not available, we check if that input is a constant (point interval) and use
+# that value instead.
+def calc_scalebias_from_execution(node, model, range_dict):
+    if len(node.output) > 1:
+        warn("Cannot infer scale for multi-output node")
+        return
+    ctx = {}
+    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape)
+    for inp in node.input:
+        if range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+        elif not (range_dict[inp].scale is None):
+            ctx[inp] = np.broadcast_to(range_dict[inp].scale, range_dict[inp].shape)
+        else:
+            warn(f"Cannot infer scale for f{node.name}")
+            return
+    execute_node(node, ctx, model.graph)
+    range_dict[node.output[0]].scale = ctx[node.output[0]]
+    for inp in node.input:
+        if range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+        elif not (range_dict[inp].bias is None):
+            ctx[inp] = np.broadcast_to(range_dict[inp].bias, range_dict[inp].shape)
+        else:
+            warn(f"Cannot infer bias for f{node.name}")
+            return
+    execute_node(node, ctx, model.graph)
+    range_dict[node.output[0]].bias = ctx[node.output[0]]
+
+
 # for a node that already has its output scale & bias computed, compute
 # the integer range based on the full range
 def calc_intrange_from_scalebias(node, model, range_dict):
@@ -565,9 +598,21 @@ def calc_intrange_matmul(node, model, range_dict):
     range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
+# for nodes such as Im2Col, Reshape, Transpose the scale/bias/per-element output ranges
+# are sourced from the scale/bias/per-element input ranges but the pattern can be complicated
 def calc_intrange_eltwise_monotonic(node, model, range_dict):
-    # for nodes such as Im2Col, Reshape, Transpose the scale/bias/per-element output ranges
-    # are sourced from the scale/bias/per-element input ranges but the pattern can be complicated
+    # TODO smarter decision-making here? e.g. do we need to check for MaxPool axes?
+    calc_intrange_eltwise_monotonic_scalebiasfirst(node, model, range_dict)
+
+
+def calc_intrange_eltwise_monotonic_scalebiasfirst(node, model, range_dict):
+    # strategy: execute node only with scale and only with bias to infer what the output scale and bias
+    # values are, then infer the integer ranges from that and the full range afterwards
+    calc_scalebias_from_execution(node, model, range_dict)
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
+def calc_intrange_eltwise_monotonic_intrangefirst(node, model, range_dict):
     # strategy: use regular range analysis (which will execute the node on the corners of the input
     # range) using the integer range as the input, which gives us the output integer range. then figure
     # out the scale/bias based on the output integer range.
@@ -590,6 +635,7 @@ def calc_intrange_eltwise_monotonic(node, model, range_dict):
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
     int_orange_inf = int_range_dict[node.output[0]]
+    range_dict[node.output[0]].int_range = int_orange_inf.range
     # now deduce the output scale factor and bias from all available info
     # range_max = S*int_range_max + B
     # range_min = S*int_range_min + B
@@ -599,10 +645,12 @@ def calc_intrange_eltwise_monotonic(node, model, range_dict):
     # how best to deal with this? leave as is? set to 1/0?
     # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
-    range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
 # handler functions for regular range analysis
