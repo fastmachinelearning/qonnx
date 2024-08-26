@@ -541,13 +541,13 @@ def check_matmul_for_intrange_prop(node, range_dict):
     # i.e. either the scale is a scalar, or it has a non-1-shaped dimension for either
     # M (for input 0) or N (input 1) dimensions
     if irange_0_inf.scale.size != 1:
-        acceptable_scale_i0 = [1] * irange_0_inf.ndim
+        acceptable_scale_i0 = [1] * len(irange_0_inf.shape)
         acceptable_scale_i0[-2] = irange_0_inf.shape[-2]
         if list(irange_0_inf.scale.shape) != acceptable_scale_i0:
             warn(f"Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)}, can't do scaled-int propagation")
             return False
     if irange_1_inf.scale.size != 1:
-        acceptable_scale_i1 = [1] * irange_1_inf.ndim
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
         acceptable_scale_i1[-1] = irange_1_inf.shape[-1]
         if list(irange_1_inf.scale.shape) != acceptable_scale_i1:
             warn(f"Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)}, can't do scaled-int propagation")
