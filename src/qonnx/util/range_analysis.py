@@ -701,7 +701,7 @@ optype_to_intrange_calc = {
 
 # walk the graph node by node and propagate scaled-int range info
 # assumes that regular range analysis was already carried out
-def calc_intrange(model, range_dict, do_unbroadcast):
+def calc_intrange(model, range_dict, do_unbroadcast, stop_at_nodename):
     for node in model.graph.node:
         op_ok = node.op_type in optype_to_intrange_calc.keys()
         if op_ok:
@@ -716,6 +716,8 @@ def calc_intrange(model, range_dict, do_unbroadcast):
                     range_dict[node_out].int_range = broadcast_range(range_dict[node_out].int_range, out_vi)
         else:
             warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
+        if stop_at_nodename != "" and node.name == stop_at_nodename:
+            break
 
 
 REPORT_MODE_RANGE = "range"
@@ -746,6 +748,7 @@ def range_analysis(
     strip_initializers_from_report=True,
     scaled_int=False,
     do_unbroadcast=False,
+    stop_at_nodename="",
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -839,10 +842,12 @@ def range_analysis(
             # TODO bring back stuck channel analysis after simplification is re-introduced
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
+        if stop_at_nodename != "" and node.name == stop_at_nodename:
+            break
 
     # if scaled-int range prop is enabled, call as postproc
     if scaled_int:
-        calc_intrange(model, range_dict, do_unbroadcast)
+        calc_intrange(model, range_dict, do_unbroadcast, stop_at_nodename)
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
