@@ -48,7 +48,7 @@ except ModuleNotFoundError:
 
 def get_preferred_onnx_opset():
     "Return preferred ONNX opset version for QONNX"
-    return 11
+    return 12
 
 
 def qonnx_make_model(graph_proto, **kwargs):
