@@ -4,7 +4,7 @@ import tensorflow as tf
 import tf2onnx
 from collections import OrderedDict
 from qkeras.qlayers import QActivation
-from qkeras.quantizers import quantized_bits, quantized_relu
+from qkeras.quantizers import quantized_bits
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -176,25 +176,15 @@ def _add_input_quantizer(onnx_model, quantizer):
     onnx_model.set_initializer(scale_init_name, np.array(quantizer.scale))
     onnx_model.set_initializer(zp_init_name, np.array(0.0))
     onnx_model.set_initializer(bw_init_name, np.array(quantizer.bits))
-    if isinstance(quantizer, quantized_bits):
-        signed = quantizer.keep_negative
-        narrow = quantizer.symmetric
-        rounding_mode = "ROUND"
-    elif isinstance(quantizer, quantized_relu):
-        signed = False
-        narrow = False
-        rounding_mode = "HALF_EVEN"
-    else:
-        raise NotImplementedError
     quant_node = onnx.helper.make_node(
         op_type="Quant",
         inputs=[iname, scale_init_name, zp_init_name, bw_init_name],
         outputs=[f"{iname}_quantized"],
         name=f"{iname}_Quant",
         domain="qonnx.custom_op.general",
-        narrow=narrow,
-        rounding_mode=rounding_mode,
-        signed=signed,
+        narrow=quantizer.symmetric,
+        rounding_mode="ROUND",
+        signed=quantizer.keep_negative,
     )
     for node in onnx_model.graph.node:
         if node.input[0] == iname:
@@ -275,7 +265,7 @@ def from_keras(
         if (
             isinstance(submod, (QActivation, tf.keras.layers.Activation))
             and model.input.name == submod.input.name
-            and isinstance(submod.submodules[0], (quantized_bits, quantized_relu))
+            and isinstance(submod.submodules[0], quantized_bits)
         ):
             assert len(submod.submodules) == 1
             _add_input_quantizer(onnx_model, submod.submodules[0])
