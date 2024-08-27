@@ -32,11 +32,10 @@ import onnx
 import onnx.helper as helper
 
 import qonnx.core.data_layout as DataLayout
-from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.basic import qonnx_make_model
 
 
-def node_to_model(node, model, return_modelwrapper=True, override_opset=None):
+def node_to_model(node, model, override_opset=None):
     # create a new model that only consists of a single node
     # note: ensure that the same ValueInfo does not appear both in
     # graph.value_info as well as graph.output or graph.input
@@ -49,6 +48,9 @@ def node_to_model(node, model, return_modelwrapper=True, override_opset=None):
     node_inputs += list(filter(lambda x: x.name in node.input, graph.value_info))
     node_outputs = list(filter(lambda x: x.name in node.output, graph.output))
     node_outputs += list(filter(lambda x: x.name in node.output, graph.value_info))
+    node_inits = list(filter(lambda x: x.name in node.input, graph.initializer))
+    # only use non-initialized inputs as top-level inputs
+    node_inputs_filtered = [x for x in node_inputs if x.name not in [y.name for y in node_inits]]
     for attr in node.attribute:
         if attr.type == 5:
             subgraph = attr.g
@@ -59,8 +61,9 @@ def node_to_model(node, model, return_modelwrapper=True, override_opset=None):
     node_graph = helper.make_graph(
         nodes=[node],
         name="single-node-exec",
-        inputs=node_inputs,
+        inputs=node_inputs_filtered,
         outputs=node_outputs,
+        initializer=node_inits,
     )
     node_model = qonnx_make_model(node_graph)
     if override_opset is None:
@@ -68,8 +71,6 @@ def node_to_model(node, model, return_modelwrapper=True, override_opset=None):
         node_model.opset_import[0].version = opset_version
     else:
         node_model.opset_import[0].version = override_opset
-    if return_modelwrapper:
-        node_model = ModelWrapper(node_model)
     return node_model
 
 
