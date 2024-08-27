@@ -804,7 +804,7 @@ def range_analysis(
     range_dict = {}
     stuck_chans = {}
 
-    if isinstance(irange, RangeInfo):
+    if isinstance(irange, dict):
         # directly use provided range dict
         range_dict = irange
     else:
