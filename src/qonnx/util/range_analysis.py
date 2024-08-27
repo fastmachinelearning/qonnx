@@ -780,6 +780,8 @@ def range_analysis(
             range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, RangeInfo):
         pass
+    elif isinstance(irange, dict):
+        pass
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
@@ -802,27 +804,31 @@ def range_analysis(
     range_dict = {}
     stuck_chans = {}
 
-    # start by calculating/annotating range info for input tensors
-    for inp in model.graph.input:
-        iname = inp.name
-        if isinstance(irange, RangeInfo):
-            range_dict[iname] = irange
-        else:
-            if range_min is None or range_max is None:
-                # use idt annotation
-                idt = model.get_tensor_datatype(iname)
-                assert idt is not None, "Could not infer irange, please specify"
-                range_min = idt.min()
-                range_max = idt.max()
-            ishape = model.get_tensor_shape(iname)
-            range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
+    if isinstance(irange, RangeInfo):
+        # directly use provided range dict
+        range_dict = irange
+    else:
+        # start by calculating/annotating range info for input tensors
+        for inp in model.graph.input:
+            iname = inp.name
+            if isinstance(irange, RangeInfo):
+                range_dict[iname] = irange
+            else:
+                if range_min is None or range_max is None:
+                    # use idt annotation
+                    idt = model.get_tensor_datatype(iname)
+                    assert idt is not None, "Could not infer irange, please specify"
+                    range_min = idt.min()
+                    range_max = idt.max()
+                ishape = model.get_tensor_shape(iname)
+                range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
 
-    # add range info for all tensors with initializers
-    calc_range_all_initializers(model, range_dict)
+        # add range info for all tensors with initializers
+        calc_range_all_initializers(model, range_dict)
 
-    # cleanup input/initializer ranges before start
-    if do_unbroadcast:
-        range_dict = unbroadcast_range_dict(range_dict)
+        # cleanup input/initializer ranges before start
+        if do_unbroadcast:
+            range_dict = unbroadcast_range_dict(range_dict)
 
     # now walk the graph node by node and propagate range info
     for node in model.graph.node:
