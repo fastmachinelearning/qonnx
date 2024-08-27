@@ -522,9 +522,6 @@ def check_matmul_for_intrange_prop(node, range_dict):
     if not irange_1_inf.has_integer_info():
         warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
         return False
-    # ensure range information is un-broadcasted so we can check shapes etc properly
-    irange_0_inf = irange_0_inf.unbroadcast()
-    irange_1_inf = irange_1_inf.unbroadcast()
     # for the output dot product to have a non-dynamic scale & bias, we need to put
     # some constraints on the scale & bias for the inputs
     # for now: no biases, TODO figure out if we can have shared bias in some cases
@@ -536,21 +533,30 @@ def check_matmul_for_intrange_prop(node, range_dict):
     if not i1_zerobias_ok:
         warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
         return False
+    # ensure scale information is un-broadcasted so we can check shapes etc properly
+    i0_scale = unbroadcast_tensor(irange_0_inf.scale)
+    i1_scale = unbroadcast_tensor(irange_0_inf.scale)
     # for a MatMul of shape (MxK) x (KxN) with scaling: we cannot have scales along the
     # dot product dimension, but per-tensor or per-dot-product are fine
     # i.e. either the scale is a scalar, or it has a non-1-shaped dimension for either
     # M (for input 0) or N (input 1) dimensions
-    if irange_0_inf.scale.size != 1:
+    if i0_scale.size != 1:
         acceptable_scale_i0 = [1] * len(irange_0_inf.shape)
         acceptable_scale_i0[-2] = irange_0_inf.shape[-2]
         if list(irange_0_inf.scale.shape) != acceptable_scale_i0:
-            warn(f"Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)}, can't do scaled-int propagation")
+            warn(
+                f"""Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)},
+                but we need at most {str(acceptable_scale_i0)} so can't do scaled-int propagation"""
+            )
             return False
-    if irange_1_inf.scale.size != 1:
+    if i1_scale.size != 1:
         acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
         acceptable_scale_i1[-1] = irange_1_inf.shape[-1]
         if list(irange_1_inf.scale.shape) != acceptable_scale_i1:
-            warn(f"Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)}, can't do scaled-int propagation")
+            warn(
+                f"""Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)},
+                but we need at most {str(acceptable_scale_i1)} so can't do scaled-int propagation"""
+            )
             return False
     return True
 
