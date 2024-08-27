@@ -42,6 +42,7 @@ from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
+from qonnx.util.basic import get_by_name
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.onnx import node_to_model, valueinfo_to_tensor
 
@@ -625,8 +626,105 @@ def calc_intrange_matmul(node, model, range_dict):
         # be extra conservative for now: no negative scales, no biases
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
         assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
-    # TODO need to do an extra check - scales must be at most channelwise for both sides,
-    # can't be elementwise. otherwise we cannot do scaled-int range analysis
+    orange_inf = range_dict[node.output[0]]
+    int_range_dict = {}
+    for node_out in node.output:
+        int_range_dict[node_out] = RangeInfo()
+    # use integer components of input ranges for new range computation
+    for node_in in node.input:
+        int_range_dict[node_in] = RangeInfo(
+            shape=range_dict[node_in].shape,
+            range=range_dict[node_in].int_range,
+            is_initializer=range_dict[node_in].is_initializer,
+        )
+    range_calc_fxn = optype_to_range_calc[node.op_type]
+    range_calc_fxn(node, model, int_range_dict)
+    int_orange_inf = int_range_dict[node.output[0]]
+    # now deduce the output scale factor and bias from all available info
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = int_orange_inf.range
+
+
+def check_conv_for_intrange_prop(node, range_dict):
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
+    irange_0_inf = range_dict[node.input[0]]
+    irange_1_inf = range_dict[node.input[1]]
+    # inputs have shape N,C,xxx (batch N, channels C, spatial dims xxx)
+    ifm = irange_0_inf.shape[1]
+    # weights have shape OFM,IFM,xxx (output chans OFM, input chans IFM, kernel spatial dims xxx)
+    ofm = irange_1_inf.shape[0]
+    # note that we treat "general" grouped convs (1 < groups < ofm) as dense
+    is_depthwise = groups == ofm
+    if not irange_0_inf.has_integer_info():
+        warn(f"Input 0 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    if not irange_1_inf.has_integer_info():
+        warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    # for the output dot product to have a non-dynamic scale & bias, we need to put
+    # some constraints on the scale & bias for the inputs
+    # for now: no biases, TODO figure out if we can have shared bias in some cases
+    i0_zerobias_ok = (irange_0_inf.bias == 0).all()
+    if not i0_zerobias_ok:
+        warn(f"Input 0 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    i1_zerobias_ok = (irange_1_inf.bias == 0).all()
+    if not i1_zerobias_ok:
+        warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    # ensure scale information is un-broadcasted so we can check shapes etc properly
+    i0_scale = unbroadcast_tensor(irange_0_inf.scale)
+    i1_scale = unbroadcast_tensor(irange_0_inf.scale)
+    if is_depthwise:
+        # acceptable scale factor granularities for depthwise convolutions:
+        # - inputs (i0) can have per-tensor or per-channel quantization (different channels do not get mixed in same output)
+        # - weights (i1) can have per-tensor or per-channel quantization
+        # note that ifm = ofm in this case
+        acceptable_scale_i0 = [1] * len(irange_0_inf.shape)
+        acceptable_scale_i0[1] = ifm
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
+        acceptable_scale_i1[0] = ifm
+        scale_i0_ok = (list(irange_0_inf.scale.shape) == acceptable_scale_i0) or (i0_scale.size == 1)
+        scale_i1_ok = (list(irange_1_inf.scale.shape) == acceptable_scale_i1) or (i1_scale.size == 1)
+        return scale_i0_ok and scale_i1_ok
+    else:
+        # acceptable scale factor granularities for dense convolutions:
+        # - inputs (i0) can have per-tensor quantization (since different channels get mixed into same output)
+        # - weights (i1) can have per-tensor or per-output-channel quantization
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
+        acceptable_scale_i1[0] = ofm
+        scale_i0_ok = i0_scale.size == 1
+        scale_i1_ok = (list(irange_1_inf.scale.shape) == acceptable_scale_i1) or (i1_scale.size == 1)
+        return scale_i0_ok and scale_i1_ok
+
+
+def calc_intrange_conv(node, model, range_dict):
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not all(inp_int_info):
+        warn(node.name + " does not have all-integer inputs, cannot propagate")
+        return
+    if not check_conv_for_intrange_prop(node, range_dict):
+        return
+    for node_in in node.input:
+        irange_inf = range_dict[node_in]
+        # be extra conservative for now: no negative scales, no biases
+        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
+        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
     orange_inf = range_dict[node.output[0]]
     int_range_dict = {}
     for node_out in node.output:
@@ -747,6 +845,7 @@ optype_to_range_calc = {
 # handler functions for scaled-integer range analysis
 optype_to_intrange_calc = {
     "MatMul": calc_intrange_matmul,
+    "Conv": calc_intrange_conv,
     "Add": calc_intrange_add,
     "Mul": calc_intrange_mul,
     "Relu": calc_intrange_relu,
