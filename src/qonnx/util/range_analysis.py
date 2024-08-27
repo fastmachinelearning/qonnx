@@ -41,10 +41,9 @@ from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd
 from qonnx.transformation.infer_datatypes import InferDataTypes
-from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 from qonnx.util.cleanup import cleanup_model
-from qonnx.util.onnx import valueinfo_to_tensor
+from qonnx.util.onnx import node_to_model, valueinfo_to_tensor
 
 # walk the graph to deduce range information about each tensor
 # assumptions:
@@ -264,6 +263,59 @@ def calc_range_all_initializers(model, range_dict):
                 range_dict[tensor_name].int_range = (tensor_init, tensor_init)
                 range_dict[tensor_name].scale = np.asarray([1.0], dtype=np.float32)
                 range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
+
+
+# for several types of nodes, we dynamically convert ("lower") the node to something else that we can
+# process before making a recursive call to range analysis and put those results back in
+def calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict):
+    # run prep transforms to ensure lowering on single node will work correctly
+    prep_model = model
+    for trafo in prep_transforms:
+        prep_model = prep_model.transform(trafo)
+    # create a single-node model from this node
+    node_model = ModelWrapper(node_to_model(node, prep_model))
+    # run lowering pipeline on the single-node model
+    for trafo in lowering_transforms:
+        node_model = node_model.transform(trafo)
+    # copy RangeInfo pertaining to node_model's top-level inputs to a new dict
+    node_range_dict = {}
+    for node_inp in node_model.graph.input:
+        node_range_dict[node_inp.name] = range_dict[node_inp.name]
+    # run range analysis on the lowered single-node model
+    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE)
+    # copy results back into original range_dict
+    for node_out in node.output:
+        range_dict[node_out] = ret_range_dict[node_out]
+
+
+def calc_conv_range(node, model, range_dict):
+    prep_transforms = [FoldConstants(exclude_op_types=[])]
+    lowering_transforms = [LowerConvsToMatMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_bn_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [BatchNormToAffine()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_sub_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertSubToAdd()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_div_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertDivToMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_gemm_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [GemmToMatMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
 
 
 # integer quantized NNs often carry around "scaled integers": instead of pure
@@ -688,6 +740,8 @@ optype_to_range_calc = {
     "Concat": calc_monotonic_range,
     "Split": calc_monotonic_range,
     "Im2Col": calc_monotonic_range,
+    "Conv": calc_conv_range,
+    "Gemm": calc_gemm_range,
 }
 
 # handler functions for scaled-integer range analysis
@@ -748,7 +802,6 @@ def range_analysis(
     key_filter: str = "",
     save_modified_model: str = "",
     report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
-    lower_ops=False,
     prettyprint=False,
     do_cleanup=False,
     strip_initializers_from_report=True,
@@ -786,18 +839,6 @@ def range_analysis(
         assert False, "Unknown irange type"
     if do_cleanup:
         model = cleanup_model(model, preserve_qnt_ops=True)
-    if lower_ops:
-        model = model.transform(LowerConvsToMatMul())
-        model = model.transform(GemmToMatMul())
-        model = model.transform(BatchNormToAffine())
-        model = model.transform(ConvertSubToAdd())
-        model = model.transform(ConvertDivToMul())
-        model = cleanup_model(model)
-    # call constant folding & shape inference, this preserves weight quantizers
-    # (but do not do extra full cleanup, in order to preserve node/tensor naming)
-    # TODO is this redundant? remove?
-    model = model.transform(InferShapes())
-    model = model.transform(FoldConstants())
     model = model.transform(InferDataTypes())
     if save_modified_model != "":
         model.save(save_modified_model)
@@ -823,12 +864,12 @@ def range_analysis(
                 ishape = model.get_tensor_shape(iname)
                 range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
 
-        # add range info for all tensors with initializers
-        calc_range_all_initializers(model, range_dict)
+    # add range info for all tensors with initializers
+    calc_range_all_initializers(model, range_dict)
 
-        # cleanup input/initializer ranges before start
-        if do_unbroadcast:
-            range_dict = unbroadcast_range_dict(range_dict)
+    # cleanup input/initializer ranges before start
+    if do_unbroadcast:
+        range_dict = unbroadcast_range_dict(range_dict)
 
     # now walk the graph node by node and propagate range info
     for node in model.graph.node:

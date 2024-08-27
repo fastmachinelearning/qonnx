@@ -45,9 +45,9 @@ from qonnx.util.range_analysis import (
 from qonnx.util.test import download_model, test_model_details
 
 model_details_range = {
-    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 22}},
-    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 62}},
-    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 210}},
+    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}},
+    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 36}},
+    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 115}},
 }
 
 model_details_scaledint = {
@@ -185,9 +185,17 @@ def test_calc_matmul_node_range():
 def test_range_analysis_full_network(model_name):
     current_details = {**model_details_range[model_name], **test_model_details[model_name]}
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
-    ret = range_analysis(model, irange=current_details["input_range"], report_mode="range", lower_ops=True, do_cleanup=True)
-    assert len(ret.keys()) == current_details["range_info"]["n_dynamic_tensors"]
-    assert "global_out" in ret.keys()
+    ret = range_analysis(
+        model,
+        irange=current_details["input_range"],
+        report_mode="range",
+        do_cleanup=True,
+        strip_initializers_from_report=False,
+    )
+    all_tensor_names = model.get_all_tensor_names()
+    for tname in all_tensor_names:
+        assert tname in ret.keys()
+        assert not (ret[tname].range is None)
 
 
 @pytest.mark.parametrize("model_name", model_details_scaledint.keys())
@@ -198,7 +206,6 @@ def test_range_analysis_full_network_scaledint(model_name):
         model,
         irange=current_details["scaledint_input_range"],
         report_mode="range",
-        lower_ops=True,
         do_cleanup=True,
         scaled_int=True,
     )
