@@ -343,6 +343,7 @@ def check_int_inputs(node, range_dict):
 # input is not available, we check if that input is a constant (point interval) and use
 # that value instead.
 def calc_scalebias_from_execution(node, model, range_dict):
+    opset_version = model.model.opset_import[0].version
     if len(node.output) > 1:
         warn("Cannot infer scale for multi-output node")
         return
@@ -356,7 +357,7 @@ def calc_scalebias_from_execution(node, model, range_dict):
         else:
             warn(f"Cannot infer scale for f{node.name}")
             return
-    execute_node(node, ctx, model.graph)
+    execute_node(node, ctx, model.graph, opset_version=opset_version)
     range_dict[node.output[0]].scale = ctx[node.output[0]]
     for inp in node.input:
         if range_dict[inp].is_point_interval():
@@ -366,7 +367,7 @@ def calc_scalebias_from_execution(node, model, range_dict):
         else:
             warn(f"Cannot infer bias for f{node.name}")
             return
-    execute_node(node, ctx, model.graph)
+    execute_node(node, ctx, model.graph, opset_version=opset_version)
     range_dict[node.output[0]].bias = ctx[node.output[0]]
 
 
@@ -809,6 +810,53 @@ def calc_intrange_eltwise_monotonic_intrangefirst(node, model, range_dict):
     range_dict[node.output[0]].bias = bias
 
 
+# for several types of nodes, we dynamically convert ("lower") the node to something else that we can
+# process before making a recursive call to scaled-int range analysis and put those results back in
+def calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict):
+    # run prep transforms to ensure lowering on single node will work correctly
+    prep_model = model
+    for trafo in prep_transforms:
+        prep_model = prep_model.transform(trafo)
+    # create a single-node model from this node
+    node_model = ModelWrapper(node_to_model(node, prep_model))
+    # run lowering pipeline on the single-node model
+    for trafo in lowering_transforms:
+        node_model = node_model.transform(trafo)
+    # copy RangeInfo pertaining to node_model's top-level inputs to a new dict
+    node_range_dict = {}
+    for node_inp in node_model.graph.input:
+        node_range_dict[node_inp.name] = range_dict[node_inp.name]
+    # run range analysis on the lowered single-node model
+    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+    # copy results back into original range_dict
+    for node_out in node.output:
+        range_dict[node_out] = ret_range_dict[node_out]
+
+
+def calc_intrange_bn(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [BatchNormToAffine()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_sub(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertSubToAdd()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_div(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertDivToMul()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_gemm(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [GemmToMatMul()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
 # handler functions for regular range analysis
 optype_to_range_calc = {
     "Transpose": calc_monotonic_range,
@@ -855,6 +903,10 @@ optype_to_intrange_calc = {
     "Reshape": calc_intrange_eltwise_monotonic,
     "Transpose": calc_intrange_eltwise_monotonic,
     "Im2Col": calc_intrange_eltwise_monotonic,
+    "Sub": calc_intrange_sub,
+    "Div": calc_intrange_div,
+    "Gemm": calc_intrange_gemm,
+    "BatchNormalization": calc_intrange_bn,
 }
 
 
