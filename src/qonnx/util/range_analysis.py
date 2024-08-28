@@ -478,6 +478,16 @@ def calc_intrange_trunc(node, model, range_dict):
     range_dict[node.output[0]].scale = t_scale
     range_dict[node.output[0]].bias = -(t_scale * t_zeropt)
     calc_intrange_from_scalebias(node, model, range_dict)
+    # Trunc nodes override the history for scale and bias, and sets them to
+    # what was locally specified if they were not 1 and 0
+    if (t_scale == 1).all():
+        range_dict[node.output[0]].history_scale = []
+    else:
+        range_dict[node.output[0]].history_scale = [node.input[1]]
+    if (t_zeropt == 0).all():
+        range_dict[node.output[0]].history_bias = []
+    else:
+        range_dict[node.output[0]].history_bias = [node.input[2]]
 
 
 # propagates scale/bias info as-is without any changes
@@ -723,6 +733,11 @@ def calc_intrange_matmul(node, model, range_dict):
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
     range_dict[node.output[0]].int_range = int_orange_inf.range
+    # inherit scale/bias history from both sides
+    range_dict[node.output[0]].history_scale = (
+        range_dict[node.input[0]].history_scale + range_dict[node.input[1]].history_scale
+    )
+    range_dict[node.output[0]].history_bias = range_dict[node.input[0]].history_bias + range_dict[node.input[1]].history_bias
 
 
 def check_conv_for_intrange_prop(node, range_dict):
@@ -734,6 +749,9 @@ def check_conv_for_intrange_prop(node, range_dict):
         groups = groups.i
     irange_0_inf = range_dict[node.input[0]]
     irange_1_inf = range_dict[node.input[1]]
+    if len(node.input) == 3:
+        warn(f"{node.name} has bias, not implemented for scaled-int propagation")
+        return False
     # inputs have shape N,C,xxx (batch N, channels C, spatial dims xxx)
     ifm = irange_0_inf.shape[1]
     # weights have shape OFM,IFM,xxx (output chans OFM, input chans IFM, kernel spatial dims xxx)
