@@ -45,7 +45,7 @@ class ExtractQuantScaleZeroPt(Transformation):
         for node in graph.node:
             if node.op_type in ["Quant", "Trunc"]:
                 quant_node = node
-                input_nm, scale_nm, zeropt_nm, _ = node.input
+                input_nm, scale_nm, zeropt_nm, *rest = node.input
                 scale_t = model.get_initializer(scale_nm)
                 zeropt_t = model.get_initializer(zeropt_nm)
                 ishp = model.get_tensor_shape(input_nm)
