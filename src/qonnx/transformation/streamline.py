@@ -41,11 +41,13 @@ from qonnx.transformation.remove import RemoveIdentityOps
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.range_analysis import REPORT_MODE_RANGE, range_analysis, unbroadcast_tensor
 
+ioshared_quant_types = ["Quant", "Trunc"]
+
 
 def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
     not_initializer = model.get_initializer(tname) is None
     not_toplevel = not (tname in [x.name for x in model.graph.output])
-    consumer_is_quant = all([x.op_type == "Quant" for x in model.find_consumers(tname)])
+    consumer_is_quant = all([x.op_type in ioshared_quant_types for x in model.find_consumers(tname)])
     return not_initializer and consumer_is_quant and not_toplevel
 
 
@@ -167,7 +169,6 @@ class ExtractAggregateScaleBias(Transformation):
             [self.target_tensor_name],
         )
         graph.node.append(add_node)
-        ioshared_quant_types = ["Quant", "Trunc"]
         # remove old scale/bias tensors from history by setting them to 1 or 0
         for old_scale_tname in self.target_tensor_ri.history_scale:
             scale_qnt_consumers = [x for x in model.find_consumers(old_scale_tname) if x.op_type in ioshared_quant_types]
