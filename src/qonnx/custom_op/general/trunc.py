@@ -79,9 +79,59 @@ class Trunc(CustomOp):
         node = self.onnx_node
         return helper.make_node("Identity", [node.input[0]], [node.output[0]])
 
-    def infer_node_datatype(self, model):
+    def get_integer_datatype(self, model):
+        signed = model.get_tensor_datatype(self.onnx_node.input[0]).signed()
+        bit_width = model.get_initializer(self.onnx_node.input[4])
+        bit_width = int(bit_width)
+        if bit_width == 1:
+            if signed:
+                finn_dt = DataType["BIPOLAR"]
+            else:
+                finn_dt = DataType["BINARY"]
+        else:
+            if signed:
+                finn_dt = DataType["INT" + str(bit_width)]
+            else:
+                finn_dt = DataType["UINT" + str(bit_width)]
+        return finn_dt
+
+    def get_scaled_integer_datatype(self, model):
+        bit_width = model.get_initializer(self.onnx_node.input[4])
+        bit_width = int(bit_width)
+        finn_dt = DataType["SCALEDINT<%d>" % (bit_width)]
+        return finn_dt
+
+    def get_output_dtype(self, model):
         node = self.onnx_node
-        model.set_tensor_datatype(node.output[0], DataType["FLOAT32"])
+        # scale, zero-point and bitwidth must be read from initializers
+        scale = model.get_initializer(node.input[1])
+        zeropt = model.get_initializer(node.input[2])
+        bitwidth = model.get_initializer(node.input[4])
+        assert scale is not None, "Found unspecified scale for Trunc node: " + str(node)
+        assert zeropt is not None, "Found unspecified zero point for Trunc node: " + str(node)
+        assert bitwidth is not None, "Found unspecified output bitwidth for Trunc node: " + str(node)
+        # extract the bitwidth (assume scalar)
+        assert bitwidth.ndim == 0, "Bitwidth must be scalar for Trunc node: " + str(node)
+        bitwidth = bitwidth.item()
+        assert int(bitwidth) == bitwidth, "Bitwidth must be integer for Trunc node: " + str(node)
+        bitwidth = int(bitwidth)
+        # determine the FINN DataType
+        unit_scale = np.all(scale == 1.0)
+        zero_zeropt = np.all(zeropt == 0.0)
+        assert zero_zeropt, "Only zero_point=0 Trunc nodes supported for now"
+        if unit_scale and zero_zeropt:
+            finn_dt = self.get_integer_datatype(model)
+        else:
+            finn_dt = self.get_scaled_integer_datatype(model)
+        return finn_dt
+
+    def infer_node_datatype(self, model):
+        try:
+            finn_dt = self.get_output_dtype(model)
+        except AssertionError:
+            finn_dt = DataType["FLOAT32"]
+        node = self.onnx_node
+        model.set_tensor_datatype(node.output[0], finn_dt)
 
     def execute_node(self, context, graph):
         node = self.onnx_node
