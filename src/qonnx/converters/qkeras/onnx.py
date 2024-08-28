@@ -69,6 +69,36 @@ def check_tensor_is_representable(tensor, quant_params, node):
         )
 
 
+def _add_quant_node_on_input(ctx, node, quantizer_cfg, input_ind):
+    weights = node.inputs[input_ind].get_tensor_value(as_list=True)
+    quant_params = get_quant_params(weights, quantizer_cfg)
+    check_tensor_is_representable(weights, quant_params, node)
+    attr = quant_params["attributes"]
+    input_nodes = [node.input[1]]
+    for key in quant_params["inputs"].keys():
+        name = f"{node.name}_{input_ind}_quantizer_{key}"
+        np_val = np.asarray(quant_params["inputs"][key])
+        ctx.make_const(name, np_val)
+        input_nodes.append(name)
+    quant_node = ctx.insert_new_node_on_input(
+        node, "Quant", input_nodes, name=node.name + f"_{input_ind}_quantizer", **attr, domain="qonnx"
+    )
+    if quantizer_cfg["class_name"] == "quantized_bits":
+        bits = quantizer_cfg["config"]["bits"]
+        integer = quantizer_cfg["config"]["integer"]
+        keep_negative = quantizer_cfg["config"]["keep_negative"]
+        if bits == integer + keep_negative:
+            scale_node = ctx.make_const(
+                name=node.name + f"_{input_ind}_scale", np_val=quant_params["inputs"]["scale"].astype(np.float32)
+            )
+            ctx.insert_new_node_on_output(
+                op_type="Mul",
+                output_name=quant_node.output[0],
+                name=node.name + f"_{input_ind}_requantizer",
+                inputs=[quant_node.output[0], scale_node.name],
+            )
+
+
 def qlayer_handler(ctx, node, name, args):
     all_quantizers = args[0]
     keras_name = _extract_node_name(node, all_quantizers)
@@ -77,60 +107,10 @@ def qlayer_handler(ctx, node, name, args):
     quantizers = all_quantizers[keras_name]
 
     if quantizers.get("kernel_quantizer_cfg"):
-        weights = node.inputs[1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(weights, quantizers["kernel_quantizer_cfg"])
-        check_tensor_is_representable(weights, quant_params, node)
-        attr = quant_params["attributes"]
-        input_nodes = [node.input[1]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_kernel_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        quant_node = ctx.insert_new_node_on_input(
-            node, "Quant", input_nodes, name=node.name + "_kernel_quantizer", **attr, domain="qonnx"
-        )
-        if quantizers["kernel_quantizer_cfg"]["class_name"] == "quantized_bits":
-            bits = quantizers["kernel_quantizer_cfg"]["config"]["bits"]
-            integer = quantizers["kernel_quantizer_cfg"]["config"]["integer"]
-            keep_negative = quantizers["kernel_quantizer_cfg"]["config"]["keep_negative"]
-            if bits == integer + keep_negative:
-                scale_node = ctx.make_const(
-                    name=node.name + "_kernel_scale", np_val=quant_params["inputs"]["scale"].astype(np.float32)
-                )
-                ctx.insert_new_node_on_output(
-                    op_type="Mul",
-                    output_name=quant_node.output[0],
-                    name=node.name + "_kernel_requantizer",
-                    inputs=[quant_node.output[0], scale_node.name],
-                )
+        _add_quant_node_on_input(ctx, node, quantizers["kernel_quantizer_cfg"], 1)
 
     if quantizers.get("bias_quantizer_cfg") and len(node.input) == 3:
-        bias = node.inputs[-1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(bias, quantizers["bias_quantizer_cfg"])
-        check_tensor_is_representable(bias, quant_params, node)
-        attr = quant_params["attributes"]
-        input_nodes = [node.input[-1]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_bias_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
-        if quantizers["bias_quantizer_cfg"]["class_name"] == "quantized_bits":
-            bits = quantizers["bias_quantizer_cfg"]["config"]["bits"]
-            integer = quantizers["bias_quantizer_cfg"]["config"]["integer"]
-            keep_negative = quantizers["bias_quantizer_cfg"]["config"]["keep_negative"]
-            if bits == integer + keep_negative:
-                scale_node = ctx.make_const(
-                    name=node.name + "_bias_scale", np_val=quant_params["inputs"]["scale"].astype(np.float32)
-                )
-                ctx.insert_new_node_on_output(
-                    op_type="Mul",
-                    output_name=quant_node.output[0],
-                    name=node.name + "_bias_requantizer",
-                    inputs=[quant_node.output[0], scale_node.name],
-                )
+        _add_quant_node_on_input(ctx, node, quantizers["bias_quantizer_cfg"], -1)
 
     if quantizers.get("activation"):
         dtypes = [ctx.get_dtype(node.output[0])]
