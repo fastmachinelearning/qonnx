@@ -133,17 +133,26 @@ class ExtractAggregateScaleBias(Transformation):
             [self.target_tensor_name],
         )
         graph.node.append(add_node)
+        ioshared_quant_types = ["Quant", "Trunc"]
         # remove old scale/bias tensors from history by setting them to 1 or 0
         for old_scale_tname in self.target_tensor_ri.history_scale:
+            scale_qnt_consumers = [x for x in model.find_consumers(old_scale_tname) if x.op_type in ioshared_quant_types]
+            change_iosharedscale = [list(x.input).index(old_scale_tname) != 0 for x in scale_qnt_consumers]
             if model.get_initializer(old_scale_tname) is None:
-                # TODO clearer warning for input scale factors
-                warn(f"{old_scale_tname} does not have an initializer!")
+                warn(f"{old_scale_tname} does not have an initializer! Adjust tensor scale manually.")
+            elif change_iosharedscale:
+                assert False, f"{old_scale_tname} feeds a Quant or Trunc scale. Please call ExtractQuantScaleZeroPt first."
             else:
                 model.set_initializer(old_scale_tname, np.asarray(1.0, dtype=np.float32))
         for old_bias_tname in self.target_tensor_ri.history_bias:
+            bias_qnt_consumers = [x for x in model.find_consumers(old_bias_tname) if x.op_type in ioshared_quant_types]
+            change_iosharedbias = [list(x.input).index(old_bias_tname) != 0 for x in bias_qnt_consumers]
             if model.get_initializer(old_bias_tname) is None:
-                # TODO clearer warning for input biases
-                warn(f"{old_bias_tname} does not have an initializer!.")
+                warn(f"{old_bias_tname} does not have an initializer! Adjust tensor bias manually.")
+            elif change_iosharedbias:
+                assert (
+                    False
+                ), f"{old_bias_tname} feeds a Quant or Trunc zeropoint. Please call ExtractQuantScaleZeroPt first."
             else:
                 model.set_initializer(old_bias_tname, np.asarray(0.0, dtype=np.float32))
         # rewire the head node
