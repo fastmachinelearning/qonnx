@@ -27,13 +27,17 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import pytest
+
 import numpy as np
 
+from qonnx.core.datatype import DataType
 from qonnx.core.onnx_exec import execute_onnx
+from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.streamline import ExtractAggregateScaleBias, Streamline
 from qonnx.util.range_analysis import RangeInfo, range_analysis
-from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
+from qonnx.util.test import download_model, get_random_input, test_model_details
 
 model_details_scaledint = {
     "FINN-TFC_W2A2": {
@@ -49,6 +53,16 @@ model_details_scaledint = {
     "FINN-CNV_W2A2": {
         "scaledint_input_range": RangeInfo(
             shape=(1, 3, 32, 32),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
+    },
+    "MobileNetv1-w4a4": {
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 3, 224, 224),
             range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
             int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
             scale=np.asarray(1.0 / 255.0, dtype=np.float32),
@@ -85,15 +99,35 @@ def test_extractaggregatescalebias():
     assert np.isclose(ri_golden.scale, ri_ret.scale).all()
 
 
-def test_streamline_full_network():
-    model_name = "FINN-CNV_W2A2"
+@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+def test_streamline_full_network(model_name):
     current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
-    inp_t, golden_t = get_golden_in_and_output(model_name)
-    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    orig_model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     current_irange = current_details["scaledint_input_range"]
-    model = model.transform(Streamline(irange=current_irange))
+    model = orig_model.transform(Streamline(irange=current_irange))
+    model.save("streamlined.onnx")
     # check if streamlining succeeded structurally:
     # all compute-intensive ops (MatMul and Conv) must have integer inputs
+    iname = model.graph.input[0].name
+    oname = model.graph.output[0].name
+    # check that streamlined model produces the ~same results
+    inp_t = get_random_input(model_name)
+    inp_dict = {iname: inp_t}
+    golden_dict = execute_onnx(orig_model, inp_dict, return_full_exec_context=True)
+    golden_t = golden_dict[oname]
+    # no-scales Quant version for easier comparison/debug
+    noscales_model = orig_model.transform(ExtractQuantScaleZeroPt())
+    noscales_dict = execute_onnx(noscales_model, inp_dict, return_full_exec_context=True)
+    noscales_t = noscales_dict[oname]
+    assert np.isclose(golden_t, noscales_t, atol=1e-04).all()
+    # streamlining should remove the effect of input scaling too, so we multiply
+    # our original input by (1/original scale)
+    inp_dict = {iname: inp_t * (1 / current_irange.scale)}
+    ret_dict = execute_onnx(model, inp_dict, return_full_exec_context=True)
+    ret_t = ret_dict[oname]
+    assert np.isclose(golden_t, ret_t, atol=1e-04).all()
+    # note that we expect the input data type to change for the streamlined graph
+    model.set_tensor_datatype(iname, DataType["UINT8"])
     model = model.transform(InferDataTypes())
     all_compint_ops = [x for x in model.graph.node if x.op_type in ["Conv", "MatMul"]]
     for op in all_compint_ops:
@@ -101,10 +135,3 @@ def test_streamline_full_network():
         idt1 = model.get_tensor_datatype(op.input[1])
         assert idt0.is_integer()
         assert idt1.is_integer()
-    # check that streamlined model produces the ~same results
-    # streamlining should remove the effect of input scaling too, so we multiply
-    # our original input by (1/original scale)
-    inp_dict = {model.graph.input[0].name: inp_t * (1 / current_irange.scale)}
-    ret_dict = execute_onnx(model, inp_dict)
-    ret_t = ret_dict[model.graph.output[0].name]
-    assert np.isclose(golden_t, ret_t, atol=1e-04).all()
