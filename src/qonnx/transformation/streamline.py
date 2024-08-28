@@ -33,9 +33,13 @@ from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
-from qonnx.transformation.general import SortGraph
+from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
+from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
+from qonnx.transformation.gemm_to_matmul import GemmToMatMul
+from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd, SortGraph
 from qonnx.transformation.remove import RemoveIdentityOps
-from qonnx.util.range_analysis import unbroadcast_tensor
+from qonnx.util.cleanup import cleanup_model
+from qonnx.util.range_analysis import REPORT_MODE_RANGE, range_analysis, unbroadcast_tensor
 
 
 def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
@@ -46,6 +50,36 @@ def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
 
 
 class Streamline(Transformation):
+    """
+    Given input range information, first lower model ops to make it amenable to streamlining, followed by
+    range analysis, StreamlineFromRangeDict and removal of identity operations.
+    """
+
+    def __init__(self, irange, tensor_filter=default_streamline_tensor_filter, include_toplevel_outs=True):
+        super().__init__()
+        self.irange = irange
+        self.tensor_filter = tensor_filter
+        self.include_toplevel_outs = include_toplevel_outs
+
+    def apply(self, model: ModelWrapper):
+        # first, run the lowering pipeline to make model amenable to streamlining
+        model = model.transform(BatchNormToAffine())
+        model = model.transform(ExtractQuantScaleZeroPt())
+        model = model.transform(GemmToMatMul())
+        model = model.transform(ConvertDivToMul())
+        model = model.transform(ConvertSubToAdd())
+        model = cleanup_model(model)
+        # now run range analysis
+        range_dict = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+        # use results of range analysis to move out scale/bias factors
+        model = model.transform(StreamlineFromRangeDict(range_dict))
+        # finally, remove identity operations
+        model = model.transform(RemoveIdentityOps())
+
+        return model, False
+
+
+class StreamlineFromRangeDict(Transformation):
     """
     Given a scaled-integer range analysis dictionary, call the ExtractAggregateScaleBias
     transformation for every tensor feeding a dynamic quantizer (Quant node).
