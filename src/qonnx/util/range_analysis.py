@@ -650,6 +650,9 @@ def calc_intrange_matmul(node, model, range_dict):
     # how best to deal with this? leave as is? set to 1/0?
     # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
@@ -749,6 +752,9 @@ def calc_intrange_conv(node, model, range_dict):
     # how best to deal with this? leave as is? set to 1/0?
     # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
