@@ -29,9 +29,11 @@
 
 import numpy as np
 
+from qonnx.core.onnx_exec import execute_onnx
+from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.streamline import ExtractAggregateScaleBias, Streamline
 from qonnx.util.range_analysis import RangeInfo, range_analysis
-from qonnx.util.test import download_model, test_model_details
+from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 
 model_details_scaledint = {
     "FINN-TFC_W2A2": {
@@ -86,6 +88,23 @@ def test_extractaggregatescalebias():
 def test_streamline_full_network():
     model_name = "FINN-CNV_W2A2"
     current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    inp_t, golden_t = get_golden_in_and_output(model_name)
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
-    model = model.transform(Streamline(irange=current_details["scaledint_input_range"]))
-    model.save("dbg.onnx")
+    current_irange = current_details["scaledint_input_range"]
+    model = model.transform(Streamline(irange=current_irange))
+    # check if streamlining succeeded structurally:
+    # all compute-intensive ops (MatMul and Conv) must have integer inputs
+    model = model.transform(InferDataTypes())
+    all_compint_ops = [x for x in model.graph.node if x.op_type in ["Conv", "MatMul"]]
+    for op in all_compint_ops:
+        idt0 = model.get_tensor_datatype(op.input[0])
+        idt1 = model.get_tensor_datatype(op.input[1])
+        assert idt0.is_integer()
+        assert idt1.is_integer()
+    # check that streamlined model produces the ~same results
+    # streamlining should remove the effect of input scaling too, so we multiply
+    # our original input by (1/original scale)
+    inp_dict = {model.graph.input[0].name: inp_t * (1 / current_irange.scale)}
+    ret_dict = execute_onnx(model, inp_dict)
+    ret_t = ret_dict[model.graph.output[0].name]
+    assert np.isclose(golden_t, ret_t, atol=1e-04).all()
