@@ -430,6 +430,30 @@ def calc_intrange_quant(node, model, range_dict):
     calc_intrange_from_scalebias(node, model, range_dict)
 
 
+# propagate integer range and scale/bias info for Trunc
+def calc_intrange_trunc(node, model, range_dict):
+    # get quantizer parameters
+    t_scale = model.get_initializer(node.input[1])
+    t_zeropt = model.get_initializer(node.input[2])
+    t_bitwidth_in = model.get_initializer(node.input[3])
+    t_bitwidth_out = model.get_initializer(node.input[4])
+    scale_ok = not (t_scale is None)
+    zeropt_ok = not (t_zeropt is None)
+    in_bitwidth_ok = not (t_bitwidth_in is None)
+    out_bitwidth_ok = not (t_bitwidth_out is None)
+    if not (scale_ok and zeropt_ok and in_bitwidth_ok and out_bitwidth_ok):
+        warn("%s has non-constant quantization parameters, skipping" % node.name)
+        return
+    # we need to do a little style conversion for the scale/bias:
+    # intrange calculations here represent quant tensors as Mx+N (x: int tensor, M: scale, N: bias)
+    # whereas Trunc nodes represent them as S(x-Z) (x: int tensor, S: scale, Z: zeropoint)
+    # it follows that M = S and N = -SZ
+    # TODO broadcast these to element shape?
+    range_dict[node.output[0]].scale = t_scale
+    range_dict[node.output[0]].bias = -(t_scale * t_zeropt)
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
 # propagates scale/bias info as-is without any changes
 # but recalculate the int range info based on actual shapes
 def calc_intrange_identity(node, model, range_dict):
@@ -913,6 +937,8 @@ optype_to_intrange_calc = {
     "Div": calc_intrange_div,
     "Gemm": calc_intrange_gemm,
     "BatchNormalization": calc_intrange_bn,
+    "AveragePool": calc_intrange_eltwise_monotonic,
+    "Trunc": calc_intrange_trunc,
 }
 
 
