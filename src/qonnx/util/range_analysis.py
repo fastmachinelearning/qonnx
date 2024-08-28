@@ -546,11 +546,19 @@ def calc_intrange_add(node, model, range_dict):
     ptint_info = check_point_interval_inputs(node, range_dict)
 
     if any(ptint_info):
-        # point interval will go into bias
-        ptint_inpname = node.input[ptint_info.index(True)]
-        irange_ptint = range_dict[ptint_inpname]
-        nonptint_inpname = node.input[ptint_info.index(False)]
-        irange_nonptint = range_dict[nonptint_inpname]
+        if all(ptint_info):
+            # special case - all inputs are constants. would normally be const-folded
+            # assume input 0 is the main input, input 1 is the bias
+            ptint_inpname = node.input[1]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[0]
+            irange_nonptint = range_dict[nonptint_inpname]
+        else:
+            # point interval will go into scale and bias
+            ptint_inpname = node.input[ptint_info.index(True)]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[ptint_info.index(False)]
+            irange_nonptint = range_dict[nonptint_inpname]
         # the non-point interval must have int info
         if irange_nonptint.int_range is None:
             warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
@@ -602,11 +610,19 @@ def calc_intrange_mul(node, model, range_dict):
     ptint_info = check_point_interval_inputs(node, range_dict)
 
     if any(ptint_info):
-        # point interval will go into scale and bias
-        ptint_inpname = node.input[ptint_info.index(True)]
-        irange_ptint = range_dict[ptint_inpname]
-        nonptint_inpname = node.input[ptint_info.index(False)]
-        irange_nonptint = range_dict[nonptint_inpname]
+        if all(ptint_info):
+            # special case - all inputs are constants. would normally be const-folded
+            # assume input 0 is the main input, input 1 is the scale
+            ptint_inpname = node.input[1]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[0]
+            irange_nonptint = range_dict[nonptint_inpname]
+        else:
+            # point interval will go into scale and bias
+            ptint_inpname = node.input[ptint_info.index(True)]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[ptint_info.index(False)]
+            irange_nonptint = range_dict[nonptint_inpname]
         # the non-point interval must have int info
         if irange_nonptint.int_range is None:
             warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
