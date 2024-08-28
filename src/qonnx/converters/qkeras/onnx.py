@@ -80,9 +80,14 @@ def _add_quant_node_on_input(ctx, node, quantizer_cfg, input_ind):
         np_val = np.asarray(quant_params["inputs"][key])
         ctx.make_const(name, np_val)
         input_nodes.append(name)
-    quant_node = ctx.insert_new_node_on_input(
-        node, "Quant", input_nodes, name=node.name + f"_{input_ind}_quantizer", **attr, domain="qonnx"
-    )
+    if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
+        quant_node = ctx.insert_new_node_on_input(
+            node, "BipolarQuant", input_nodes[0:2], name=node.name + f"_{input_ind}_quantizer", **dict(), domain="qonnx"
+        )
+    else:
+        quant_node = ctx.insert_new_node_on_input(
+            node, "Quant", input_nodes, name=node.name + f"_{input_ind}_quantizer", **attr, domain="qonnx"
+        )
     if quantizer_cfg["class_name"] == "quantized_bits":
         bits = quantizer_cfg["config"]["bits"]
         integer = quantizer_cfg["config"]["integer"]
