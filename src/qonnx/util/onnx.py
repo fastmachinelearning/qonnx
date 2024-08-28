@@ -29,8 +29,49 @@
 
 import numpy as np
 import onnx
+import onnx.helper as helper
 
 import qonnx.core.data_layout as DataLayout
+from qonnx.util.basic import qonnx_make_model
+
+
+def node_to_model(node, model, override_opset=None):
+    # create a new model that only consists of a single node
+    # note: ensure that the same ValueInfo does not appear both in
+    # graph.value_info as well as graph.output or graph.input
+    # nodes with multiple outputs that are a mix of value_info and
+    # input/outputs may get them reordered below
+    # note: a node's input may (also) be a top-level input or output
+    graph = model.graph
+    node_inputs = list(filter(lambda x: x.name in node.input, graph.input))
+    node_inputs += list(filter(lambda x: x.name in node.input, graph.output))
+    node_inputs += list(filter(lambda x: x.name in node.input, graph.value_info))
+    node_outputs = list(filter(lambda x: x.name in node.output, graph.output))
+    node_outputs += list(filter(lambda x: x.name in node.output, graph.value_info))
+    node_inits = list(filter(lambda x: x.name in node.input, graph.initializer))
+    # only use non-initialized inputs as top-level inputs
+    node_inputs_filtered = [x for x in node_inputs if x.name not in [y.name for y in node_inits]]
+    for attr in node.attribute:
+        if attr.type == 5:
+            subgraph = attr.g
+            for subgraph_node in subgraph.node:
+                subgraph_node_inputs = list(filter(lambda x: x.name in subgraph_node.input, graph.value_info))
+                new_inps = list(filter(lambda x: x not in node_inputs, subgraph_node_inputs))
+                node_inputs += new_inps
+    node_graph = helper.make_graph(
+        nodes=[node],
+        name="single-node-exec",
+        inputs=node_inputs_filtered,
+        outputs=node_outputs,
+        initializer=node_inits,
+    )
+    node_model = qonnx_make_model(node_graph)
+    if override_opset is None:
+        opset_version = model.model.opset_import[0].version
+        node_model.opset_import[0].version = opset_version
+    else:
+        node_model.opset_import[0].version = override_opset
+    return node_model
 
 
 def valueinfo_to_tensor(vi):
