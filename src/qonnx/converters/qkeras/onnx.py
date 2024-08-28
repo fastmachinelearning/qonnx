@@ -74,7 +74,7 @@ def _add_quant_node_on_input(ctx, node, quantizer_cfg, input_ind):
     quant_params = get_quant_params(weights, quantizer_cfg)
     check_tensor_is_representable(weights, quant_params, node)
     attr = quant_params["attributes"]
-    input_nodes = [node.input[1]]
+    input_nodes = [node.input[input_ind]]
     for key in quant_params["inputs"].keys():
         name = f"{node.name}_{input_ind}_quantizer_{key}"
         np_val = np.asarray(quant_params["inputs"][key])
