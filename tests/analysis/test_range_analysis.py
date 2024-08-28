@@ -33,6 +33,7 @@ import numpy as np
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp
+from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.util.range_analysis import (
     RangeInfo,
     broadcast_range,
@@ -209,5 +210,11 @@ def test_range_analysis_full_network_scaledint(model_name):
         do_cleanup=True,
         scaled_int=True,
     )
-    assert "global_out" in ret.keys()
-    assert not (ret["global_out"].int_range is None)
+    model = model.transform(FoldConstants(exclude_op_types=[]))
+    all_tensor_names = model.get_all_tensor_names()
+    for tname in all_tensor_names:
+        if model.get_initializer(tname) is None:
+            assert tname in ret.keys()
+            assert not (ret[tname].int_range is None)
+            assert not (ret[tname].scale is None)
+            assert not (ret[tname].bias is None)
