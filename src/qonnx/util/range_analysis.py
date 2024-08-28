@@ -250,6 +250,15 @@ def calc_range_outdtype(node, model, range_dict):
     range_dict[oname].range = (odt.min(), odt.max())
 
 
+# return whether a given tensor is a shape operand
+def is_shape_operand(tensor_name, model):
+    cons = model.find_consumer(tensor_name)
+    if cons is not None:
+        if cons.op_type == "Reshape" and list(cons.input).index(tensor_name) == 1:
+            return True
+    return False
+
+
 # use initializers to mark point ranges i.e. tensor with initializer X has range (X, X)
 def calc_range_all_initializers(model, range_dict):
     all_tensor_names = model.get_all_tensor_names()
@@ -259,8 +268,9 @@ def calc_range_all_initializers(model, range_dict):
             range_dict[tensor_name] = RangeInfo(
                 shape=tensor_init.shape, range=(tensor_init, tensor_init), is_initializer=True
             )
-            # use % 1 == 0 to identify initializers with integer values
-            if ((tensor_init % 1) == 0).all():
+            # use % 1 == 0 to identify initializers with integer values (except shape
+            # operands which would give rise to false scaled-int propagation)
+            if ((tensor_init % 1) == 0).all() and not is_shape_operand(tensor_name, model):
                 range_dict[tensor_name].int_range = (tensor_init, tensor_init)
                 range_dict[tensor_name].scale = np.asarray([1.0], dtype=np.float32)
                 range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
@@ -350,20 +360,20 @@ def calc_scalebias_from_execution(node, model, range_dict):
     ctx = {}
     ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape)
     for inp in node.input:
-        if range_dict[inp].is_point_interval():
-            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
-        elif not (range_dict[inp].scale is None):
+        if not (range_dict[inp].scale is None):
             ctx[inp] = np.broadcast_to(range_dict[inp].scale, range_dict[inp].shape)
+        elif range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
         else:
             warn(f"Cannot infer scale for f{node.name}")
             return
     execute_node(node, ctx, model.graph, opset_version=opset_version)
     range_dict[node.output[0]].scale = ctx[node.output[0]]
     for inp in node.input:
-        if range_dict[inp].is_point_interval():
-            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
-        elif not (range_dict[inp].bias is None):
+        if not (range_dict[inp].bias is None):
             ctx[inp] = np.broadcast_to(range_dict[inp].bias, range_dict[inp].shape)
+        elif range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
         else:
             warn(f"Cannot infer bias for f{node.name}")
             return
