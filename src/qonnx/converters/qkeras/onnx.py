@@ -1,6 +1,5 @@
 import logging
 import numpy as np
-from tf2onnx.late_rewriters import channel_order_rewriters
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
 
@@ -104,6 +103,33 @@ def _add_quant_node_on_input(ctx, node, quantizer_cfg, input_ind):
             )
 
 
+def _add_quant_node_on_output(ctx, node, quantizer_cfg, output_ind):
+    dtypes = [ctx.get_dtype(node.output[output_ind])]
+    quant_params = get_quant_params(None, quantizer_cfg)
+    attr = quant_params["attributes"]
+    input_nodes = [node.output[output_ind]]
+    for key in quant_params["inputs"].keys():
+        name = f"{node.name}_{output_ind}_quantizer_{key}"
+        np_val = np.asarray(quant_params["inputs"][key])
+        ctx.make_const(name, np_val)
+        input_nodes.append(name)
+    if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
+        quant_act_node = ctx.make_node(
+            "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
+        )
+    else:
+        quant_act_node = ctx.make_node(
+            "Quant",
+            input_nodes,
+            dtypes=dtypes,
+            name=node.name + "_activation_quantizer",
+            attr=attr,
+            domain="qonnx",
+        )
+    ctx.insert_node_on_output(quant_act_node, node.output[output_ind])
+    ctx.set_shape(quant_act_node.output[output_ind], ctx.get_shape(node.output[output_ind]))
+
+
 def qlayer_handler(ctx, node, name, args):
     all_quantizers = args[0]
     keras_name = _extract_node_name(node, all_quantizers)
@@ -118,30 +144,7 @@ def qlayer_handler(ctx, node, name, args):
         _add_quant_node_on_input(ctx, node, quantizers["bias_quantizer_cfg"], -1)
 
     if quantizers.get("activation"):
-        dtypes = [ctx.get_dtype(node.output[0])]
-        quant_params = get_quant_params(None, quantizers["activation"])
-        attr = quant_params["attributes"]
-        input_nodes = [node.output[0]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_activation_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
-            quant_act_node = ctx.make_node(
-                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
-            )
-        else:
-            quant_act_node = ctx.make_node(
-                "Quant",
-                input_nodes,
-                dtypes=dtypes,
-                name=node.name + "_activation_quantizer",
-                attr=attr,
-                domain="qonnx",
-            )
-        ctx.insert_node_on_output(quant_act_node, node.output[0])
-        ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
+        _add_quant_node_on_output(ctx, node, quantizers["activation"], 0)
 
 
 def qact_handler(ctx, node, name, args):
@@ -151,36 +154,7 @@ def qact_handler(ctx, node, name, args):
         return  # Not found in quantizers, nothing to do
     quantizers = all_quantizers[keras_name]
     if quantizers.get("activation"):
-        dtypes = [ctx.get_dtype(node.output[0])]
-        if "auto" in quantizers["activation"]:
-            if not node.graph.get_node_by_output(node.input[0]).is_const():
-                raise AttributeError(
-                    f"Automatic quantizers (auto/auto_po2) must have a const input. Invalid topology at node: {name}."
-                )
-        quant_params = get_quant_params(None, quantizers["activation"])
-        attr = quant_params["attributes"]
-        input_nodes = [node.output[0]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_activation_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
-            quant_act_node = ctx.make_node(
-                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
-            )
-        else:
-            quant_act_node = ctx.make_node(
-                "Quant",
-                input_nodes,
-                dtypes=dtypes,
-                name=node.name + "_activation_quantizer",
-                attr=attr,
-                domain="qonnx",
-            )
-        ctx.insert_node_on_output(quant_act_node, node.output[0])
-        ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
-        channel_order_rewriters._to_channel_first_handler(ctx, quant_act_node)
+        _add_quant_node_on_output(ctx, node, quantizers["activation"], 0)
 
 
 def conv2d_handler(ctx, node, name, args):
@@ -209,30 +183,7 @@ def bias_handler(ctx, node, name, args):
         remove_node_id = node.input[0]
         remove_node = ctx.get_node_by_output(remove_node_id)
         ctx.replace_all_inputs(node.input[0], remove_node.input[0], ops=None)
-        dtypes = [ctx.get_dtype(node.output[0])]
-        quant_params = get_quant_params(None, quantizers["activation"])
-        attr = quant_params["attributes"]
-        input_nodes = [node.output[0]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_activation_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
-            quant_act_node = ctx.make_node(
-                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
-            )
-        else:
-            quant_act_node = ctx.make_node(
-                "Quant",
-                input_nodes,
-                dtypes=dtypes,
-                name=node.input[0] + "_activation_quantizer",
-                attr=attr,
-                domain="qonnx",
-            )
-        ctx.insert_node_on_output(quant_act_node, node.output[0])
-        ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
+        _add_quant_node_on_output(ctx, node, quantizers["activation"], 0)
 
 
 def relu_handler(ctx, node, name, args):
