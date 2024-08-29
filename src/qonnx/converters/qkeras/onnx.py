@@ -82,7 +82,7 @@ def _add_quant_node_on_input(ctx, node, quantizer_cfg, input_ind):
         input_nodes.append(name)
     if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
         quant_node = ctx.insert_new_node_on_input(
-            node, "BipolarQuant", input_nodes[0:2], name=node.name + f"_{input_ind}_quantizer", **dict(), domain="qonnx"
+            node, "BipolarQuant", input_nodes[0:2], name=node.name + f"_{input_ind}_quantizer", domain="qonnx"
         )
     else:
         quant_node = ctx.insert_new_node_on_input(
@@ -127,14 +127,19 @@ def qlayer_handler(ctx, node, name, args):
             np_val = np.asarray(quant_params["inputs"][key])
             ctx.make_const(name, np_val)
             input_nodes.append(name)
-        quant_act_node = ctx.make_node(
-            "Quant",
-            input_nodes,
-            dtypes=dtypes,
-            name=node.name + "_activation_quantizer",
-            attr=attr,
-            domain="qonnx",
-        )
+        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
+            quant_act_node = ctx.make_node(
+                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
+            )
+        else:
+            quant_act_node = ctx.make_node(
+                "Quant",
+                input_nodes,
+                dtypes=dtypes,
+                name=node.name + "_activation_quantizer",
+                attr=attr,
+                domain="qonnx",
+            )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
         ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
 
@@ -160,14 +165,19 @@ def qact_handler(ctx, node, name, args):
             np_val = np.asarray(quant_params["inputs"][key])
             ctx.make_const(name, np_val)
             input_nodes.append(name)
-        quant_act_node = ctx.make_node(
-            "Quant",
-            input_nodes,
-            dtypes=dtypes,
-            name=node.name + "_activation_quantizer",
-            attr=attr,
-            domain="qonnx",
-        )
+        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
+            quant_act_node = ctx.make_node(
+                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
+            )
+        else:
+            quant_act_node = ctx.make_node(
+                "Quant",
+                input_nodes,
+                dtypes=dtypes,
+                name=node.name + "_activation_quantizer",
+                attr=attr,
+                domain="qonnx",
+            )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
         ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
         channel_order_rewriters._to_channel_first_handler(ctx, quant_act_node)
@@ -192,16 +202,7 @@ def bias_handler(ctx, node, name, args):
     quantizers = all_quantizers[keras_name]
 
     if quantizers.get("bias_quantizer_cfg"):
-        bias = node.inputs[1].get_tensor_value(as_list=True)
-        quant_params = get_quant_params(bias, quantizers["bias_quantizer_cfg"])
-        attr = quant_params["attributes"]
-        input_nodes = [node.input[1]]
-        for key in quant_params["inputs"].keys():
-            name = f"{node.name}_bias_quantizer_{key}"
-            np_val = np.asarray(quant_params["inputs"][key])
-            ctx.make_const(name, np_val)
-            input_nodes.append(name)
-        ctx.insert_new_node_on_input(node, "Quant", input_nodes, name=node.name + "_bias_quantizer", **attr, domain="qonnx")
+        _add_quant_node_on_input(ctx, node, quantizers["bias_quantizer_cfg"], 1)
 
     if quantizers.get("activation"):
         # removes node if added earlier
@@ -217,14 +218,19 @@ def bias_handler(ctx, node, name, args):
             np_val = np.asarray(quant_params["inputs"][key])
             ctx.make_const(name, np_val)
             input_nodes.append(name)
-        quant_act_node = ctx.make_node(
-            "Quant",
-            input_nodes,
-            dtypes=dtypes,
-            name=node.input[0] + "_activation_quantizer",
-            attr=attr,
-            domain="qonnx",
-        )
+        if quant_params["inputs"]["bit_width"] == 1 and attr["signed"] == 1:
+            quant_act_node = ctx.make_node(
+                "BipolarQuant", input_nodes[0:2], name=node.name + "_activation_quantizer", domain="qonnx"
+            )
+        else:
+            quant_act_node = ctx.make_node(
+                "Quant",
+                input_nodes,
+                dtypes=dtypes,
+                name=node.input[0] + "_activation_quantizer",
+                attr=attr,
+                domain="qonnx",
+            )
         ctx.insert_node_on_output(quant_act_node, node.output[0])
         ctx.set_shape(quant_act_node.output[0], ctx.get_shape(node.output[0]))
 

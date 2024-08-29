@@ -748,6 +748,52 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
     os.remove(model_path)
 
 
+def test_qkeras_binarized_model():
+    w1 = np.array([[1, -1, -1, 1], [-1, 1, 1, -1], [-1, -1, 1, 1]])
+    b1 = np.array([1, 2, 0, 1])
+    w2 = np.array([-1, 1, -1, -1]).reshape(4, 1)
+    b2 = np.array([1])
+
+    x = x_in = tf.keras.layers.Input(shape=3)
+    x = QActivation(binary(alpha=1))(x)
+    x = QDense(4, kernel_quantizer=binary(alpha=1), activation="binary")(x)
+    x = QDense(1, kernel_quantizer=binary(alpha=1), activation="binary")(x)
+    model = tf.keras.Model(inputs=[x_in], outputs=[x])
+    model.compile()
+    model.layers[2].set_weights([w1, b1])
+    model.layers[3].set_weights([w2, b2])
+    data = np.array(
+        [
+            [[-1.0, -1.0, -1.0]],
+            [[-1.0, -1.0, 1.0]],
+            [[-1.0, 1.0, -1.0]],
+            [[-1.0, 1.0, 1.0]],
+            [[1.0, -1.0, -1.0]],
+            [[1.0, -1.0, 1.0]],
+            [[1.0, 1.0, -1.0]],
+            [[1.0, 1.0, 1.0]],
+        ]
+    ).astype(np.float32)
+
+    onnx_model, external_storage = from_keras(model, "test_qkeras_binarized_model", opset=9)
+    assert external_storage is None
+    model_path = "model_test_qkeras_binarized_model.onnx"
+    onnx.save(onnx_model, model_path)
+    onnx_model = ModelWrapper(model_path)
+    onnx_model = onnx_model.transform(InferShapes())
+
+    for x_test in data:
+        y_qkeras = model.predict(x_test)
+        idict = {onnx_model.graph.input[0].name: x_test}
+        odict = oxe.execute_onnx(onnx_model, idict, True)
+        y_qonnx = odict[onnx_model.graph.output[0].name]
+        assert np.array_equal(y_qkeras, y_qonnx)
+
+    for node in onnx_model.graph.node:
+        assert node.op_type != "Quant", "A Binarized model must have only BipolarQuant quantizers!"
+    os.remove(model_path)
+
+
 # quantized_relu should not be used as a layer activation
 # def test_qkeras_broken_1(quantizers, request):
 #     kq, bq = (quantized_bits(4, 4, 0, alpha=1), quantized_bits(8, 8, 0, alpha=1))
