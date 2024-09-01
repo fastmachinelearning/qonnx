@@ -47,7 +47,7 @@ ioshared_quant_types = ["Quant", "Trunc"]
 def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
     not_initializer = model.get_initializer(tname) is None
     not_toplevel = not (tname in [x.name for x in model.graph.output])
-    consumer_is_quant = all([x.op_type in ioshared_quant_types for x in model.find_consumers(tname)])
+    consumer_is_quant = all([x.op_type in ["Relu", "Quant", "Trunc"] for x in model.find_consumers(tname)])
     return not_initializer and consumer_is_quant and not_toplevel
 
 
