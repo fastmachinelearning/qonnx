@@ -173,23 +173,51 @@ class ExtractAggregateScaleBias(Transformation):
         for old_scale_tname in self.target_tensor_ri.history_scale:
             scale_qnt_consumers = [x for x in model.find_consumers(old_scale_tname) if x.op_type in ioshared_quant_types]
             change_iosharedscale = [list(x.input).index(old_scale_tname) != 0 for x in scale_qnt_consumers]
-            if model.get_initializer(old_scale_tname) is None:
-                warn(f"{old_scale_tname} does not have an initializer! Adjust tensor scale manually.")
+            scale_is_toplevel = old_scale_tname in [x.name for x in model.graph.input]
+            scale_has_initializer = not (model.get_initializer(old_scale_tname) is None)
+            if scale_is_toplevel:
+                warn(f"{old_scale_tname} is a top-level input! Adjust tensor scale manually.")
+            elif (not scale_is_toplevel) and (not scale_has_initializer):
+                # see if we can disconnect scale source and replace with initializer
+                scale_producer = model.find_producer(old_scale_tname)
+                if scale_producer is None:
+                    assert False, f"{old_scale_tname} is not streamlineable, unrecognized pattern."
+                else:
+                    scale_prod_ind = [x for x in scale_producer.output].index(old_scale_tname)
+                    scale_producer.output[scale_prod_ind] = ""
+                    model.set_initializer(old_scale_tname, np.asarray(1.0, dtype=np.float32))
             elif change_iosharedscale:
-                assert False, f"{old_scale_tname} feeds a Quant or Trunc scale. Please call ExtractQuantScaleZeroPt first."
-            else:
+                assert (
+                    False
+                ), f"{old_scale_tname} feeds a Quant or Trunc (shared i/o) scale. Please call ExtractQuantScaleZeroPt first."
+            elif scale_has_initializer:
                 model.set_initializer(old_scale_tname, np.asarray(1.0, dtype=np.float32))
+            else:
+                assert False, f"{old_scale_tname} is not streamlineable, unrecognized pattern."
         for old_bias_tname in self.target_tensor_ri.history_bias:
             bias_qnt_consumers = [x for x in model.find_consumers(old_bias_tname) if x.op_type in ioshared_quant_types]
             change_iosharedbias = [list(x.input).index(old_bias_tname) != 0 for x in bias_qnt_consumers]
-            if model.get_initializer(old_bias_tname) is None:
-                warn(f"{old_bias_tname} does not have an initializer! Adjust tensor bias manually.")
+            bias_is_toplevel = old_bias_tname in [x.name for x in model.graph.input]
+            bias_has_initializer = not (model.get_initializer(old_bias_tname) is None)
+            if bias_is_toplevel:
+                warn(f"{old_bias_tname} is a top-level input! Adjust tensor bias manually.")
+            elif (not bias_is_toplevel) and (not bias_has_initializer):
+                # see if we can disconnect bias source and replace with initializer
+                bias_producer = model.find_producer(old_bias_tname)
+                if bias_producer is None:
+                    assert False, f"{old_bias_tname} is not streamlineable, unrecognized pattern."
+                else:
+                    bias_prod_ind = [x for x in bias_producer.output].index(old_bias_tname)
+                    bias_producer.output[bias_prod_ind] = ""
+                    model.set_initializer(old_bias_tname, np.asarray(0.0, dtype=np.float32))
             elif change_iosharedbias:
                 assert (
                     False
-                ), f"{old_bias_tname} feeds a Quant or Trunc zeropoint. Please call ExtractQuantScaleZeroPt first."
-            else:
+                ), f"{old_bias_tname} feeds a Quant or Trunc (shared i/o) bias. Please call ExtractQuantbiasZeroPt first."
+            elif bias_has_initializer:
                 model.set_initializer(old_bias_tname, np.asarray(0.0, dtype=np.float32))
+            else:
+                assert False, f"{old_bias_tname} is not streamlineable, unrecognized pattern."
         # rewire the head node
         head_out_target_tensor_ind = list(head.output).index(self.target_tensor_name)
         head.output[head_out_target_tensor_ind] = new_tensor0_tname
