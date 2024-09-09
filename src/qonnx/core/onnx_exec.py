@@ -208,7 +208,6 @@ def execute_onnx_and_make_model(model, input_dict):
         new_model.set_initializer(i, execution_context[i])
     for vi in new_model.graph.value_info:
         new_model.graph.output.append(vi)
-    # import pdb; pdb.set_trace()
     return new_model
 
 
