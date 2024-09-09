@@ -220,6 +220,11 @@ def get_random_input(test_model, seed=42):
     rng = np.random.RandomState(seed)
     input_shape = test_model_details[test_model]["input_shape"]
     (low, high) = test_model_details[test_model]["input_range"]
+    # some models spec per-channel ranges, be conservative for those
+    if isinstance(low, np.ndarray):
+        low = low.max()
+    if isinstance(high, np.ndarray):
+        high = high.min()
     size = np.prod(np.asarray(input_shape))
     input_tensor = rng.uniform(low=low, high=high, size=size)
     input_tensor = input_tensor.astype(np.float32)
