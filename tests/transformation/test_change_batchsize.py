@@ -45,6 +45,11 @@ def test_change_batchsize(test_model):
     batch_size = 10
     old_ishape = test_details["input_shape"]
     imin, imax = test_details["input_range"]
+    # some models spec per-channel ranges, be conservative for those
+    if isinstance(imin, np.ndarray):
+        imin = imin.max()
+    if isinstance(imax, np.ndarray):
+        imax = imax.min()
     model = download_model(test_model=test_model, do_cleanup=True, return_modelwrapper=True)
     iname = model.graph.input[0].name
     oname = model.graph.output[0].name
