@@ -654,6 +654,7 @@ optype_to_intrange_calc = {
     "Reshape": calc_intrange_eltwise_monotonic,
     "Transpose": calc_intrange_eltwise_monotonic,
     "Im2Col": calc_intrange_eltwise_monotonic,
+    "Concat": calc_intrange_eltwise_monotonic,
     "Split": calc_intrange_eltwise_monotonic,
     # Treat MultiThreshold as monotonic. This might be necessary for iterated
     # rounds of activation function to MultiThreshold conversion to absorb
