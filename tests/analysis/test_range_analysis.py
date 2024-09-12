@@ -34,6 +34,7 @@ import numpy as np
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.util.cleanup import cleanup_model
 from qonnx.util.range_analysis import (
     RangeInfo,
     broadcast_range,
@@ -186,11 +187,12 @@ def test_range_analysis_full_network_noscaledint(model_name):
 def test_range_analysis_full_network_scaledint(model_name):
     current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    model = cleanup_model(model, extract_conv_bias=True)
     ret = range_analysis(
         model,
         irange=current_details["scaledint_input_range"],
         report_mode="range",
-        do_cleanup=True,
+        do_cleanup=False,
         scaled_int=True,
     )
     model = model.transform(FoldConstants(exclude_op_types=[]))
