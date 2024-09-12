@@ -45,6 +45,10 @@ a2q_rn18_rmin = (a2q_rn18_int_range[0] * a2q_rn18_iscale - a2q_rn18_preproc_mean
 a2q_rn18_rmax = (a2q_rn18_int_range[1] * a2q_rn18_iscale - a2q_rn18_preproc_mean) / a2q_rn18_preproc_std
 a2q_rn18_scale = (1 / a2q_rn18_preproc_std) * a2q_rn18_iscale
 a2q_rn18_bias = -a2q_rn18_preproc_mean * a2q_rn18_preproc_std
+a2q_rn18_rmin = a2q_rn18_rmin.reshape(1, 3, 1, 1)
+a2q_rn18_rmax = a2q_rn18_rmax.reshape(1, 3, 1, 1)
+a2q_rn18_scale = a2q_rn18_scale.reshape(1, 3, 1, 1)
+a2q_rn18_bias = a2q_rn18_bias.reshape(1, 3, 1, 1)
 a2q_rn18_common = {
     "input_shape": (1, 3, 32, 32),
     "input_range": (a2q_rn18_rmin, a2q_rn18_rmax),
