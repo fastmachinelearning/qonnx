@@ -63,6 +63,9 @@ Install in editable mode in a venv:
    pip install -e .[testing, docs, notebooks]
 
 
+Test suite
+++++++++++
+
 Run entire test suite, parallelized across CPU cores:
 
 ::

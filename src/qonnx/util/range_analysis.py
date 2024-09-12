@@ -42,10 +42,10 @@ from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd
 from qonnx.transformation.infer_datatypes import InferDataTypes
-from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
+from qonnx.util.basic import get_by_name
 from qonnx.util.cleanup import cleanup_model
-from qonnx.util.onnx import valueinfo_to_tensor
+from qonnx.util.onnx import node_to_model, valueinfo_to_tensor
 
 # walk the graph to deduce range information about each tensor
 # assumptions:
@@ -125,6 +125,10 @@ class RangeInfo:
     bias: np.ndarray = None
     # whether this particular range is always fixed (due to its tensor having an initializer)
     is_initializer: bool = False
+
+    def is_point_interval(self):
+        # whether this is a point interval (min=max for all elements)
+        return (self.range[0] == self.range[1]).all()
 
     def has_integer_info(self) -> bool:
         # whether the RangeInfo has its int_range, scale and bias populated
@@ -263,6 +267,15 @@ def calc_logsoftmax_range(node, model, range_dict):
     range_dict[oname].range = (DataType["FLOAT32"].min(), 0)
 
 
+# return whether a given tensor is a shape operand
+def is_shape_operand(tensor_name, model):
+    cons = model.find_consumer(tensor_name)
+    if cons is not None:
+        if cons.op_type == "Reshape" and list(cons.input).index(tensor_name) == 1:
+            return True
+    return False
+
+
 # use initializers to mark point ranges i.e. tensor with initializer X has range (X, X)
 def calc_range_all_initializers(model, range_dict):
     all_tensor_names = model.get_all_tensor_names()
@@ -272,11 +285,65 @@ def calc_range_all_initializers(model, range_dict):
             range_dict[tensor_name] = RangeInfo(
                 shape=tensor_init.shape, range=(tensor_init, tensor_init), is_initializer=True
             )
-            # use % 1 == 0 to identify initializers with integer values
-            if ((tensor_init % 1) == 0).all():
+            # use % 1 == 0 to identify initializers with integer values (except shape
+            # operands which would give rise to false scaled-int propagation)
+            if ((tensor_init % 1) == 0).all() and not is_shape_operand(tensor_name, model):
                 range_dict[tensor_name].int_range = (tensor_init, tensor_init)
                 range_dict[tensor_name].scale = np.asarray([1.0], dtype=np.float32)
                 range_dict[tensor_name].bias = np.asarray([0.0], dtype=np.float32)
+
+
+# for several types of nodes, we dynamically convert ("lower") the node to something else that we can
+# process before making a recursive call to range analysis and put those results back in
+def calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict):
+    # run prep transforms to ensure lowering on single node will work correctly
+    prep_model = model
+    for trafo in prep_transforms:
+        prep_model = prep_model.transform(trafo)
+    # create a single-node model from this node
+    node_model = ModelWrapper(node_to_model(node, prep_model))
+    # run lowering pipeline on the single-node model
+    for trafo in lowering_transforms:
+        node_model = node_model.transform(trafo)
+    # copy RangeInfo pertaining to node_model's top-level inputs to a new dict
+    node_range_dict = {}
+    for node_inp in node_model.graph.input:
+        node_range_dict[node_inp.name] = range_dict[node_inp.name]
+    # run range analysis on the lowered single-node model
+    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE)
+    # copy results back into original range_dict
+    for node_out in node.output:
+        range_dict[node_out] = ret_range_dict[node_out]
+
+
+def calc_conv_range(node, model, range_dict):
+    prep_transforms = [FoldConstants(exclude_op_types=[])]
+    lowering_transforms = [LowerConvsToMatMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_bn_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [BatchNormToAffine()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_sub_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertSubToAdd()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_div_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertDivToMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_gemm_range(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [GemmToMatMul()]
+    calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
 
 
 # integer quantized NNs often carry around "scaled integers": instead of pure
@@ -295,6 +362,40 @@ def calc_range_all_initializers(model, range_dict):
 def check_int_inputs(node, range_dict):
     inp_int_info = [range_dict[x].has_integer_info() for x in node.input]
     return inp_int_info
+
+
+# for nodes that directly "pick" their output elements from input elements,
+# e.g permutation with or without repetition, we try to infer output scale and bias
+# by executing that node with its input scale/bias as the input. if scale/bias on an
+# input is not available, we check if that input is a constant (point interval) and use
+# that value instead.
+def calc_scalebias_from_execution(node, model, range_dict):
+    opset_version = model.model.opset_import[0].version
+    if len(node.output) > 1:
+        warn("Cannot infer scale for multi-output node")
+        return
+    ctx = {}
+    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape)
+    for inp in node.input:
+        if not (range_dict[inp].scale is None):
+            ctx[inp] = np.broadcast_to(range_dict[inp].scale, range_dict[inp].shape)
+        elif range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+        else:
+            warn(f"Cannot infer scale for f{node.name}")
+            return
+    execute_node(node, ctx, model.graph, opset_version=opset_version)
+    range_dict[node.output[0]].scale = ctx[node.output[0]]
+    for inp in node.input:
+        if not (range_dict[inp].bias is None):
+            ctx[inp] = np.broadcast_to(range_dict[inp].bias, range_dict[inp].shape)
+        elif range_dict[inp].is_point_interval():
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+        else:
+            warn(f"Cannot infer bias for f{node.name}")
+            return
+    execute_node(node, ctx, model.graph, opset_version=opset_version)
+    range_dict[node.output[0]].bias = ctx[node.output[0]]
 
 
 # for a node that already has its output scale & bias computed, compute
@@ -356,6 +457,30 @@ def calc_intrange_quant(node, model, range_dict):
     calc_intrange_from_scalebias(node, model, range_dict)
 
 
+# propagate integer range and scale/bias info for Trunc
+def calc_intrange_trunc(node, model, range_dict):
+    # get quantizer parameters
+    t_scale = model.get_initializer(node.input[1])
+    t_zeropt = model.get_initializer(node.input[2])
+    t_bitwidth_in = model.get_initializer(node.input[3])
+    t_bitwidth_out = model.get_initializer(node.input[4])
+    scale_ok = not (t_scale is None)
+    zeropt_ok = not (t_zeropt is None)
+    in_bitwidth_ok = not (t_bitwidth_in is None)
+    out_bitwidth_ok = not (t_bitwidth_out is None)
+    if not (scale_ok and zeropt_ok and in_bitwidth_ok and out_bitwidth_ok):
+        warn("%s has non-constant quantization parameters, skipping" % node.name)
+        return
+    # we need to do a little style conversion for the scale/bias:
+    # intrange calculations here represent quant tensors as Mx+N (x: int tensor, M: scale, N: bias)
+    # whereas Trunc nodes represent them as S(x-Z) (x: int tensor, S: scale, Z: zeropoint)
+    # it follows that M = S and N = -SZ
+    # TODO broadcast these to element shape?
+    range_dict[node.output[0]].scale = t_scale
+    range_dict[node.output[0]].bias = -(t_scale * t_zeropt)
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
 # propagates scale/bias info as-is without any changes
 # but recalculate the int range info based on actual shapes
 def calc_intrange_identity(node, model, range_dict):
@@ -378,10 +503,6 @@ def calc_intrange_identity(node, model, range_dict):
         range_dict[o] = orange_inf
 
 
-def is_point_interval(range_inf):
-    return (range_inf.range[0] == range_inf.range[1]).all()
-
-
 def interval_prod(interval_a, interval_b):
     a_min, a_max = interval_a
     b_min, b_max = interval_b
@@ -391,15 +512,51 @@ def interval_prod(interval_a, interval_b):
     return (c_min, c_max)
 
 
+# return a list of Bool values, indicating whether each input to a node
+# has a point interval associated with it (True) or not (False)
+def check_point_interval_inputs(node, range_dict):
+    inp_pointinterval_info = [range_dict[x].is_point_interval() for x in node.input]
+    return inp_pointinterval_info
+
+
 def calc_intrange_add(node, model, range_dict):
-    # our ability to do scaled-int range propagation depends on whether all
+    # our ability to do scaled-int range propagation depends on whether (some)
     # inputs have an integer component already
     inp_int_info = check_int_inputs(node, range_dict)
     if not any(inp_int_info):
         # must have at least one input with integer info, otherwise no point
         warn(node.name + " has no integer info on inputs, cannot propagate")
         return
-    elif all(inp_int_info):
+
+    # we can do scaled-int range propagation for addition in two cases:
+    # 1) when one of the intervals is a point interval (always treated as extra bias)
+    # 2) when both intervals have matching scales
+    ptint_info = check_point_interval_inputs(node, range_dict)
+
+    if any(ptint_info):
+        if all(ptint_info):
+            # special case - all inputs are constants. would normally be const-folded
+            # assume input 0 is the main input, input 1 is the bias
+            ptint_inpname = node.input[1]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[0]
+            irange_nonptint = range_dict[nonptint_inpname]
+        else:
+            # point interval will go into scale and bias
+            ptint_inpname = node.input[ptint_info.index(True)]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[ptint_info.index(False)]
+            irange_nonptint = range_dict[nonptint_inpname]
+        # the non-point interval must have int info
+        if irange_nonptint.int_range is None:
+            warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
+            return
+        # f + s*[i_min, i_max] + b so absorb the point interval into bias
+        # = s*[i_min, i_max] + (f + b)
+        range_dict[node.output[0]].int_range = irange_nonptint.int_range
+        range_dict[node.output[0]].scale = irange_nonptint.scale
+        range_dict[node.output[0]].bias = irange_nonptint.bias + irange_ptint.range[0]
+    else:
         # when all inputs are int, we can combine the scale factors into a single one
         # if there is an integer relationship between the scale factors
         irange_0 = range_dict[node.input[0]]
@@ -415,36 +572,48 @@ def calc_intrange_add(node, model, range_dict):
                 irange_0.int_range[0] + irange_1.int_range[0],
                 irange_0.int_range[1] + irange_1.int_range[1],
             )
+        else:
+            warn(node.name + " incompatible scales for int intervals, cannot propagate")
             return
-    # mix of integer and non-integer operands
-    # [f_min, f_max] + s*[i_min, i_max] + b
-    # = s*[i_min, i_max] + [f_min+b, f_max+b]
-    # we can only handle this when the non-integer operand is a point interval
-    # f_min = f_max = f which simplifies the expression to:
-    #  = s*[i_min, i_max] + f + b
-    if all(inp_int_info):
-        # TODO treat whichever one is point interval as the nonint
-        irange_int = range_dict[node.input[0]]
-        irange_nonint = range_dict[node.input[1]]
-    else:
-        irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-        if not is_point_interval(irange_nonint):
-            warn(node.name + " has non-int input which is not point interval, cannot propagate")
-            return
-        irange_int = range_dict[node.input[inp_int_info.index(True)]]
-    range_dict[node.output[0]].int_range = irange_int.int_range
-    range_dict[node.output[0]].scale = irange_int.scale
-    range_dict[node.output[0]].bias = irange_int.bias + irange_nonint.range[0]
 
 
 def calc_intrange_mul(node, model, range_dict):
-    # our ability to do scaled-int range propagation depends on whether all
+    # our ability to do scaled-int range propagation depends on whether (some)
     # inputs have an integer component already
     inp_int_info = check_int_inputs(node, range_dict)
     if not any(inp_int_info):
         # must have at least one input with integer info, otherwise no point
         warn(node.name + " has no integer info on inputs, cannot propagate")
         return
+
+    # we can do scaled-int range propagation for multiplication in two cases:
+    # 1) when one of the intervals is a point interval (incorporated into scale and bias)
+    # 2) when both int intervals have zero-valued bias
+    ptint_info = check_point_interval_inputs(node, range_dict)
+
+    if any(ptint_info):
+        if all(ptint_info):
+            # special case - all inputs are constants. would normally be const-folded
+            # assume input 0 is the main input, input 1 is the scale
+            ptint_inpname = node.input[1]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[0]
+            irange_nonptint = range_dict[nonptint_inpname]
+        else:
+            # point interval will go into scale and bias
+            ptint_inpname = node.input[ptint_info.index(True)]
+            irange_ptint = range_dict[ptint_inpname]
+            nonptint_inpname = node.input[ptint_info.index(False)]
+            irange_nonptint = range_dict[nonptint_inpname]
+        # the non-point interval must have int info
+        if irange_nonptint.int_range is None:
+            warn(node.name + " unsupported combination of point and int intervals, cannot propagate")
+            return
+        # f * (s*[i_min, i_max] + b)
+        # = f*s*[i_min, i_max] + (f * b)
+        range_dict[node.output[0]].int_range = irange_nonptint.int_range
+        range_dict[node.output[0]].scale = irange_nonptint.scale * irange_ptint.range[0]
+        range_dict[node.output[0]].bias = irange_nonptint.bias * irange_ptint.range[0]
     elif all(inp_int_info):
         # when all inputs are int and biases are zero, we can multiply the
         # scale factors to get the output scale factor, and similarly multiply
@@ -457,26 +626,12 @@ def calc_intrange_mul(node, model, range_dict):
             range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
             range_dict[node.output[0]].bias = np.asarray(0, dtype=np.float32)
             range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
-            return
         else:
-            warn("Found multiplication of nonzero-bias ints, cannot propagate")
-            # TODO could potentially treat this as a mix of int&nonint but
-            # need to identify which input to treat as nonint
+            warn(node.name + " nonzero biases for Mul, cannot propagate")
             return
-    # mix of integer and non-integer operands
-    # [f_min, f_max] * (s*[i_min, i_max] + b)
-    # = s*[i_min, i_max]*[f_min, f_max] + b*[f_min, f_max]
-    # we can only handle this when the non-integer operand is a point interval
-    # f_min = f_max = f which simplifies the expression to:
-    #  = f*s*[i_min, i_max] + b*f
-    irange_nonint = range_dict[node.input[inp_int_info.index(False)]]
-    if not is_point_interval(irange_nonint):
-        warn(node.name + " has non-int input which is not point interval, cannot propagate")
+    else:
+        warn(node.name + " unsupported pattern, cannot propagate")
         return
-    irange_int = range_dict[node.input[inp_int_info.index(True)]]
-    range_dict[node.output[0]].int_range = irange_int.int_range
-    range_dict[node.output[0]].scale = irange_int.scale * irange_nonint.range[0]
-    range_dict[node.output[0]].bias = irange_int.bias * irange_nonint.range[0]
 
 
 def check_matmul_for_intrange_prop(node, range_dict):
@@ -488,9 +643,6 @@ def check_matmul_for_intrange_prop(node, range_dict):
     if not irange_1_inf.has_integer_info():
         warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
         return False
-    # ensure range information is un-broadcasted so we can check shapes etc properly
-    irange_0_inf = irange_0_inf.unbroadcast()
-    irange_1_inf = irange_1_inf.unbroadcast()
     # for the output dot product to have a non-dynamic scale & bias, we need to put
     # some constraints on the scale & bias for the inputs
     # for now: no biases, TODO figure out if we can have shared bias in some cases
@@ -502,21 +654,30 @@ def check_matmul_for_intrange_prop(node, range_dict):
     if not i1_zerobias_ok:
         warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
         return False
+    # ensure scale information is un-broadcasted so we can check shapes etc properly
+    i0_scale = unbroadcast_tensor(irange_0_inf.scale)
+    i1_scale = unbroadcast_tensor(irange_0_inf.scale)
     # for a MatMul of shape (MxK) x (KxN) with scaling: we cannot have scales along the
     # dot product dimension, but per-tensor or per-dot-product are fine
     # i.e. either the scale is a scalar, or it has a non-1-shaped dimension for either
     # M (for input 0) or N (input 1) dimensions
-    if irange_0_inf.scale.size != 1:
-        acceptable_scale_i0 = [1] * irange_0_inf.ndim
+    if i0_scale.size != 1:
+        acceptable_scale_i0 = [1] * len(irange_0_inf.shape)
         acceptable_scale_i0[-2] = irange_0_inf.shape[-2]
         if list(irange_0_inf.scale.shape) != acceptable_scale_i0:
-            warn(f"Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)}, can't do scaled-int propagation")
+            warn(
+                f"""Input 0 of {node.name} has scale {str(irange_0_inf.scale.shape)},
+                but we need at most {str(acceptable_scale_i0)} so can't do scaled-int propagation"""
+            )
             return False
-    if irange_1_inf.scale.size != 1:
-        acceptable_scale_i1 = [1] * irange_1_inf.ndim
+    if i1_scale.size != 1:
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
         acceptable_scale_i1[-1] = irange_1_inf.shape[-1]
         if list(irange_1_inf.scale.shape) != acceptable_scale_i1:
-            warn(f"Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)}, can't do scaled-int propagation")
+            warn(
+                f"""Input 1 of {node.name} has scale {str(irange_1_inf.scale.shape)},
+                but we need at most {str(acceptable_scale_i1)} so can't do scaled-int propagation"""
+            )
             return False
     return True
 
@@ -533,8 +694,6 @@ def calc_intrange_matmul(node, model, range_dict):
         # be extra conservative for now: no negative scales, no biases
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
         assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
-    # TODO need to do an extra check - scales must be at most channelwise for both sides,
-    # can't be elementwise. otherwise we cannot do scaled-int range analysis
     orange_inf = range_dict[node.output[0]]
     int_range_dict = {}
     for node_out in node.output:
@@ -558,15 +717,132 @@ def calc_intrange_matmul(node, model, range_dict):
     # how best to deal with this? leave as is? set to 1/0?
     # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
     range_dict[node.output[0]].int_range = int_orange_inf.range
 
 
+def check_conv_for_intrange_prop(node, range_dict):
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
+    irange_0_inf = range_dict[node.input[0]]
+    irange_1_inf = range_dict[node.input[1]]
+    # inputs have shape N,C,xxx (batch N, channels C, spatial dims xxx)
+    ifm = irange_0_inf.shape[1]
+    # weights have shape OFM,IFM,xxx (output chans OFM, input chans IFM, kernel spatial dims xxx)
+    ofm = irange_1_inf.shape[0]
+    # note that we treat "general" grouped convs (1 < groups < ofm) as dense
+    is_depthwise = groups == ofm
+    if not irange_0_inf.has_integer_info():
+        warn(f"Input 0 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    if not irange_1_inf.has_integer_info():
+        warn(f"Input 1 of {node.name} has undefined bias, scale or int_range, can't do scaled-int propagation")
+        return False
+    # for the output dot product to have a non-dynamic scale & bias, we need to put
+    # some constraints on the scale & bias for the inputs
+    # for now: no biases, TODO figure out if we can have shared bias in some cases
+    i0_zerobias_ok = (irange_0_inf.bias == 0).all()
+    if not i0_zerobias_ok:
+        warn(f"Input 0 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    i1_zerobias_ok = (irange_1_inf.bias == 0).all()
+    if not i1_zerobias_ok:
+        warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
+        return False
+    # ensure scale information is un-broadcasted so we can check shapes etc properly
+    i0_scale = unbroadcast_tensor(irange_0_inf.scale)
+    i1_scale = unbroadcast_tensor(irange_0_inf.scale)
+    if is_depthwise:
+        # acceptable scale factor granularities for depthwise convolutions:
+        # - inputs (i0) can have per-tensor or per-channel quantization (different channels do not get mixed in same output)
+        # - weights (i1) can have per-tensor or per-channel quantization
+        # note that ifm = ofm in this case
+        acceptable_scale_i0 = [1] * len(irange_0_inf.shape)
+        acceptable_scale_i0[1] = ifm
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
+        acceptable_scale_i1[0] = ifm
+        scale_i0_ok = (list(irange_0_inf.scale.shape) == acceptable_scale_i0) or (i0_scale.size == 1)
+        scale_i1_ok = (list(irange_1_inf.scale.shape) == acceptable_scale_i1) or (i1_scale.size == 1)
+        return scale_i0_ok and scale_i1_ok
+    else:
+        # acceptable scale factor granularities for dense convolutions:
+        # - inputs (i0) can have per-tensor quantization (since different channels get mixed into same output)
+        # - weights (i1) can have per-tensor or per-output-channel quantization
+        acceptable_scale_i1 = [1] * len(irange_1_inf.shape)
+        acceptable_scale_i1[0] = ofm
+        scale_i0_ok = i0_scale.size == 1
+        scale_i1_ok = (list(irange_1_inf.scale.shape) == acceptable_scale_i1) or (i1_scale.size == 1)
+        return scale_i0_ok and scale_i1_ok
+
+
+def calc_intrange_conv(node, model, range_dict):
+    inp_int_info = check_int_inputs(node, range_dict)
+    if not all(inp_int_info):
+        warn(node.name + " does not have all-integer inputs, cannot propagate")
+        return
+    if not check_conv_for_intrange_prop(node, range_dict):
+        return
+    for node_in in node.input:
+        irange_inf = range_dict[node_in]
+        # be extra conservative for now: no negative scales, no biases
+        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
+        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
+    orange_inf = range_dict[node.output[0]]
+    int_range_dict = {}
+    for node_out in node.output:
+        int_range_dict[node_out] = RangeInfo()
+    # use integer components of input ranges for new range computation
+    for node_in in node.input:
+        int_range_dict[node_in] = RangeInfo(
+            shape=range_dict[node_in].shape,
+            range=range_dict[node_in].int_range,
+            is_initializer=range_dict[node_in].is_initializer,
+        )
+    range_calc_fxn = optype_to_range_calc[node.op_type]
+    range_calc_fxn(node, model, int_range_dict)
+    int_orange_inf = int_range_dict[node.output[0]]
+    # now deduce the output scale factor and bias from all available info
+    # range_max = S*int_range_max + B
+    # range_min = S*int_range_min + B
+    # so S = (range_max - range_min) / (int_range_max - int_range_min)
+    # and afterwards, B = range_max - S*int_range_max
+    # TODO scale and bias may contain NaN's when channels are stuck
+    # how best to deal with this? leave as is? set to 1/0?
+    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
+    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
+    range_dict[node.output[0]].scale = scale
+    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].int_range = int_orange_inf.range
+
+
+# for nodes such as Im2Col, Reshape, Transpose the scale/bias/per-element output ranges
+# are sourced from the scale/bias/per-element input ranges but the pattern can be complicated
 def calc_intrange_eltwise_monotonic(node, model, range_dict):
-    # for nodes such as Im2Col, Reshape, Transpose the scale/bias/per-element output ranges
-    # are sourced from the scale/bias/per-element input ranges but the pattern can be complicated
+    # TODO smarter decision-making here? e.g. do we need to check for MaxPool axes?
+    calc_intrange_eltwise_monotonic_scalebiasfirst(node, model, range_dict)
+
+
+def calc_intrange_eltwise_monotonic_scalebiasfirst(node, model, range_dict):
+    # strategy: execute node only with scale and only with bias to infer what the output scale and bias
+    # values are, then infer the integer ranges from that and the full range afterwards
+    calc_scalebias_from_execution(node, model, range_dict)
+    calc_intrange_from_scalebias(node, model, range_dict)
+
+
+def calc_intrange_eltwise_monotonic_intrangefirst(node, model, range_dict):
     # strategy: use regular range analysis (which will execute the node on the corners of the input
     # range) using the integer range as the input, which gives us the output integer range. then figure
     # out the scale/bias based on the output integer range.
@@ -589,6 +865,7 @@ def calc_intrange_eltwise_monotonic(node, model, range_dict):
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
     int_orange_inf = int_range_dict[node.output[0]]
+    range_dict[node.output[0]].int_range = int_orange_inf.range
     # now deduce the output scale factor and bias from all available info
     # range_max = S*int_range_max + B
     # range_min = S*int_range_min + B
@@ -598,10 +875,59 @@ def calc_intrange_eltwise_monotonic(node, model, range_dict):
     # how best to deal with this? leave as is? set to 1/0?
     # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
     scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+    if not np.isfinite(scale).all():
+        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
     bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
-    range_dict[node.output[0]].int_range = int_orange_inf.range
+
+
+# for several types of nodes, we dynamically convert ("lower") the node to something else that we can
+# process before making a recursive call to scaled-int range analysis and put those results back in
+def calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict):
+    # run prep transforms to ensure lowering on single node will work correctly
+    prep_model = model
+    for trafo in prep_transforms:
+        prep_model = prep_model.transform(trafo)
+    # create a single-node model from this node
+    node_model = ModelWrapper(node_to_model(node, prep_model))
+    # run lowering pipeline on the single-node model
+    for trafo in lowering_transforms:
+        node_model = node_model.transform(trafo)
+    # copy RangeInfo pertaining to node_model's top-level inputs to a new dict
+    node_range_dict = {}
+    for node_inp in node_model.graph.input:
+        node_range_dict[node_inp.name] = range_dict[node_inp.name]
+    # run range analysis on the lowered single-node model
+    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+    # copy results back into original range_dict
+    for node_out in node.output:
+        range_dict[node_out] = ret_range_dict[node_out]
+
+
+def calc_intrange_bn(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [BatchNormToAffine()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_sub(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertSubToAdd()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_div(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [ConvertDivToMul()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
+
+
+def calc_intrange_gemm(node, model, range_dict):
+    prep_transforms = []
+    lowering_transforms = [GemmToMatMul()]
+    calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, model, range_dict)
 
 
 # handler functions for regular range analysis
@@ -664,11 +990,14 @@ optype_to_range_calc = {
     # chains of monotonic activation functions into MultiThreshold
     # TODO: Check whether this is actually ok...
     "MultiThreshold": calc_monotonic_range,
+    "Conv": calc_conv_range,
+    "Gemm": calc_gemm_range,
 }
 
 # handler functions for scaled-integer range analysis
 optype_to_intrange_calc = {
     "MatMul": calc_intrange_matmul,
+    "Conv": calc_intrange_conv,
     "Add": calc_intrange_add,
     "Mul": calc_intrange_mul,
     "Relu": calc_intrange_relu,
@@ -685,12 +1014,18 @@ optype_to_intrange_calc = {
     # chains of monotonic activation functions into MultiThreshold
     # TODO: Check whether this is actually ok...
     "MultiThreshold": calc_intrange_eltwise_monotonic,
+    "Sub": calc_intrange_sub,
+    "Div": calc_intrange_div,
+    "Gemm": calc_intrange_gemm,
+    "BatchNormalization": calc_intrange_bn,
+    "AveragePool": calc_intrange_eltwise_monotonic,
+    "Trunc": calc_intrange_trunc,
 }
 
 
 # walk the graph node by node and propagate scaled-int range info
 # assumes that regular range analysis was already carried out
-def calc_intrange(model, range_dict, do_unbroadcast):
+def calc_intrange(model, range_dict, do_unbroadcast, stop_at_nodename):
     for node in model.graph.node:
         op_ok = node.op_type in optype_to_intrange_calc.keys()
         if op_ok:
@@ -705,6 +1040,8 @@ def calc_intrange(model, range_dict, do_unbroadcast):
                     range_dict[node_out].int_range = broadcast_range(range_dict[node_out].int_range, out_vi)
         else:
             warn("Skipping %s : op_ok? (%s) %s" % (node.name, node.op_type, str(op_ok)))
+        if stop_at_nodename != "" and node.name == stop_at_nodename:
+            break
 
 
 REPORT_MODE_RANGE = "range"
@@ -729,12 +1066,12 @@ def range_analysis(
     key_filter: str = "",
     save_modified_model: str = "",
     report_mode: report_mode_options = REPORT_MODE_STUCKCHANNEL,
-    lower_ops=False,
     prettyprint=False,
     do_cleanup=False,
     strip_initializers_from_report=True,
     scaled_int=False,
     do_unbroadcast=False,
+    stop_at_nodename="",
 ):
     assert report_mode in report_modes, "Unrecognized report_mode, must be " + str(report_modes)
     if isinstance(model_filename_or_wrapper, ModelWrapper):
@@ -760,42 +1097,36 @@ def range_analysis(
             range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, RangeInfo):
         pass
+    elif isinstance(irange, dict):
+        pass
     else:
         assert False, "Unknown irange type"
     if do_cleanup:
-        model = cleanup_model(model, preserve_qnt_ops=False)
-    if lower_ops:
-        model = model.transform(LowerConvsToMatMul())
-        model = model.transform(GemmToMatMul())
-        model = model.transform(BatchNormToAffine())
-        model = model.transform(ConvertSubToAdd())
-        model = model.transform(ConvertDivToMul())
-        model = cleanup_model(model)
-    # call constant folding & shape inference, this preserves weight quantizers
-    # (but do not do extra full cleanup, in order to preserve node/tensor naming)
-    # TODO is this redundant? remove?
-    model = model.transform(InferShapes())
-    model = model.transform(FoldConstants())
+        model = cleanup_model(model, preserve_qnt_ops=True)
     model = model.transform(InferDataTypes())
     if save_modified_model != "":
         model.save(save_modified_model)
     range_dict = {}
     stuck_chans = {}
 
-    # start by calculating/annotating range info for input tensors
-    for inp in model.graph.input:
-        iname = inp.name
-        if isinstance(irange, RangeInfo):
-            range_dict[iname] = irange
-        else:
-            if range_min is None or range_max is None:
-                # use idt annotation
-                idt = model.get_tensor_datatype(iname)
-                assert idt is not None, "Could not infer irange, please specify"
-                range_min = idt.min()
-                range_max = idt.max()
-            ishape = model.get_tensor_shape(iname)
-            range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
+    if isinstance(irange, dict):
+        # directly use provided range dict
+        range_dict = irange
+    else:
+        # start by calculating/annotating range info for input tensors
+        for inp in model.graph.input:
+            iname = inp.name
+            if isinstance(irange, RangeInfo):
+                range_dict[iname] = irange
+            else:
+                if range_min is None or range_max is None:
+                    # use idt annotation
+                    idt = model.get_tensor_datatype(iname)
+                    assert idt is not None, "Could not infer irange, please specify"
+                    range_min = idt.min()
+                    range_max = idt.max()
+                ishape = model.get_tensor_shape(iname)
+                range_dict[iname] = RangeInfo(shape=ishape, range=(range_min, range_max))
 
     # add range info for all tensors with initializers
     calc_range_all_initializers(model, range_dict)
@@ -828,10 +1159,12 @@ def range_analysis(
             # TODO bring back stuck channel analysis after simplification is re-introduced
         else:
             warn("Skipping %s : inp_range? %s op_ok? (%s) %s" % (node.name, str(inprange_ok), node.op_type, str(op_ok)))
+        if stop_at_nodename != "" and node.name == stop_at_nodename:
+            break
 
     # if scaled-int range prop is enabled, call as postproc
     if scaled_int:
-        calc_intrange(model, range_dict, do_unbroadcast)
+        calc_intrange(model, range_dict, do_unbroadcast, stop_at_nodename)
 
     # range dict is now complete, apply filters and formatting
     if report_mode in [REPORT_MODE_ZEROSTUCKCHANNEL, REPORT_MODE_STUCKCHANNEL]:
