@@ -39,35 +39,24 @@ from qonnx.transformation.streamline import ExtractAggregateScaleBias, Streamlin
 from qonnx.util.range_analysis import RangeInfo, range_analysis
 from qonnx.util.test import download_model, get_random_input, test_model_details
 
+uint8_to_unitfloat = {
+    "range": (np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+    "int_range": (np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+    "scale": np.asarray(1.0 / 255.0, dtype=np.float32),
+    "bias": np.asarray(0.0, dtype=np.float32),
+    "is_initializer": False,
+}
+
 model_details_scaledint = {
-    "FINN-TFC_W2A2": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 1, 28, 28),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
-        )
-    },
-    "FINN-CNV_W2A2": {
+    "FINN-TFC_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat)},
+    "FINN-CNV_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat)},
+    "MobileNetv1-w4a4": {"scaledint_input_range": RangeInfo(shape=(1, 3, 224, 224), **uint8_to_unitfloat)},
+    "rn18_w4a4_a2q_16b": {
         "scaledint_input_range": RangeInfo(
             shape=(1, 3, 32, 32),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
-        )
-    },
-    "MobileNetv1-w4a4": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 3, 224, 224),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
+            # TODO: the A2Q networks have actually different scale and bias
+            # due to input preprocessing, should be taken into account
+            **uint8_to_unitfloat
         )
     },
 }
@@ -105,7 +94,6 @@ def test_streamline_full_network(model_name):
     orig_model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     current_irange = current_details["scaledint_input_range"]
     model = orig_model.transform(Streamline(irange=current_irange))
-    model.save("streamlined.onnx")
     # check if streamlining succeeded structurally:
     # all compute-intensive ops (MatMul and Conv) must have integer inputs
     iname = model.graph.input[0].name
@@ -113,19 +101,16 @@ def test_streamline_full_network(model_name):
     # check that streamlined model produces the ~same results
     inp_t = get_random_input(model_name)
     inp_dict = {iname: inp_t}
-    golden_dict = execute_onnx(orig_model, inp_dict, return_full_exec_context=True)
-    golden_t = golden_dict[oname]
-    # no-scales Quant version for easier comparison/debug
+    # no-scales Quant version as reference, for easier comparison/debug
     noscales_model = orig_model.transform(ExtractQuantScaleZeroPt())
     noscales_dict = execute_onnx(noscales_model, inp_dict, return_full_exec_context=True)
     noscales_t = noscales_dict[oname]
-    assert np.isclose(golden_t, noscales_t, atol=1e-04).all()
     # streamlining should remove the effect of input scaling too, so we multiply
     # our original input by (1/original scale)
     inp_dict = {iname: inp_t * (1 / current_irange.scale)}
     ret_dict = execute_onnx(model, inp_dict, return_full_exec_context=True)
     ret_t = ret_dict[oname]
-    assert np.isclose(golden_t, ret_t, atol=1e-04).all()
+    assert np.isclose(noscales_t, ret_t, atol=1e-04).all()
     # note that we expect the input data type to change for the streamlined graph
     model.set_tensor_datatype(iname, DataType["UINT8"])
     model = model.transform(InferDataTypes())
