@@ -34,6 +34,7 @@ import pprint
 from onnx import ValueInfoProto
 from warnings import warn
 
+from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_node
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
@@ -244,6 +245,22 @@ def calc_range_outdtype(node, model, range_dict):
     odt = model.get_tensor_datatype(oname)
     assert odt is not None, "Cannot infer %s range, dtype annotation is missing" % oname
     range_dict[oname].range = (odt.min(), odt.max())
+
+
+# Softmax always produces outputs in [0,1]
+def calc_softmax_range(node, model, range_dict):
+    oname = node.output[0]
+    assert node.op_type == "Softmax"
+    range_dict[oname].range = (0, 1)
+
+
+# LogSoftmax always produces outputs in [-inf,0], which is the log of the range
+# of the Softmax
+def calc_logsoftmax_range(node, model, range_dict):
+    oname = node.output[0]
+    assert node.op_type == "LogSoftmax"
+    # Note: Replaces -inf by the smallest representable float 32 value
+    range_dict[oname].range = (DataType["FLOAT32"].min(), 0)
 
 
 # use initializers to mark point ranges i.e. tensor with initializer X has range (X, X)
@@ -635,6 +652,13 @@ optype_to_range_calc = {
     "Ceil": calc_monotonic_range,
     "Round": calc_monotonic_range,
     "Sign": calc_monotonic_range,
+    # Softmax has a defined output range of [0,1] while LogSoftmax yields the
+    # log of this range
+    "Softmax": calc_softmax_range,
+    "LogSoftmax": calc_logsoftmax_range,
+    # Squeeze and Unsqueeze are special cases of Reshape, which ist monotonic
+    "Squeeze": calc_monotonic_range,
+    "Unsqueeze": calc_monotonic_range,
     # Treat MultiThreshold as monotonic. This might be necessary for iterated
     # rounds of activation function to MultiThreshold conversion to absorb
     # chains of monotonic activation functions into MultiThreshold
