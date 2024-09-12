@@ -92,7 +92,7 @@ class MultiThreshold(CustomOp):
             "out_dtype": ("s", True, ""),
             "out_scale": ("f", False, 1.0),
             "out_bias": ("f", False, 0.0),
-            "data_layout": ("s", False, "NCHW", {"NCHW", "NHWC"}),
+            "data_layout": ("s", False, "NCHW", {"NCHW", "NHWC", "NC"}),
         }
 
     def make_shape_compatible_op(self, model):
