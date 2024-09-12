@@ -70,7 +70,7 @@ class Streamline(Transformation):
         model = model.transform(GemmToMatMul())
         model = model.transform(ConvertDivToMul())
         model = model.transform(ConvertSubToAdd())
-        model = cleanup_model(model)
+        model = cleanup_model(model, extract_conv_bias=True)
         # now run range analysis
         range_dict = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
         # use results of range analysis to move out scale/bias factors
