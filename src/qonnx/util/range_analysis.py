@@ -727,20 +727,6 @@ def calc_intrange_matmul(node, model, range_dict):
         # be extra conservative for now: no negative scales, no biases
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
         assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
-    orange_inf = range_dict[node.output[0]]
-    int_range_dict = {}
-    for node_out in node.output:
-        int_range_dict[node_out] = RangeInfo()
-    # use integer components of input ranges for new range computation
-    for node_in in node.input:
-        int_range_dict[node_in] = RangeInfo(
-            shape=range_dict[node_in].shape,
-            range=range_dict[node_in].int_range,
-            is_initializer=range_dict[node_in].is_initializer,
-        )
-    range_calc_fxn = optype_to_range_calc[node.op_type]
-    range_calc_fxn(node, model, int_range_dict)
-    int_orange_inf = int_range_dict[node.output[0]]
     # compute updated scale and bias
     i0scale = unbroadcast_tensor(range_dict[node.input[0]].scale)
     i1scale = unbroadcast_tensor(range_dict[node.input[1]].scale)
@@ -748,21 +734,7 @@ def calc_intrange_matmul(node, model, range_dict):
     bias = np.asarray(0.0, dtype=np.float32)
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
-    range_dict[node.output[0]].int_range = ((orange_inf.range[0] - bias) / scale, (orange_inf.range[1] - bias) / scale)
-    # inherit scale/bias history from both sides
-    range_dict[node.output[0]].history_scale = (
-        range_dict[node.input[0]].history_scale + range_dict[node.input[1]].history_scale
-    )
-    range_dict[node.output[0]].history_bias = range_dict[node.input[0]].history_bias + range_dict[node.input[1]].history_bias
-
-    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
-    if not np.isfinite(scale).all():
-        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
-        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
-    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
-    range_dict[node.output[0]].scale = scale
-    range_dict[node.output[0]].bias = bias
-    range_dict[node.output[0]].int_range = int_orange_inf.range
+    calc_intrange_from_scalebias(node, model, range_dict)
     # inherit scale/bias history from both sides
     range_dict[node.output[0]].history_scale = (
         range_dict[node.input[0]].history_scale + range_dict[node.input[1]].history_scale
@@ -832,6 +804,7 @@ def check_conv_for_intrange_prop(node, range_dict):
 
 
 def calc_intrange_conv(node, model, range_dict):
+    assert len(node.input) == 2, "Must call ExtractConvBias before calc_intrange_conv_nobias"
     inp_int_info = check_int_inputs(node, range_dict)
     if not all(inp_int_info):
         warn(node.name + " does not have all-integer inputs, cannot propagate")
@@ -843,19 +816,6 @@ def calc_intrange_conv(node, model, range_dict):
         # be extra conservative for now: no negative scales, no biases
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
         assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
-    orange_inf = range_dict[node.output[0]]
-    int_range_dict = {}
-    for node_out in node.output:
-        int_range_dict[node_out] = RangeInfo()
-    # use integer components of input ranges for new range computation
-    for node_in in node.input:
-        int_range_dict[node_in] = RangeInfo(
-            shape=range_dict[node_in].shape,
-            range=range_dict[node_in].int_range,
-            is_initializer=range_dict[node_in].is_initializer,
-        )
-    range_calc_fxn = optype_to_range_calc[node.op_type]
-    range_calc_fxn(node, model, int_range_dict)
     # compute updated scale and bias
     iscale_fixed = unbroadcast_tensor(range_dict[node.input[0]].scale)
     wscale_fixed = unbroadcast_tensor(range_dict[node.input[1]].scale)
@@ -869,7 +829,7 @@ def calc_intrange_conv(node, model, range_dict):
     bias = np.asarray(0.0, dtype=np.float32)
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
-    range_dict[node.output[0]].int_range = ((orange_inf.range[0] - bias) / scale, (orange_inf.range[1] - bias) / scale)
+    calc_intrange_from_scalebias(node, model, range_dict)
     # inherit scale/bias history from both sides
     range_dict[node.output[0]].history_scale = (
         range_dict[node.input[0]].history_scale + range_dict[node.input[1]].history_scale
