@@ -741,14 +741,7 @@ def calc_intrange_matmul(node, model, range_dict):
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
     int_orange_inf = int_range_dict[node.output[0]]
-    # now deduce the output scale factor and bias from all available info
-    # range_max = S*int_range_max + B
-    # range_min = S*int_range_min + B
-    # so S = (range_max - range_min) / (int_range_max - int_range_min)
-    # and afterwards, B = range_max - S*int_range_max
-    # TODO scale and bias may contain NaN's when channels are stuck
-    # how best to deal with this? leave as is? set to 1/0?
-    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+    # compute updated scale and bias
     i0scale = unbroadcast_tensor(range_dict[node.input[0]].scale)
     i1scale = unbroadcast_tensor(range_dict[node.input[1]].scale)
     scale = i0scale * i1scale
@@ -863,29 +856,16 @@ def calc_intrange_conv(node, model, range_dict):
         )
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
-    # int_orange_inf = int_range_dict[node.output[0]]
-    # now deduce the output scale factor and bias from all available info
-    # range_max = S*int_range_max + B
-    # range_min = S*int_range_min + B
-    # so S = (range_max - range_min) / (int_range_max - int_range_min)
-    # and afterwards, B = range_max - S*int_range_max
-    # TODO scale and bias may contain NaN's when channels are stuck
-    # how best to deal with this? leave as is? set to 1/0?
-    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
-    # scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
-    # if not np.isfinite(scale).all():
-    #    warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
-    #    scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
-    # bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
-    wscale_fixed = range_dict[node.input[1]].scale
+    # compute updated scale and bias
+    iscale_fixed = unbroadcast_tensor(range_dict[node.input[0]].scale)
+    wscale_fixed = unbroadcast_tensor(range_dict[node.input[1]].scale)
     if wscale_fixed.ndim > 1:
         target_example = range_dict[node.output[0]].shape
         # ofm,ifm,xx -> 1,ofm,xx
         desired_scale_shape = [1 for x in range(len(target_example))]
         desired_scale_shape[1] = target_example[1]
         wscale_fixed = wscale_fixed.reshape(desired_scale_shape)
-
-    scale = range_dict[node.input[0]].scale * wscale_fixed
+    scale = iscale_fixed * wscale_fixed
     bias = np.asarray(0.0, dtype=np.float32)
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
