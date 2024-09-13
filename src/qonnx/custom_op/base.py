@@ -74,6 +74,8 @@ class CustomOp(ABC):
                 if dtype == "s":
                     # decode string attributes
                     ret = ret.decode("utf-8")
+                elif dtype == "strings":
+                    ret = [x.decode("utf-8") for x in ret]
                 elif dtype == "t":
                     # use numpy helper to convert TensorProto -> np array
                     ret = np_helper.to_array(ret)
@@ -123,13 +125,15 @@ class CustomOp(ABC):
                     # encode string attributes
                     value = value.encode("utf-8")
                     attr.__setattr__(dtype, value)
+                elif dtype == "strings":
+                    attr.strings[:] = [x.encode("utf-8") for x in value]
                 elif dtype == "floats":  # list of floats
                     attr.floats[:] = value
                 elif dtype == "ints":  # list of integers
                     attr.ints[:] = value
                 elif dtype == "t":  # single tensor
                     attr.t.CopyFrom(value)
-                elif dtype in ["strings", "tensors", "graphs", "sparse_tensors"]:
+                elif dtype in ["tensors", "graphs", "sparse_tensors"]:
                     # untested / unsupported attribute types
                     # add testcases & appropriate getters before enabling
                     raise Exception("Attribute type %s not yet supported" % dtype)

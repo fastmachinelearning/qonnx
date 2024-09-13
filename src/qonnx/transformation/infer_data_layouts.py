@@ -46,11 +46,19 @@ def _dims_to_layout(model, node, ndims):
                     return DataLayout.NHWC
                 elif layout == "NCHW" and ndims == 4:
                     return DataLayout.NCHW
+                elif layout == "NWC" and ndims == 3:
+                    return DataLayout.NWC
+                elif layout == "NC" and ndims == 2:
+                    return DataLayout.NC
                 else:
                     return DataLayout.UNKNOWN
             else:
                 if ndims == 4:
                     return DataLayout.NHWC
+                elif ndims == 3:
+                    return DataLayout.NWC
+                elif ndims == 2:
+                    return DataLayout.NC
                 else:
                     return DataLayout.UNKNOWN
         else:
@@ -118,6 +126,10 @@ class InferDataLayouts(Transformation):
             if len(inp_shape) == 4:
                 warnings.warn("Assuming 4D input is NCHW")
                 model.set_tensor_layout(inp_name, DataLayout.NCHW)
+                graph_modified = True
+            elif len(inp_shape) == 3:
+                warnings.warn("Assuming 3D input is NWC")
+                model.set_tensor_layout(inp_name, DataLayout.NWC)
                 graph_modified = True
             elif len(inp_shape) == 2:
                 graph_modified = True

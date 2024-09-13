@@ -60,13 +60,6 @@ def calculate_matvec_accumulator_extremum(matrix: np.ndarray, vec_min, vec_max):
     return (min_values, max_values)
 
 
-def propagate_range(node, model, range_dict):
-    iname = node.input[0]
-    node_irange = range_dict[iname]
-    for oname in node.output:
-        range_dict[oname] = node_irange
-
-
 def calc_gemm_range(node, model, range_dict):
     alpha = get_by_name(node.attribute, "alpha").f
     beta = get_by_name(node.attribute, "beta").f
@@ -172,10 +165,49 @@ def calc_conv_range(node, model, range_dict):
     range_dict[oname] = ret
 
 
+def calc_convtranspose_range(node, model, range_dict):
+    iname = node.input[0]
+    wname = node.input[1]
+    assert len(node.input) == 2, "Found unsupported ConvTranspose with bias"
+    oname = node.output[0]
+    irange = range_dict[iname]
+    imin, imax = irange
+    weights = model.get_initializer(wname)
+    assert weights is not None, "Uninitialized ConvTranspose weights"
+    groups = get_by_name(node.attribute, "group")
+    if groups is None:
+        # default to dense convs
+        groups = 1
+    else:
+        groups = groups.i
+    assert groups == 1, "Only dense (non-grouped) ConvTranspose is supported"
+    # do weight reshaping to treat Conv similar to MatMul
+    # (mh, mw) = (ofm, (ifm x k0 x k1 x ...))
+    conv_ofm = weights.shape[1]
+    conv_ifm = weights.shape[0]
+    weights = weights.transpose(1, 0, 2, 3).reshape(conv_ofm, -1)
+    k_total = weights.shape[1] // conv_ifm
+    if type(imin) is np.ndarray:
+        imin_rep = np.repeat(imin, k_total)
+        imax_rep = np.repeat(imax, k_total)
+    else:
+        imin_rep = imin
+        imax_rep = imax
+    dw_ret_min = []
+    dw_ret_max = []
+    for i in range(conv_ofm):
+        w_slice = weights[i, :].reshape(1, -1)
+        dw_ret = calculate_matvec_accumulator_extremum(w_slice, imin_rep, imax_rep)
+        dw_ret_min.append(dw_ret[0].item())
+        dw_ret_max.append(dw_ret[1].item())
+    ret = (np.asarray(dw_ret_min), np.asarray(dw_ret_max))
+    range_dict[oname] = ret
+
+
 def get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis=1):
     proto_min = valueinfo_to_tensor(inp_vi)
     proto_max = valueinfo_to_tensor(inp_vi)
-    if type(irange[0]) in [float, int, np.float32, np.float64, np.uint8, np.int8]:
+    if type(irange[0]) in [float, int, np.float16, np.float32, np.float64, np.uint8, np.int8]:
         imin, imax = irange
         proto_min[...] = imin
         proto_max[...] = imax
@@ -211,11 +243,14 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         inp_vi = model.get_tensor_valueinfo(inp)
         proto_vectors.append(get_minmax_prototype_tensors(irange, ishp, inp_vi, i_channel_axis))
     # process all combinations of prototype vectors for dynamic inputs
-    running_min = None
-    running_max = None
+    running_min = [None for i in range(len(node.output))]
+    running_max = [None for i in range(len(node.output))]
     # create context for single-node execution
     ctx = {x: model.get_initializer(x) for x in node.input}
-    ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
+    for oname in node.output:
+        ctx[oname] = valueinfo_to_tensor(model.get_tensor_valueinfo(oname))
+    # assume all outputs are homogenous wrt data layout (e.g. channel axis
+    # always lives in the same position)
     axes_to_min = [i for i in range(ctx[oname].ndim)]
     axes_to_min.remove(i_channel_axis)
     axes_to_min = tuple(axes_to_min)
@@ -223,13 +258,19 @@ def calc_monotonic_range(node, model, range_dict, i_channel_axis=1):
         for i in range(n_dyn_inp):
             ctx[dyn_inps[i]] = inps[i]
         execute_node(node, ctx, model.graph, opset_version=opset_version)
-        # grab new output and update running min/max
-        out = ctx[oname]
-        chanwise_min = out.min(axis=axes_to_min).flatten()
-        chanwise_max = out.max(axis=axes_to_min).flatten()
-        running_min = np.minimum(chanwise_min, running_min).flatten() if running_min is not None else chanwise_min
-        running_max = np.maximum(chanwise_max, running_max).flatten() if running_max is not None else chanwise_max
-    range_dict[oname] = (running_min, running_max)
+        for oind, oname in enumerate(node.output):
+            # grab new output and update running min/max
+            out = ctx[oname]
+            chanwise_min = out.min(axis=axes_to_min).flatten()
+            chanwise_max = out.max(axis=axes_to_min).flatten()
+            running_min[oind] = (
+                np.minimum(chanwise_min, running_min[oind]).flatten() if running_min[oind] is not None else chanwise_min
+            )
+            running_max[oind] = (
+                np.maximum(chanwise_max, running_max[oind]).flatten() if running_max[oind] is not None else chanwise_max
+            )
+    for oind, oname in enumerate(node.output):
+        range_dict[oname] = (running_min[oind], running_max[oind])
 
 
 def calc_range_outdtype(node, model, range_dict):
@@ -240,12 +281,13 @@ def calc_range_outdtype(node, model, range_dict):
 
 
 optype_to_range_calc = {
-    "Transpose": propagate_range,
+    "Transpose": calc_monotonic_range,
     "MatMul": calc_matmul_range,
     "Conv": calc_conv_range,
+    "ConvTranspose": calc_convtranspose_range,
     "QuantMaxNorm": calc_range_outdtype,
-    "Flatten": propagate_range,
-    "Reshape": propagate_range,
+    "Flatten": calc_monotonic_range,
+    "Reshape": calc_monotonic_range,
     "Quant": calc_monotonic_range,
     "BipolarQuant": calc_monotonic_range,
     "Mul": calc_monotonic_range,
@@ -254,7 +296,7 @@ optype_to_range_calc = {
     "Add": calc_monotonic_range,
     "BatchNormalization": calc_monotonic_range,
     "Relu": calc_monotonic_range,
-    "Pad": propagate_range,
+    "Pad": calc_monotonic_range,
     "AveragePool": calc_monotonic_range,
     "Trunc": calc_range_outdtype,
     "MaxPool": calc_monotonic_range,
@@ -267,6 +309,7 @@ optype_to_range_calc = {
     "Clip": calc_monotonic_range,
     "Sigmoid": calc_monotonic_range,
     "Concat": calc_monotonic_range,
+    "Split": calc_monotonic_range,
 }
 
 
@@ -320,8 +363,12 @@ def range_analysis(
             range_min = None
             range_max = None
         else:
-            irange = irange.split(",")
-            range_min, range_max = float(irange[0]), float(irange[1])
+            irange = eval(irange)
+            range_min, range_max = irange
+            if isinstance(range_min, list):
+                range_min = np.asarray(range_min, dtype=np.float32)
+            if isinstance(range_max, list):
+                range_max = np.asarray(range_max, dtype=np.float32)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
     else:
@@ -350,9 +397,8 @@ def range_analysis(
     for node in model.graph.node:
         dyn_inputs = [x for x in node.input if is_dyn_input(x, model)]
         inprange_ok = all([x in range_dict.keys() for x in dyn_inputs])
-        outcount_ok = len(node.output) == 1
         op_ok = node.op_type in optype_to_range_calc.keys()
-        if inprange_ok and op_ok and outcount_ok:
+        if inprange_ok and op_ok:
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]

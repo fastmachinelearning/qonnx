@@ -38,7 +38,12 @@ import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
-from qonnx.transformation.general import RemoveStaticGraphInputs, RemoveUnusedTensors, SortGraph
+from qonnx.transformation.general import (
+    RemoveStaticGraphInputs,
+    RemoveUnusedTensors,
+    SortCommutativeInputsInitializerLast,
+    SortGraph,
+)
 
 
 class ModelWrapper:
@@ -149,6 +154,7 @@ class ModelWrapper:
             RemoveUnusedTensors(),
             RemoveStaticGraphInputs(),
             SortGraph(),
+            SortCommutativeInputsInitializerLast(),
         ]
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
@@ -346,16 +352,19 @@ class ModelWrapper:
                 return x
         return None
 
-    def find_upstream(self, tensor_name, finder_fxn):
+    def find_upstream(self, tensor_name, finder_fxn, keep_if_not_found=False):
         """Follow the producer chain upstream, calling finder_fxn on each upstream
         node until it returns True or there are no nodes left. Returns the list
-        of nodes visited, or None if finder_fxn did not return True."""
+        of nodes visited, or None if finder_fxn did not return True. If
+        keep_if_not_found is specified, returns the list of nodes visited, even
+        if finder_fxn never returned True, i.e., if the search terminated at an
+        input or initializer."""
         visit_list = []
         current_tensor = tensor_name
         while True:
             current_producer = self.find_producer(current_tensor)
             if current_producer is None:
-                return []
+                return visit_list if keep_if_not_found else []
             else:
                 found = finder_fxn(current_producer)
                 visit_list.append(current_producer)
@@ -364,7 +373,7 @@ class ModelWrapper:
                 elif len(current_producer.input) > 0:
                     current_tensor = current_producer.input[0]
                 else:
-                    return None
+                    return visit_list if keep_if_not_found else None
 
     def find_consumer(self, tensor_name):
         """Finds and returns the node that consumes the tensor with given name.
@@ -420,14 +429,24 @@ class ModelWrapper:
         """Checks if the given node is a fork, that is, the node has multiple
         direct successors"""
         direct_successors = self.find_direct_successors(node)
-        is_fork = False if direct_successors is None else (len(direct_successors) > 1)
+        # if the node output is also wired to a top-level output, it is still
+        # a fork with only 1 direct successor
+        if node.output[0] in [x.name for x in self.graph.output]:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 0)
+        else:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 1)
         return is_fork
 
     def is_join_node(self, node):
         """Checks if the given node is a join, that is, the node has multiple
         direct predecessors"""
         direct_predecessors = self.find_direct_predecessors(node)
-        is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
+        # if the node input is also wired to a top-level input, it is still
+        # a fork with only 1 direct predecessor
+        if node.input[0] in [x.name for x in self.graph.input]:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 0)
+        else:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
         return is_join
 
     def get_all_tensor_names(self):
@@ -532,7 +551,7 @@ class ModelWrapper:
         return list(filter(lambda x: not util.is_finn_op(x.domain), self.graph.node))
 
     def get_node_index(self, node):
-        """Returns current index of given node."""
+        """Returns current index of given node, or None if not found."""
         n_ind = 0
         try:
             for n in self.graph.node:
@@ -541,6 +560,17 @@ class ModelWrapper:
                 n_ind += 1
         except ValueError:
             return None
+        return None
+
+    def get_node_from_name(self, node_name):
+        """Returns the node with the specified name, or None if not found."""
+        try:
+            for node in self.graph.node:
+                if node.name == node_name:
+                    return node
+        except ValueError:
+            return None
+        return None
 
     def get_tensor_layout(self, tensor_name):
         """Returns the data layout annotation of tensor with given name.

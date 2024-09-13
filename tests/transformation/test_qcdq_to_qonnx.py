@@ -39,7 +39,9 @@ from qonnx.util.cleanup import cleanup_model
 
 model_details = {
     "MobileNetv2-w8a8": {
-        "url": ("https://github.com/onnx/models/raw/main/vision/classification/mobilenet/model/mobilenetv2-12-qdq.onnx"),
+        "url": (
+            "https://github.com/onnx/models/raw/main/validated/vision/classification/mobilenet/model/mobilenetv2-12-qdq.onnx"
+        ),
         "input_shape": (1, 3, 224, 224),
         "input_range": (-1, +1),
         "exp_q_nodes": 171,

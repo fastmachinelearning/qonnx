@@ -140,7 +140,7 @@ class QuantAvgPool2d(CustomOp):
         sess = rt.InferenceSession(model_avgpool.SerializeToString())
         result_temp = sess.run(None, idict)
         # remove scaling introduced by average
-        result_temp = result_temp[0] * (k * k)
+        result_temp = np.round(result_temp[0] * (k * k))
         result = np.right_shift(result_temp.astype(int), self.get_shifts())
         if self.get_nodeattr("data_layout") == "NHWC":
             result = result.transpose(0, 2, 3, 1)
