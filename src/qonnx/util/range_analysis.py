@@ -310,7 +310,7 @@ def calc_range_with_lowering(prep_transforms, lowering_transforms, node, model, 
     for node_inp in node_model.graph.input:
         node_range_dict[node_inp.name] = range_dict[node_inp.name]
     # run range analysis on the lowered single-node model
-    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE)
+    ret_range_dict, _ = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE)
     # copy results back into original range_dict
     for node_out in node.output:
         range_dict[node_out] = ret_range_dict[node_out]
@@ -900,7 +900,7 @@ def calc_intrange_with_lowering(prep_transforms, lowering_transforms, node, mode
     for node_inp in node_model.graph.input:
         node_range_dict[node_inp.name] = range_dict[node_inp.name]
     # run range analysis on the lowered single-node model
-    ret_range_dict = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+    ret_range_dict, _ = range_analysis(node_model, irange=node_range_dict, report_mode=REPORT_MODE_RANGE, scaled_int=True)
     # copy results back into original range_dict
     for node_out in node.output:
         range_dict[node_out] = ret_range_dict[node_out]
