@@ -32,6 +32,9 @@ import random
 import string
 import warnings
 
+import qonnx
+import qonnx.custom_op
+import qonnx.custom_op.registry
 from qonnx.core.datatype import DataType
 
 # TODO solve by moving onnx-dependent fxns to onnx.py
@@ -63,8 +66,7 @@ def qonnx_make_model(graph_proto, **kwargs):
 
 
 def is_finn_op(op_type):
-    "Return whether given op_type string is a QONNX or FINN custom op"
-    return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas")
+    return qonnx.custom_op.registry.is_finn_op(op_type)
 
 
 def get_num_default_workers():
