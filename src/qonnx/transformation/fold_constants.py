@@ -111,6 +111,11 @@ class FoldConstants(Transformation):
                 # remove old node
                 nodes_to_remove.append(n)
                 graph_modified = True
+                # Exit the loop here, after changing a single node. The
+                # ModelWrapper ensures to repeat this transformatin as long as
+                # there are suitable nodes available.
+                # See https://github.com/fastmachinelearning/qonnx/issues/104
+                break
         for node in nodes_to_remove:
             model.graph.node.remove(node)
         if graph_modified:
