@@ -1,6 +1,6 @@
 ### <a name="FloatQuant"></a><a name="abs">**FloatQuant**</a>
 
-Calculates the [minifloat-quantized](https://arxiv.org/abs/2311.12359) values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
+Calculates the [arbitrary-precision-float-quantized](https://arxiv.org/abs/2311.12359) values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
 Additionally, takes four floats as input, which define the scale, exponent bitwidth, mantissa bitwidth and exponent bias of the quantization,
 all of which may be scalars or tensors with shapes broadcastable to the shape of the input data tensor. This can be used to
 control the granularity of the quantization. For instance, a scalar scale operand implies per-tensor scaling, while a scale operand with
