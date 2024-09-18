@@ -83,6 +83,7 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
         RemoveStaticGraphInputs(),
         GiveUniqueNodeNames(),
         GiveReadableTensorNames(),
+        InferShapes(),
     ]
     for t in cleanup_transformations:
         model = model.transform(t)
