@@ -846,7 +846,7 @@ def calc_intrange_eltwise_monotonic_intrangefirst(node, model, range_dict):
     # strategy: use regular range analysis (which will execute the node on the corners of the input
     # range) using the integer range as the input, which gives us the output integer range. then figure
     # out the scale/bias based on the output integer range.
-    orange_inf = range_dict[node.output[0]]
+    orange_inf = {out: range_dict[out] for out in node.output}
     int_range_dict = {}
     for node_out in node.output:
         oshape = model.get_tensor_shape(node_out)
@@ -864,23 +864,24 @@ def calc_intrange_eltwise_monotonic_intrangefirst(node, model, range_dict):
             int_range_dict[node_in] = range_dict[node_in]
     range_calc_fxn = optype_to_range_calc[node.op_type]
     range_calc_fxn(node, model, int_range_dict)
-    int_orange_inf = int_range_dict[node.output[0]]
-    range_dict[node.output[0]].int_range = int_orange_inf.range
-    # now deduce the output scale factor and bias from all available info
-    # range_max = S*int_range_max + B
-    # range_min = S*int_range_min + B
-    # so S = (range_max - range_min) / (int_range_max - int_range_min)
-    # and afterwards, B = range_max - S*int_range_max
-    # TODO scale and bias may contain NaN's when channels are stuck
-    # how best to deal with this? leave as is? set to 1/0?
-    # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
-    scale = (orange_inf.range[1] - orange_inf.range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
-    if not np.isfinite(scale).all():
-        warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
-        scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
-    bias = orange_inf.range[1] - scale * int_orange_inf.range[1]
-    range_dict[node.output[0]].scale = scale
-    range_dict[node.output[0]].bias = bias
+    for i, out in enumerate(node.output):
+        int_orange_inf = int_range_dict[out]
+        range_dict[out].int_range = int_orange_inf.range
+        # now deduce the output scale factor and bias from all available info
+        # range_max = S*int_range_max + B
+        # range_min = S*int_range_min + B
+        # so S = (range_max - range_min) / (int_range_max - int_range_min)
+        # and afterwards, B = range_max - S*int_range_max
+        # TODO scale and bias may contain NaN's when channels are stuck
+        # how best to deal with this? leave as is? set to 1/0?
+        # try to recover in some other way? (perturb the actual range before calling range_calc_fxn)
+        scale = (orange_inf[out].range[1] - orange_inf[out].range[0]) / (int_orange_inf.range[1] - int_orange_inf.range[0])
+        if not np.isfinite(scale).all():
+            warn(f"{node.name} has stuck values, forcing scale to 1.0 for those")
+            scale = np.nan_to_num(scale, nan=1.0, posinf=1.0, neginf=1.0)
+        bias = orange_inf[out].range[1] - scale * int_orange_inf.range[1]
+        range_dict[out].scale = scale
+        range_dict[out].bias = bias
 
 
 # for several types of nodes, we dynamically convert ("lower") the node to something else that we can
