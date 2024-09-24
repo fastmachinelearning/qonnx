@@ -154,6 +154,15 @@ pre-commit install
 Every time you commit some code, the pre-commit hooks will first run, performing various checks and fixes. In some cases pre-commit won’t be able to
 fix the issues and you may have to fix it manually, then run git commit once again. The checks are configured in .pre-commit-config.yaml under the repo root.
 
+### Github Actions
+
+By using [act](https://github.com/nektos/act) you can also run all github actions locally using docker. After installation you can run:
+
+```
+cd qonnx
+act
+```
+
 ## Why QONNX?
 
 The QONNX representation has several advantages compared to other alternatives, as summarized in the table below.
