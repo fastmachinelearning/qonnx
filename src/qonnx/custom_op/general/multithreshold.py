@@ -93,11 +93,7 @@ class MultiThreshold(CustomOp):
             "out_scale": ("f", False, 1.0),
             "out_bias": ("f", False, 0.0),
             # fmt: off
-            "data_layout": ("s", False, "NCHW", {
-                # TODO: Add more options or even remove the set of allowed data
-                #  layouts - it is really the placement of the "C" that matters
-                "NCHW", "NHWC", "NC", "NWC", "NCW"
-            })
+            "data_layout": ("s", False, "NCHW")
             # fmt: on
         }
 
