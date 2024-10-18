@@ -999,16 +999,20 @@ optype_to_range_calc = {
 optype_to_intrange_calc = {
     "MatMul": calc_intrange_matmul,
     "Conv": calc_intrange_conv,
-    "Add": calc_intrange_add,
     "Mul": calc_intrange_mul,
     "Relu": calc_intrange_relu,
     "Quant": calc_intrange_quant,
     "Pad": calc_intrange_eltwise_monotonic,
     "MaxPool": calc_intrange_eltwise_monotonic,
-    "Reshape": calc_intrange_eltwise_monotonic,
-    "Transpose": calc_intrange_eltwise_monotonic,
     "Im2Col": calc_intrange_eltwise_monotonic,
     "Concat": calc_intrange_eltwise_monotonic,
+    # TODO: Workaround for some weird RA behavior producing NANs, zero scales or
+    #  ranges from -0 to +0. So far only observed in rather complex topology
+    #  involving residual connections, attention and novel activation functions
+    #  and it is unclear how to reproduce this in isolation...
+    "Add": calc_intrange_eltwise_monotonic_intrangefirst,
+    "Reshape": calc_intrange_eltwise_monotonic_intrangefirst,
+    "Transpose": calc_intrange_eltwise_monotonic_intrangefirst,
     "Split": calc_intrange_eltwise_monotonic_intrangefirst,
     # Treat MultiThreshold as monotonic. This might be necessary for iterated
     # rounds of activation function to MultiThreshold conversion to absorb
