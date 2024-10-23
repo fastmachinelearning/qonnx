@@ -44,7 +44,7 @@ _channelsLast_node_types = list(channels_last.custom_op.keys())
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
-_move_through_nodes = ["Quant", "Relu"]
+_move_through_nodes = ["Quant", "Relu", "Selu", "LeakyRelu", "Sigmoid", "Tanh"]
 
 # Nodes, which do not modify the shape of the tensor,
 # And modify all values in the same way, if the second tensor is a scalar.
