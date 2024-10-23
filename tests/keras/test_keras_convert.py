@@ -13,6 +13,10 @@ from qonnx.converters import from_keras
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
 
+# For reproducibility
+tf.keras.utils.set_random_seed(42)
+np.random.seed(42)
+
 act_quantizers = [
     quantized_bits(8, 4, 0, alpha=1),
     quantized_bits(8, 4, 1, alpha=1),
@@ -61,6 +65,64 @@ def test_qkeras_qactivation(quantizer, request):
     y_qonnx = odict[onnx_model.graph.output[0].name]
 
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-5, atol=1e-5)
+    os.remove(model_path)
+
+
+@pytest.mark.parametrize(
+    "quantizer",
+    [
+        quantized_relu(bits=4, integer=4),
+        quantized_bits(bits=4, integer=4, keep_negative=False, alpha=1),
+    ],
+)
+def test_qkeras_quantizers_rounding_modes(quantizer, request):
+    x = x_in = Input((10,), name="input")
+    x = QActivation(activation=quantizer)(x)
+    model = Model(inputs=[x_in], outputs=[x])
+    model.compile()
+
+    onnx_model, _ = from_keras(model)
+    model_path = f"model_test_qkeras_quantizers_rounding_modes_{request.node.callspec.id}.onnx"
+    onnx.save(onnx_model, model_path)
+    onnx_model = ModelWrapper(onnx_model)
+
+    x_test = np.array([[5.5, 2.5, 1.6, 1.1, 1.0, -1.0, -1.1, -1.6, -2.5, -5.5]]).astype(np.float32)
+    idict = {onnx_model.graph.input[0].name: x_test}
+    odict = oxe.execute_onnx(onnx_model, idict, True)
+    y_qonnx = odict[onnx_model.graph.output[0].name]
+    y_qkeras = model.predict(x_test)
+    assert np.array_equal(y_qkeras, y_qonnx)
+    os.remove(model_path)
+
+
+@pytest.mark.parametrize("bias", [5.5, 2.5, 1.6, 1.1, 1.0, -1.0, -1.1, -1.6, -2.5, -5.5])
+def test_qkeras_quantizers_autopo2_rounding_modes(bias, request):
+    kq = bq = quantized_bits(4, 4, 1, alpha="auto_po2")
+    # Initialize the kernel & bias to RandonUniform within the range of the quantizers
+    x = x_in = Input((10), name="input")
+    x = QDense(
+        1,
+        kernel_quantizer=kq,
+        bias_quantizer=bq,
+        kernel_initializer=tf.keras.initializers.Constant(1.0),
+        bias_initializer=tf.keras.initializers.Constant(bias),
+        name="dense_0",
+    )(x)
+    model = Model(inputs=[x_in], outputs=[x])
+    x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 10)).astype(dtype=np.float32)
+    _ = model.predict(x_test, verbose=0)
+
+    onnx_model, _ = from_keras(model)
+    model_path = f"model_test_qkeras_quantizers_auto_rounding_modes_{request.node.callspec.id}.onnx"
+    onnx.save(onnx_model, model_path)
+    onnx_model = ModelWrapper(onnx_model)
+
+    x_test = np.zeros(shape=(1, 10), dtype=np.float32)
+    idict = {onnx_model.graph.input[0].name: x_test}
+    odict = oxe.execute_onnx(onnx_model, idict, True)
+    y_qonnx = odict[onnx_model.graph.output[0].name]
+    y_qkeras = model.predict(x_test, verbose=0)
+    assert np.array_equal(y_qkeras, y_qonnx)
     os.remove(model_path)
 
 
@@ -321,6 +383,67 @@ def test_qkeras_qdense_4(quantizers, request):
     odict = oxe.execute_onnx(onnx_model, idict, True)
     y_qonnx = odict[onnx_model.graph.output[0].name]
     np.testing.assert_allclose(y_qkeras, y_qonnx, rtol=1e-4, atol=1e-4)
+    os.remove(model_path)
+
+
+@pytest.mark.parametrize(
+    "bits,signed,alpha",
+    [
+        (8, True, [1.000, 1.000, 1.000, 1.000]),
+        (8, False, [1.000, 1.000, 1.000, 1.000]),
+        (4, True, [1.000, 1.000, 1.000, 1.000]),
+        (4, False, [1.000, 1.000, 1.000, 1.000]),
+        (8, True, [0.125, 0.250, 0.500, 1.000]),
+        (8, False, [0.125, 0.250, 0.500, 1.000]),
+        (5, True, [0.250, 0.250, 0.125, 0.125]),
+        (5, False, [0.250, 0.250, 0.125, 0.125]),
+        (4, True, [0.125, 0.250, 0.500, 1.000]),
+        (4, False, [0.125, 0.250, 0.500, 1.000]),
+        (3, True, [0.125, 0.125, 0.250, 0.125]),
+        (3, False, [0.125, 0.125, 0.250, 0.125]),
+    ],
+)
+def test_qkeras_tensor_alpha(bits, signed, alpha, request):
+    random_state = np.random.RandomState(seed=42)
+    max_val = np.array(alpha) * 2 ** (bits - signed)
+    min_val = -(max_val + 1)
+    w1 = random_state.randint(low=min_val, high=max_val, size=(3, 4))
+    b1 = np.array([0.0, 0.0, 0.0, 0.0])
+    x = x_in = tf.keras.layers.Input(shape=3)
+    x = QActivation(quantized_bits(bits=4, integer=3, keep_negative=True))(x)
+    x = QDense(
+        4,
+        kernel_quantizer=quantized_bits(bits=bits, integer=(bits - signed), keep_negative=signed, alpha=alpha),
+    )(x)
+    x = QActivation(quantized_relu(bits=3, integer=3))(x)
+    model = tf.keras.Model(inputs=[x_in], outputs=[x])
+    model.compile()
+    model.layers[2].set_weights([w1, b1])
+    onnx_model, _ = from_keras(model)
+    model_path = f"model_test_qkeras_tensor_alpha_{request.node.callspec.id}.onnx"
+    onnx.save(onnx_model, model_path)
+    onnx_model = ModelWrapper(onnx_model)
+
+    data = np.array(
+        [
+            [[0.0, 0.0, 0.0]],
+            [[0.0, 1.0, 2.0]],
+            [[2.0, 1.0, 0.0]],
+            [[4.0, 4.0, 4.0]],
+            [[7.0, 7.0, 7.0]],
+            [[6.0, 0.0, 7.0]],
+            [[3.0, 3.0, 3.0]],
+            [[7.0, 0.0, 0.0]],
+            [[0.0, 7.0, 0.0]],
+            [[0.0, 0.0, 7.0]],
+        ]
+    ).astype(np.float32)
+    for x in data:
+        y_qkeras = model.predict(x, verbose=0)
+        idict = {onnx_model.graph.input[0].name: x}
+        odict = oxe.execute_onnx(onnx_model, idict, True)
+        y_qonnx = odict[onnx_model.graph.output[0].name]
+        assert np.array_equal(y_qkeras, y_qonnx)
     os.remove(model_path)
 
 

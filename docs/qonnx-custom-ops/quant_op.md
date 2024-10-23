@@ -21,7 +21,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dt><tt>narrow</tt> : int (default is 0)</dt>
 <dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
 <dt><tt>rounding_mode</tt> : string (default is "ROUND")</dt>
-<dd>Defines how rounding should be applied during quantization. Currently available modes are: "ROUND", "CEIL" and "FLOOR". Here "ROUND" implies a round-to-even operation. Lowercase variants for the rounding mode string are also supported: "round", "ceil", "floor".</dd>
+<dd>Defines how rounding should be applied during quantization. Avaiable options are ROUND, CEIL, FLOOR, UP, DOWN, HALF_UP, HALF_DOWN. The rounding modes are described in the table bellow. The names of rounding modes can be upper case or lower case.</dd>
 </dl>
 
 #### Inputs
@@ -45,6 +45,24 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dd>Output tensor</dd>
 </dl>
 
+
+#### Rounding modes
+<details>
+<summary>rounding modes</summary>
+
+| **Number \ ROUNDING_MODE** | ROUND=HALF_EVEN | CEIL | FLOOR | UP | DOWN | HALF_UP | HALF_DOWN |
+|----------------------------|-----------------|------|-------|----|------|---------|-----------|
+| 5.5                        | 6               | 6    | 5     | 6  | 5    | 6       | 5         |
+| 2.5                        | 2               | 3    | 2     | 3  | 2    | 3       | 2         |
+| 1.6                        | 2               | 2    | 1     | 2  | 1    | 2       | 2         |
+| 1.1                        | 1               | 2    | 1     | 2  | 1    | 1       | 1         |
+| 1.0                        | 1               | 1    | 1     | 1  | 1    | 1       | 1         |
+| -1.0                       | -1              | -1   | -1    | -1 | -1   | -1      | -1        |
+| -1.1                       | -1              | -1   | -2    | -2 | -1   | -1      | -1        |
+| -1.6                       | -2              | -1   | -2    | -2 | -1   | -2      | -2        |
+| -2.5                       | -2              | -2   | -3    | -3 | -2   | -3      | -2        |
+| -5.5                       | -6              | -5   | -6    | -6 | -5   | -6      | -5        |
+</details>
 
 #### Examples
 <details>
