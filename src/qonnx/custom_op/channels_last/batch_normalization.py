@@ -87,7 +87,7 @@ class BatchNormalization(ChannelsLastWrappedOp):
 
         # verify number of attributes
         num_of_attr = 2
-        if len(node.attribute) == num_of_attr:
+        if len(node.attribute) >= num_of_attr:
             info_messages.append("The number of attributes is correct")
         else:
             info_messages.append(
