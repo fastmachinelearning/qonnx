@@ -58,6 +58,11 @@ def to_channels_first_args(ndim):
     return tuple(arg_list)
 
 
+def swap_channels_from_list(l):
+    l[1], l[-1] = l[-1], l[1]
+    return l
+
+
 class ChannelsLastWrappedOp(CustomOp):
     # ToDo: _channelsLast_node_types should be loaded / inferred from this file or the registry.
     # Standard ONNX nodes which require a ChannelsLast data format to function properly
