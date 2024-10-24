@@ -31,7 +31,6 @@ import warnings
 from copy import deepcopy
 from onnx import TensorProto, helper
 
-from qonnx.analysis.topology import is_linear
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
@@ -151,7 +150,6 @@ class ConvertToChannelsLastAndClean(Transformation):
         self._make_input_channels_last = make_input_channels_last
 
     def apply(self, model: ModelWrapper):
-        assert model.analysis(is_linear)["is_linear"], "Only linear and non-branching models are supported at this moment."
         assert model.check_all_tensor_shapes_specified(), (
             "All tensor shapes must be specified. " "Consider running InferShapes."
         )
