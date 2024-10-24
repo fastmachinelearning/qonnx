@@ -339,7 +339,7 @@ class MoveChanLastUpstream(Transformation):
     Moves channel last transformations further upstream.
     """
 
-    def apply(self, model):
+    def apply(self, model: ModelWrapper):
         graph = model.graph
         node_ind = 0
         graph_modified = False
@@ -366,6 +366,10 @@ class MoveChanLastUpstream(Transformation):
                         second_inp_shape = model.get_tensor_shape(predecessor.input[1])
                         if second_inp_shape == [1] or second_inp_shape == []:
                             move_through_valid |= True
+
+                    # don't move through if the predecessor output is a fork
+                    if model.is_fork_node(predecessor):
+                        move_through_valid = False
 
                     # Apply move through trafo if possible
                     if move_through_valid:
