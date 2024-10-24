@@ -149,7 +149,7 @@ class ConvertToChannelsLastAndClean(Transformation):
         super().__init__()
         self._make_input_channels_last = make_input_channels_last
 
-    def apply(self, model):
+    def apply(self, model: ModelWrapper):
         assert model.analysis(is_linear)["is_linear"], "Only linear and non-branching models are supported at this moment."
         assert model.check_all_tensor_shapes_specified(), (
             "All tensor shapes must be specified. " "Consider running InferShapes."
