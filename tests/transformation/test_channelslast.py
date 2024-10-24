@@ -40,6 +40,7 @@ from qonnx.transformation.channels_last import (
     InsertChannelsLastDomainsAndTrafos,
     MoveChanFirstDownstream,
     MoveChanLastUpstream,
+    MoveTransposePastFork,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
 )
 from qonnx.transformation.general import GiveUniqueNodeNames
@@ -61,6 +62,9 @@ model_details_chanlast = {
         "layout_sensitive": True,
     },
     "Conv_bias_example": {
+        "layout_sensitive": True,
+    },
+    "rn18_w4a4_a2q_16b": {
         "layout_sensitive": True,
     },
 }
@@ -235,6 +239,7 @@ def test_channelslast_conversion_step_by_step(test_model):
 
     # Run trafo
     model = model.transform(MoveChanFirstDownstream())
+    model = model.transform(MoveTransposePastFork())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
