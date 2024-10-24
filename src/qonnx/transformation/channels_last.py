@@ -168,8 +168,9 @@ class ConvertToChannelsLastAndClean(Transformation):
         # Technically only required if something changed in the previous trafo
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
 
-        # Apply MoveChanLastDownStream
+        # Apply MoveChanLastDownStream and MoveTransposePastFork
         model = model.transform(MoveChanFirstDownstream())
+        model = model.transform(MoveTransposePastFork())
 
         # Run RemoveConsecutiveChanFirstAndChanLastTrafos again,
         # Technically only required if something changed in the previous trafo
