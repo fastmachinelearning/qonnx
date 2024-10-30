@@ -43,15 +43,15 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dl>
 <dt><tt>X</tt> : tensor(float32)</dt>
 <dd>input tensor to quantize</dd>
-<dt><tt>scale</tt> : float32, tensor(float32)</dt>
+<dt><tt>scale</tt> : tensor(float32)</dt>
 <dd>The scale factor, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor</dd>
-<dt><tt>exponent_bitwidth</tt> : int32, float32</dt>
-<dd>The number of bits for the exponent used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer. If float32 dtype is used for convenience, it must still represent an positive integer number of bits.</dd>
-<dt><tt>mantissa_bitwidth</tt> : int32, float32</dt>
-<dd>The number of bits for the mantissa used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer. If float32 dtype is used for convenience, it must still represent an positive integer number of bits.</dd>
-<dt><tt>exponent_bias</tt> : int32, float32</dt>
-<dd>The exponent bias used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer. If float32 dtype is used for convenience, it must still represent an positive integer number of bits.</dd>
-<dt><tt>max_val</tt> : float32</dt>
+<dt><tt>exponent_bitwidth</tt> : tensor(float32)</dt>
+<dd>The number of bits for the exponent used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer.</dd>
+<dt><tt>mantissa_bitwidth</tt> : tensor(float32)</dt>
+<dd>The number of bits for the mantissa used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer.</dd>
+<dt><tt>exponent_bias</tt> : tensor(float32)</dt>
+<dd>The exponent bias used by the quantization, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. Must be a positive integer.</dd>
+<dt><tt>max_val</tt> : tensor(float32)</dt>
 <dd>Maximum possible representable value, either as a global scalar or with a broadcastable shape matching the number of dimensions of the X tensor. </dd>
 </dl>
 
@@ -59,7 +59,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 #### Outputs
 
 <dl>
-<dt><tt>Y</tt> (differentiable) : tensor(float32)</dt>
+<dt><tt>Y</tt> : tensor(float32)</dt>
 <dd>Output tensor</dd>
 </dl>
 
