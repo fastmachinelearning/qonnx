@@ -145,6 +145,7 @@ class RemoveIdentityOps(Transformation):
         model = model.transform(InferShapes())
         return (model, graph_modified)
 
+
 class RemoveSuccessiveIdenticalQuant(Transformation):
     def apply(self, model):
         graph = model.graph
@@ -158,4 +159,3 @@ class RemoveSuccessiveIdenticalQuant(Transformation):
                     if init_node == init_succ:
                         remove_node_and_rewire(model, n)
         return (model, graph_modified)
-    
