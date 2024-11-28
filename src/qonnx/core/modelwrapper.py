@@ -200,7 +200,7 @@ class ModelWrapper:
         tensor_vi = self.get_tensor_valueinfo(tensor_name)
         onnx_dtype = tensor_vi.type.tensor_type.elem_type
         if onnx_dtype in onnx_dtype_to_qonnx_dtype.keys():
-            return DataType[onnx_dtype]
+            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]]
         else:
             return DataType["FLOAT32"]
 
