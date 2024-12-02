@@ -1,7 +1,10 @@
+import numpy as np
 import onnx
 import tensorflow as tf
 import tf2onnx
 from collections import OrderedDict
+from qkeras.qlayers import QActivation
+from qkeras.quantizers import quantized_bits
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -164,6 +167,31 @@ def _convert_quantizers_to_nodes(onnx_model, quantizers_dict):
     return onnx_model.model
 
 
+def _add_input_quantizer(onnx_model, quantizer):
+    "Adds an input quantizer to the onnx_model"
+    iname = onnx_model.graph.input[0].name
+    scale_init_name = f"{iname}_init_scale"
+    zp_init_name = f"{iname}_init_zp"
+    bw_init_name = f"{iname}_init_bw"
+    onnx_model.set_initializer(scale_init_name, np.array(quantizer.scale))
+    onnx_model.set_initializer(zp_init_name, np.array(0.0))
+    onnx_model.set_initializer(bw_init_name, np.array(quantizer.bits))
+    quant_node = onnx.helper.make_node(
+        op_type="Quant",
+        inputs=[iname, scale_init_name, zp_init_name, bw_init_name],
+        outputs=[f"{iname}_quantized"],
+        name=f"{iname}_Quant",
+        domain="qonnx.custom_op.general",
+        narrow=quantizer.symmetric,
+        rounding_mode="ROUND",
+        signed=quantizer.keep_negative,
+    )
+    for node in onnx_model.graph.node:
+        if node.input[0] == iname:
+            node.input[0] = quant_node.output[0]
+    onnx_model.graph.node.extend([quant_node])
+
+
 def from_keras(
     model,
     name="qkeras_to_qonnx_converted",
@@ -230,6 +258,19 @@ def from_keras(
     )
 
     onnx_model = ModelWrapper(model_proto)
+
+    # checks if there is a quantizer at the input and adds it to the proto
+    # This is'nt handled in the "qkeras_op_handlers"
+    for submod in model.submodules:
+        if (
+            isinstance(submod, (QActivation, tf.keras.layers.Activation))
+            and model.input.name == submod.input.name
+            and isinstance(submod.submodules[0], quantized_bits)
+        ):
+            assert len(submod.submodules) == 1
+            _add_input_quantizer(onnx_model, submod.submodules[0])
+            break
+
     # Set the first value of input/output shape to 1, currently this is set to unknown,
     # because it is technically the batch size
     if not (len(onnx_model.graph.input) == 1 and len(onnx_model.graph.output) == 1):
