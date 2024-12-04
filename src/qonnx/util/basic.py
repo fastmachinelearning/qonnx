@@ -130,7 +130,7 @@ def random_string(stringLength=6):
 def interleave_matrix_outer_dim_from_partitions(matrix, n_partitions):
     """Interleave the outermost dimension of a matrix from given
     partitions (n_partitions)."""
-    if type(matrix) != np.ndarray or matrix.dtype != np.float32:
+    if type(matrix) != np.ndarray or matrix.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         matrix = np.asarray(matrix, dtype=np.float32)
     shp = matrix.shape
@@ -179,7 +179,7 @@ def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
     will be inserted after the existing values; otherwise it will be split
     evenly between before and after the existing values, with one extra value
     inserted after if the padding amount is not divisible by two."""
-    if type(ndarray) != np.ndarray or ndarray.dtype != np.float32:
+    if type(ndarray) != np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         ndarray = np.asarray(ndarray, dtype=np.float32)
     assert ndarray.ndim == len(
