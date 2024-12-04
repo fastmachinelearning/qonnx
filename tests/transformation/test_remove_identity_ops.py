@@ -58,6 +58,9 @@ def insert_identity_op(model, op, as_first_node, approx):
     elif op == "Pad":
         # opset 11 and above: padding specified as input and not attribute
         val = np.asarray([0] * 2 * inp_ndims, dtype=np.int64)
+    elif op == "Dropout":
+        val = None
+        kwargs = {"ratio": 0.0}
     else:
         return
 
@@ -79,7 +82,7 @@ def insert_identity_op(model, op, as_first_node, approx):
 
 
 # identity operations to be inserted
-@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div", "Identity", "Pad"])
+@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div", "Identity", "Pad", "Dropout"])
 @pytest.mark.parametrize("approx", [False, True])
 @pytest.mark.parametrize("as_first_node", [False, True])
 @pytest.mark.parametrize("fork_before_id", [False, True])
