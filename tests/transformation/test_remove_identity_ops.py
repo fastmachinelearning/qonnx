@@ -41,6 +41,8 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
 def insert_identity_op(model, op, as_first_node, approx):
+    kwargs = {}
+    inp_ndims = 4 if as_first_node else 2
     if approx:
         zero_val = 0.000001
         one_val = 0.999999
@@ -53,6 +55,9 @@ def insert_identity_op(model, op, as_first_node, approx):
         val = np.asarray([one_val], dtype=np.float32)
     elif op in ["Identity"]:
         val = None
+    elif op == "Pad":
+        # opset 11 and above: padding specified as input and not attribute
+        val = np.asarray([0] * 2 * inp_ndims, dtype=np.int64)
     else:
         return
 
@@ -62,7 +67,7 @@ def insert_identity_op(model, op, as_first_node, approx):
     else:
         model.set_initializer("value", val)
         inplist = ["inp" if as_first_node else "div_out", "value"]
-    identity_node = helper.make_node(op, inplist, ["ident_out"])
+    identity_node = helper.make_node(op, inplist, ["ident_out"], **kwargs)
     if as_first_node:
         graph.node.insert(0, identity_node)
         graph.node[1].input[0] = "ident_out"
@@ -74,7 +79,7 @@ def insert_identity_op(model, op, as_first_node, approx):
 
 
 # identity operations to be inserted
-@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div", "Identity"])
+@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div", "Identity", "Pad"])
 @pytest.mark.parametrize("approx", [False, True])
 @pytest.mark.parametrize("as_first_node", [False, True])
 @pytest.mark.parametrize("fork_before_id", [False, True])
