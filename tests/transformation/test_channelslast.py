@@ -40,6 +40,7 @@ from qonnx.transformation.channels_last import (
     InsertChannelsLastDomainsAndTrafos,
     MoveChanFirstDownstream,
     MoveChanLastUpstream,
+    MoveTransposePastFork,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
 )
 from qonnx.transformation.general import GiveUniqueNodeNames
@@ -53,15 +54,29 @@ from qonnx.util.to_channels_last import to_channels_last
 model_details_chanlast = {
     "FINN-CNV_W2A2": {
         "layout_sensitive": True,
+        "final_transpose_count": 0,
     },
     "FINN-TFC_W2A2": {
         "layout_sensitive": False,
+        "final_transpose_count": 0,
     },
     "RadioML_VGG10": {
         "layout_sensitive": True,
+        "final_transpose_count": 0,
     },
     "Conv_bias_example": {
         "layout_sensitive": True,
+        "final_transpose_count": 0,
+    },
+    "rn18_w4a4_a2q_16b": {
+        "layout_sensitive": True,
+        # TODO: RN18 has AveragePool, Trunc, Reshape ops at the end so one Tranpose
+        # still gets left in there after channels-last conversion. To get rid of this final one:
+        # * AveragePool needs channels-last op variant
+        # * Trunc can be covered by eltwise ops. afterwards
+        # * Gemm needs to be convert to MatMul with GemmToMatMul
+        # * Transpose->Reshape->MatMul will be handled by AbsorbChanFirstIntoMatMul
+        "final_transpose_count": 1,
     },
 }
 # inherit basics for matching testcases from test util
@@ -100,10 +115,11 @@ def analysis_test_for_left_transposes(model, test_model, make_input_channels_las
     if test_model == "FINN-TFC_W2A2":
         # For the TFC the assertion should be the other way around.
         make_input_channels_last = not make_input_channels_last
+    final_transpose_count = model_details[test_model]["final_transpose_count"]
     if make_input_channels_last:
-        assert len(t_nodes) == 0, "There should be no transposes left in the network."
+        assert len(t_nodes) == final_transpose_count, f"Unexpected final Transpose count: {len(t_nodes)}"
     else:
-        assert len(t_nodes) == 1, "There should be only one transposes node left in the network."
+        assert len(t_nodes) == final_transpose_count + 1, f"Unexpected final Transpose count: {len(t_nodes)}"
     return dict()
 
 
@@ -235,6 +251,7 @@ def test_channelslast_conversion_step_by_step(test_model):
 
     # Run trafo
     model = model.transform(MoveChanFirstDownstream())
+    model = model.transform(MoveTransposePastFork())
     # Check output
     input_dict = {model.graph.input[0].name: input_tensor}
     output_dict = oxe.execute_onnx(model, input_dict)
