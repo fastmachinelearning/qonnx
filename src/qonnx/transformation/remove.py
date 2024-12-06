@@ -113,20 +113,20 @@ class RemoveIdentityOps(Transformation):
         graph_modified = False
         for node in graph.node:
             node_ind += 1
-            if node.op_type in ["Add", "Sub"] and not model.is_fork_node(node) and not model.is_join_node(node):
+            if node.op_type in ["Add", "Sub"]:
                 A = model.get_initializer(node.input[1])
                 if A is not None and np.isclose(A, np.zeros_like(A), atol=self.atol).all():
                     remove_node_and_rewire(model, node)
                     graph_modified = True
                     break
 
-            elif node.op_type in ["Mul", "Div"] and not model.is_fork_node(node) and not model.is_join_node(node):
+            elif node.op_type in ["Mul", "Div"]:
                 A = model.get_initializer(node.input[1])
                 if A is not None and np.isclose(A, np.ones_like(A), atol=self.atol).all():
                     remove_node_and_rewire(model, node)
                     graph_modified = True
                     break
-            elif node.op_type == "Pad" and not model.is_fork_node(node) and not model.is_join_node(node):
+            elif node.op_type == "Pad":
                 pads = get_by_name(node.attribute, "pads")
                 if pads is not None:
                     # older versions of Pad op specify pads as attribute
