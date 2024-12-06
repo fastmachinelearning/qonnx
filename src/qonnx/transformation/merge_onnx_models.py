@@ -130,15 +130,15 @@ class MergeONNXModels(Transformation):
         outp = post_model.graph.output[0]
 
         vi_pre = [x for x in pre_model.graph.value_info]
-        out_pre = [x for x in pre_model.graph.output]
         qa_pre = [x for x in pre_model.graph.quantization_annotation]
         init_pre = [x for x in pre_model.graph.initializer]
 
         vi_post = [x for x in post_model.graph.value_info]
+        in_post = [x for x in post_model.graph.input]
         qa_post = [x for x in post_model.graph.quantization_annotation]
         init_post = [x for x in post_model.graph.initializer]
 
-        vi_new = vi_pre + vi_post + out_pre
+        vi_new = vi_pre + vi_post + in_post
         qa_new = qa_pre + qa_post
         init_new = init_pre + init_post
 
