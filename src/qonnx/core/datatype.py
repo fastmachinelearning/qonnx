@@ -168,7 +168,7 @@ class Float16Type(BaseDataType):
         return False
 
     def get_hls_datatype_str(self):
-        return "float"
+        return "half"
 
     def to_numpy_dt(self):
         return np.float16

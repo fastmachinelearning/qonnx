@@ -233,12 +233,15 @@ def gen_finn_dt_tensor(finn_dt, tensor_shape):
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
         tensor_values = np.random.randint(int_dt.min(), high=int_dt.max() + 1, size=tensor_shape)
         tensor_values = tensor_values * finn_dt.scale_factor()
-    elif finn_dt == DataType["FLOAT32"]:
+    elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         tensor_values = np.random.randn(*tensor_shape)
     else:
         raise ValueError("Datatype {} is not supported, no tensor could be generated".format(finn_dt))
     # always use float type as container
-    return tensor_values.astype(np.float32)
+    if finn_dt == DataType["FLOAT16"]:
+        return tensor_values.astype(np.float16)
+    else:
+        return tensor_values.astype(np.float32)
 
 
 def calculate_signed_dot_prod_range(dt_a, dt_b, len):
