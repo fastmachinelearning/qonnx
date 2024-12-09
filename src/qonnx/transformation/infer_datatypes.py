@@ -38,9 +38,9 @@ def is_scaled_int(x):
     return x.is_integer() or x.is_fixed_point() or isinstance(x, ScaledIntType)
 
 
-def infer_mac_result_dtype(idtypes, possible_negation):
-    # will default to float32 unless specific cases detected
-    ret = DataType["FLOAT32"]
+def infer_mac_result_dtype(idtypes, odtype_orig, possible_negation):
+    # will default to original output dtype unless specific cases detected
+    ret = odtype_orig
     # result may be signed if:
     # - any of the operands are signed
     # - the operator itself may induce negation (like subtraction)
@@ -97,7 +97,8 @@ def _infer_node_datatype(model, node):
             model.set_tensor_datatype(node.output[0], DataType["BIPOLAR"])
         elif node.op_type in mac_like_optypes:
             possible_negation = node.op_type in ["Sub"]
-            odtype = infer_mac_result_dtype(idtypes, possible_negation=possible_negation)
+            odtype_orig = model.get_tensor_datatype(node.output[0])
+            odtype = infer_mac_result_dtype(idtypes, odtype_orig, possible_negation=possible_negation)
             model.set_tensor_datatype(node.output[0], odtype)
         elif node.op_type in ["Resize", "Upsample"]:
             mode = get_by_name(node.attribute, "mode").s
