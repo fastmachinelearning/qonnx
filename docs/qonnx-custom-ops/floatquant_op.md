@@ -64,8 +64,87 @@ This operator is not part of the ONNX standard and is not currently versioned.
 </dl>
 
 #### Examples
-TODO
+```python
+def compute_max_val(exponent_bit_width, mantissa_bit_width, exponent_bias):
+    max_exponent = (2. ** exponent_bit_width) - 1. - exponent_bias
+    max_mantissa = np.sum((
+        2. ** np.arange(
+            0,
+            -1. * mantissa_bit_width - 1.,
+            -1.
+            )))
+    max_val = max_mantissa * (2 ** max_exponent)
+    return max_val
+
+import numpy as np
+x = np.random.rand(100).astype(np.float32)
+scale = 1
+exponent_bitwidth = 4
+mantissa_bitwidth = 3
+exponent_bias = 0
+max_val = compute_max_val(exponent_bitwidth, mantissa_bitwidth, exponent_bias)
+rounding_mode = 'ROUND'
+signed = True
+xq = float_quantize(x, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias, max_val, rounding_mode)
+```
 
 
 #### Sample Implementation
-TODO
+```python
+def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias, max_val, rounding_mode):
+    """Quantize a given floating point array to minifloat format by specifying the desired minifloat quantization"""
+
+    def resolve_rounding_mode(mode_string):
+        """Resolve the rounding mode string to the corresponding numpy functions."""
+        mode_string = mode_string.upper()
+        if mode_string == "ROUND":
+            return np.round
+        elif mode_string == "CEIL":
+            return np.ceil
+        elif mode_string == "FLOOR":
+            return np.floor
+        else:
+            raise ValueError(f"Could not resolve rounding mode called: {mode_string}")
+
+    # copy the sign of the input
+    sign = np.sign(X)
+    # compute the mask of the values equal to 0 - it will always be zero at the output
+    zero_mask = np.where(X == 0)
+    # copy the input in order to not modify it
+    X = X.copy()
+    # set the zeros to 1.0 - but could be any random value
+    X[zero_mask] = 1.0
+    # apply the scale to the input
+    X /= scale
+    # get input exponents from the floats - no need to use eps since the zeros have been already removed
+    e_inp = np.floor(np.log2(np.abs(X)))
+    # compute the max exponent given the exponent bitwidth.
+    # Note: inf/NaN representation is included and it is clipped at the end of this function
+    e_max = np.maximum(2.**(exponent_bitwidth), 1.)
+    # compute exponent range given the max exponent. e_low represent the subnormals of the quantized representation, e_high the infs/NaNs
+    e_low, e_high = -e_max + exponent_bias + 1, e_max + exponent_bias
+    # limit the value of the exponent given the quantization range
+    e_quant = np.clip(e_inp, e_low, e_high)
+    # compute the shift to get the quantized value rounded properly. This part basically quantize the mantissa
+    # (round the mantissa by setting to 0 the bits not beloging to the quantised representation)
+    round_shift = 2.**(e_quant - mantissa_bitwidth)
+    # apply the shift
+    man = X / round_shift
+    # round the mantissa
+    man_quant = resolve_rounding_mode(rounding_mode)(man)
+    # compute the max value of the mantissa (i.e. all the mantissa bits set to 1)
+    man_max = 2.**(mantissa_bitwidth + 1) - 1
+    # if the quantised value is a subnormal, remove 1 from the mantissa (i.e. 1 + 2**m => 2**m)
+    man_max = np.where(e_quant != e_low, man_max, man_max - 1)
+    # make sure the mantissa is in the representable range
+    man_clip = np.clip(man_quant, -man_max, man_max)
+    # go back to float representation
+    qx = man_clip * round_shift
+    # if it's inf or nan, saturates to sign*max_val
+    qx = np.where(e_quant == e_high, sign * max_val, qx)
+    # restore the original zeros
+    qx[zero_mask] = 0.0
+    # unscale the input
+    qx *= scale
+    return qx
+```
