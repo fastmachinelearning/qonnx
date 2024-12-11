@@ -45,7 +45,16 @@ def compute_max_val(exponent_bitwidth, mantissa_bitwidth, exponent_bias=None):
     return max_val
 
 
-def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias=None, max_val=None, rounding_mode="ROUND"):
+def float_quantize(
+    X,
+    scale,
+    exponent_bitwidth,
+    mantissa_bitwidth,
+    exponent_bias=None,
+    max_val=None,
+    rounding_mode="ROUND",
+    lt_subnorm_to_zero=False,
+):
     """Quantize a given floating point array to minifloat format by specifying the desired minifloat quantization"""
     if exponent_bias is None:
         exponent_bias = compute_default_exponent_bias(exponent_bitwidth)
@@ -65,10 +74,10 @@ def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias
     e_inp = np.floor(np.log2(np.abs(X)))
     # compute the max exponent given the exponent bitwidth.
     # Note: inf/NaN representation is included and it is clipped at the end of this function
-    e_max = np.maximum(2.0 ** (exponent_bitwidth), 1.0)
+    e_max = np.maximum(2.0 ** (exponent_bitwidth) - 1, 1.0)
     # compute exponent range given the max exponent. e_low represent the subnormals of the
     # quantized representation, e_high the infs/NaNs
-    e_low, e_high = -e_max + exponent_bias + 1, e_max + exponent_bias
+    e_low, e_high = -e_max + exponent_bias + 1, e_max - exponent_bias
     # limit the value of the exponent given the quantization range
     e_quant = np.clip(e_inp, e_low, e_high)
     # compute the shift to get the quantized value rounded properly. This part basically quantize the mantissa
@@ -80,6 +89,8 @@ def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias
     man_quant = resolve_rounding_mode(rounding_mode)(man)
     # compute the max value of the mantissa (i.e. all the mantissa bits set to 1)
     man_max = 2.0 ** (mantissa_bitwidth + 1) - 1
+    # compute the min value of the mantissa (i.e. one bit at the position indicated by the exponent)
+    man_min = 2.0**-mantissa_bitwidth
     # if the quantised value is a subnormal, remove 1 from the mantissa (i.e. 1 + 2**m => 2**m)
     man_max = np.where(e_quant != e_low, man_max, man_max - 1)
     # make sure the mantissa is in the representable range
@@ -88,7 +99,11 @@ def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias
     qx = man_clip * round_shift
     # if it's inf or nan, saturates to sign*max_val
     qx = np.where(e_quant == e_high, sign * max_val, qx)
-    # restore the original zeros
+    if lt_subnorm_to_zero:
+        # compute the min subnormal as the lower possible exponent x the min mantissa
+        min_subnormal = 2.0 ** (e_low + 1) * man_min
+        # if the value is closer to zero than the minimum subnormal then set it to 0
+        qx = np.where((X <= min_subnormal) & (X >= -min_subnormal), 0.0, qx)  # restore the original zeros
     qx[zero_mask] = 0.0
     # unscale the input
     qx *= scale
