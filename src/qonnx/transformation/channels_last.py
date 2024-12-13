@@ -41,6 +41,7 @@ from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 from qonnx.util.basic import get_by_name
+from qonnx.util.onnx import is_eltwise_optype
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
 _channelsLast_node_types = list(channels_last.custom_op.keys())
@@ -52,10 +53,6 @@ _move_through_nodes = ["Quant", "Relu", "Selu", "LeakyRelu", "Sigmoid", "Tanh"]
 # Nodes, which do not modify the shape of the tensor,
 # And modify all values in the same way, if the second tensor is a scalar.
 _move_through_nodes_if_scalar = ["Mul", "Div", "Sub", "Add"]
-
-# optypes that operate in an elementwise fashion
-# (with numpy-style broadcasting when shapes mismatch)
-_eltwise_optypes = ["Relu", "Quant", "Mul", "Div", "Sub", "Add"]
 
 
 def get_transpose_perms(transpose_node, model):
@@ -441,7 +438,7 @@ class MoveChanFirstDownstream(Transformation):
                     successor = successors[0]
                     transpose_node = node
 
-                    if successor.op_type in _eltwise_optypes:
+                    if is_eltwise_optype(successor.op_type):
                         model = move_transpose_past_eltwise(transpose_node, successor, model)
                         graph_modified = True
                         return model, graph_modified
