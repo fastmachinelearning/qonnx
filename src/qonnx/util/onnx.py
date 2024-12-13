@@ -77,6 +77,8 @@ eltwise_optypes = monotonic_optypes | {
     "BitwiseXor",
     "Maximum",
     "Minimum",
+    "BitShift",
+    "Pow",
 }
 
 
