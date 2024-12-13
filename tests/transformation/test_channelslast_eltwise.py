@@ -47,7 +47,6 @@ def test_lower_and_channelslast_eltwiseops():
     expected_out = oxe.execute_onnx(model, idict)[oname]
     model = model.transform(LowerConvsToMatMul())
     model = model.transform(ConvertToChannelsLastAndClean(make_input_channels_last=False))
-    model.save("dbg.onnx")
     expected_ops = ["Transpose", "Im2Col", "MatMul", "Mul", "Add", "Relu", "Mul", "Quant", "Transpose"]
     ops = [x.op_type for x in model.graph.node]
     assert ops == expected_ops, "Did not found expected op sequence after lowering and channels-last"
