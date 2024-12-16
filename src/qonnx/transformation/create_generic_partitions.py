@@ -202,7 +202,7 @@ class PartitionFromDict(Transformation):
             if len(candidates) == 0:
                 return -1
             assert len(candidates) == 1, f"single node assigned to multiple partitions: {candidates}"
-            return candidates[0][0] # partition_id
+            return candidates[0][0]  # partition_id
 
         # apply partitioning
         model = model.transform(PartitionFromLambda(partitioning_func, self.partition_dir))
