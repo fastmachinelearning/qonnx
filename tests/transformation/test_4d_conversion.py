@@ -327,6 +327,7 @@ def create_conv_upsample():
             model.set_initializer(tensor_name, gen_finn_dt_tensor(DataType["FLOAT32"], init_shape))
     return model
 
+
 def create_resize():
     """
     Creates an model for testing the 3D to 4D transform of the resize node.
@@ -346,18 +347,18 @@ def create_resize():
         name="Resize2",
         mode="nearest",
     )
-    
+
     in_resize1 = onnx.helper.make_tensor_value_info("in_resize1", onnx.TensorProto.FLOAT, [1, 32, 4])
-    out_resize1 = onnx.helper.make_tensor_value_info("out_resize1", onnx.TensorProto.FLOAT, [1, 32, 8]) 
-    out_resize2 = onnx.helper.make_tensor_value_info("out_resize2", onnx.TensorProto.FLOAT, [1, 32, 16]) 
-    
+    out_resize1 = onnx.helper.make_tensor_value_info("out_resize1", onnx.TensorProto.FLOAT, [1, 32, 8])
+    out_resize2 = onnx.helper.make_tensor_value_info("out_resize2", onnx.TensorProto.FLOAT, [1, 32, 16])
+
     roi_resize1 = onnx.helper.make_tensor_value_info("roi_resize1", onnx.TensorProto.FLOAT, [4])
     scales_resize1 = onnx.helper.make_tensor_value_info("scales_resize1", onnx.TensorProto.FLOAT, [])
     sizes_resize1 = onnx.helper.make_tensor_value_info("sizes_resize1", onnx.TensorProto.INT64, [3])
 
     roi_resize2 = onnx.helper.make_tensor_value_info("roi_resize2", onnx.TensorProto.FLOAT, [4])
     scales_resize2 = onnx.helper.make_tensor_value_info("scales_resize2", onnx.TensorProto.FLOAT, [3])
-    
+
     list_of_nodes = [
         resize_node1,
         resize_node2,
@@ -384,8 +385,9 @@ def create_resize():
     model = model.transform(InferShapes())
     model.set_initializer("sizes_resize1", np.array([1, 32, 8], dtype=np.int64))
     model.set_initializer("scales_resize1", np.array([], dtype=np.float32))
-    model.set_initializer("scales_resize2", np.array([1., 1., 2.], dtype=np.float32))
+    model.set_initializer("scales_resize2", np.array([1.0, 1.0, 2.0], dtype=np.float32))
     return model
+
 
 @pytest.mark.parametrize("test_model", ["Quartz", "VGG", "ConvUpsample", "Resize"])
 def test_4d_conversion(test_model):

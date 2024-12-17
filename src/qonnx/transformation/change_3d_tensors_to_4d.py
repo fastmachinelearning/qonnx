@@ -196,12 +196,10 @@ class Change3DTo4DTensors(Transformation):
                 scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
                 model.set_initializer(n.input[1], scales)
             elif node_op_type == "Resize":
-                assert ("axes" not in [x.name for x in n.attribute]), (
-                        "%s: Axes attribute is not supported." % n.name
-                        )  
-                assert (not (len(n.input) in (3, 4) and model.get_initializer(n.input[1]) is not None)), (
-                        "%s: ROI input is not supported." % n.name
-                        )    
+                assert "axes" not in [x.name for x in n.attribute], "%s: Axes attribute is not supported." % n.name
+                assert not (len(n.input) in (3, 4) and model.get_initializer(n.input[1]) is not None), (
+                    "%s: ROI input is not supported." % n.name
+                )
                 if len(n.input) == 2:
                     # Resize version 10
                     scales = model.get_initializer(n.input[1])
@@ -213,13 +211,17 @@ class Change3DTo4DTensors(Transformation):
                     scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
                     model.set_initializer(n.input[2], scales)
                 elif len(n.input) == 4:
-                    scales_exists = (model.get_initializer(n.input[2]) is not None) and (len(model.get_initializer(n.input[2])) != 0)
-                    sizes_exists = (model.get_initializer(n.input[3]) is not None) and (len(model.get_initializer(n.input[3])) != 0)
-                    assert (scales_exists ^ sizes_exists), (
-                        "%s: Either scales or the target output size must " 
+                    scales_exists = (model.get_initializer(n.input[2]) is not None) and (
+                        len(model.get_initializer(n.input[2])) != 0
+                    )
+                    sizes_exists = (model.get_initializer(n.input[3]) is not None) and (
+                        len(model.get_initializer(n.input[3])) != 0
+                    )
+                    assert scales_exists ^ sizes_exists, (
+                        "%s: Either scales or the target output size must "
                         "be specified. Specifying both is prohibited." % n.name
-                        )  
-                    if (scales_exists): 
+                    )
+                    if scales_exists:
                         # Scales parameter is a 1d list of upsampling factors along each axis
                         scales = model.get_initializer(n.input[2])
                         scales = np.append(scales, np.asarray(1.0, dtype=np.float32))
