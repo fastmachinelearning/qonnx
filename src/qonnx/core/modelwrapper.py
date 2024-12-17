@@ -510,6 +510,9 @@ class ModelWrapper:
         # fill in the constants provided by the initializers (TensorProto to npy)
         for t in graph.initializer:
             execution_context[t.name] = np_helper.to_array(t)
+        # for nodes that use empty string as input (=default value), create a
+        # dummy entry in the context
+        execution_context[""] = None
         return execution_context
 
     def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
@@ -525,7 +528,9 @@ class ModelWrapper:
         # see https://github.com/fastmachinelearning/qonnx/issues/33
         for n in graph.node:
             for i in n.input:
-                ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
+                # skip tensor names with empty string (indicates defaults)
+                if i != "":
+                    ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
             for o in n.output:
                 ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret
