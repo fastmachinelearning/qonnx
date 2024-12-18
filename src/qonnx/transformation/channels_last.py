@@ -301,7 +301,10 @@ class RemoveConsecutiveChanFirstAndChanLastTrafos(Transformation):
                 ndim = len(input_shape)
                 if list(to_channels_first_args(ndim)) == perm_1:
                     successor_nodes = model.find_direct_successors(n)
-                    if successor_nodes is None:
+                    # skip if:
+                    # - this Transpose has no successors (nothing to do)
+                    # - this Transpose output is forking (cannot remove)
+                    if successor_nodes is None or len(successor_nodes) > 1:
                         continue
                     successor_node = successor_nodes[0]
 
