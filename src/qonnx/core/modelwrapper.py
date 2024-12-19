@@ -183,8 +183,30 @@ class ModelWrapper:
             ret = util.get_by_name(ret.quant_parameter_tensor_names, "finn_datatype", "key")
             if ret is not None:
                 return DataType[ret.value]
-        # TODO maybe use native ONNX tensor type instead of assuming fp32?
-        return DataType["FLOAT32"]
+        onnx_dtype_to_qonnx_dtype = {
+            TensorProto.FLOAT: "FLOAT32",
+            TensorProto.FLOAT16: "FLOAT16",
+            # TODO: dtypes below need testing to ensure they do not break FINN,
+            # since it normally assumes float32 containers for these dtypes
+            # TensorProto.UINT8 : "UINT8",
+            # TensorProto.INT8 : "INT8",
+            # TensorProto.UINT16 : "UINT16",
+            # TensorProto.INT16 : "INT16",
+            # TensorProto.UINT32 : "UINT32",
+            # TensorProto.INT32 : "INT32",
+            # TensorProto.UINT64 : "UINT64",
+            # TensorProto.INT64 : "INT64",
+        }
+        tensor_vi = self.get_tensor_valueinfo(tensor_name)
+        if tensor_vi is None:
+            # some initialized tensors don't get ValueInfo even after shape inference
+            _, onnx_dtype = self.get_initializer(tensor_name, return_dtype=True)
+        else:
+            onnx_dtype = tensor_vi.type.tensor_type.elem_type
+        if onnx_dtype in onnx_dtype_to_qonnx_dtype.keys():
+            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]]
+        else:
+            return DataType["FLOAT32"]
 
     def set_tensor_datatype(self, tensor_name, datatype):
         """Sets the QONNX DataType of tensor with given name."""
@@ -488,6 +510,9 @@ class ModelWrapper:
         # fill in the constants provided by the initializers (TensorProto to npy)
         for t in graph.initializer:
             execution_context[t.name] = np_helper.to_array(t)
+        # for nodes that use empty string as input (=default value), create a
+        # dummy entry in the context
+        execution_context[""] = None
         return execution_context
 
     def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
@@ -503,7 +528,9 @@ class ModelWrapper:
         # see https://github.com/fastmachinelearning/qonnx/issues/33
         for n in graph.node:
             for i in n.input:
-                ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
+                # skip tensor names with empty string (indicates defaults)
+                if i != "":
+                    ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
             for o in n.output:
                 ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret

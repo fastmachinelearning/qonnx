@@ -107,40 +107,54 @@ class RemoveIdentityOps(Transformation):
         self.atol = atol
 
     def apply(self, model):
+        opset_version = model.model.opset_import[0].version
         graph = model.graph
         node_ind = 0
         graph_modified = False
-        for n in graph.node:
+        for node in graph.node:
             node_ind += 1
-            if n.op_type in ["Add", "Sub"] and not model.is_fork_node(n) and not model.is_join_node(n):
-                A = model.get_initializer(n.input[1])
+            if node.op_type in ["Add", "Sub"]:
+                A = model.get_initializer(node.input[1])
                 if A is not None and np.isclose(A, np.zeros_like(A), atol=self.atol).all():
-                    remove_node_and_rewire(model, n)
+                    remove_node_and_rewire(model, node)
                     graph_modified = True
                     break
 
-            elif n.op_type in ["Mul", "Div"] and not model.is_fork_node(n) and not model.is_join_node(n):
-                A = model.get_initializer(n.input[1])
+            elif node.op_type in ["Mul", "Div"]:
+                A = model.get_initializer(node.input[1])
                 if A is not None and np.isclose(A, np.ones_like(A), atol=self.atol).all():
-                    remove_node_and_rewire(model, n)
+                    remove_node_and_rewire(model, node)
                     graph_modified = True
                     break
-            elif n.op_type == "Pad" and not model.is_fork_node(n) and not model.is_join_node(n):
-                pads = get_by_name(n.attribute, "pads")
+            elif node.op_type == "Pad":
+                pads = get_by_name(node.attribute, "pads")
                 if pads is not None:
                     # older versions of Pad op specify pads as attribute
                     pads = np.asarray(pads.ints, dtype=np.int64)
                 else:
                     # newer versions of Pad op specify pads as input
-                    pads = model.get_initializer(n.input[1])
+                    pads = model.get_initializer(node.input[1])
 
                 if (pads is not None) and (pads == 0).all():
-                    remove_node_and_rewire(model, n)
+                    remove_node_and_rewire(model, node)
                     graph_modified = True
                     break
-            elif n.op_type == "Identity":
-                remove_node_and_rewire(model, n)
+            elif node.op_type == "Identity":
+                remove_node_and_rewire(model, node)
                 graph_modified = True
                 break
+            elif node.op_type == "Dropout":
+                if opset_version < 12:
+                    dropout_ratio = get_by_name(node.attribute, "ratio")
+                    dropout_id_cond = not (dropout_ratio is None) and dropout_ratio.f == 0
+                else:
+                    based_on_inplen = len(node.input) == 1
+                    based_on_ratio_inp = (not based_on_inplen) and model.get_initializer(node.input[1]) == 0
+                    dropout_id_cond = based_on_inplen or based_on_ratio_inp
+                if dropout_id_cond:
+                    remove_node_and_rewire(model, node)
+                    graph_modified = True
+                    break
+
         model = model.transform(InferShapes())
         return (model, graph_modified)

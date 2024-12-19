@@ -31,6 +31,7 @@ import pytest
 import numpy as np
 import onnx
 import onnx.parser as oprs
+from onnx.helper import make_opsetid
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
@@ -328,7 +329,76 @@ def create_conv_upsample():
     return model
 
 
-@pytest.mark.parametrize("test_model", ["Quartz", "VGG", "ConvUpsample"])
+def create_resize(opset):
+    """
+    Creates an model for testing the 3D to 4D transform of the resize node.
+    """
+    resize_node1 = onnx.helper.make_node(
+        "Resize",
+        inputs=["in_resize1", "roi_resize1", "scales_resize1", "sizes_resize1"],
+        outputs=["out_resize1"],
+        name="Resize1",
+        mode="nearest",
+    )
+
+    resize_node2 = onnx.helper.make_node(
+        "Resize",
+        inputs=["out_resize1", "roi_resize2", "scales_resize2"],
+        outputs=["out_resize2"],
+        name="Resize2",
+        mode="nearest",
+    )
+
+    in_resize1 = onnx.helper.make_tensor_value_info("in_resize1", onnx.TensorProto.FLOAT, [1, 32, 4])
+    out_resize1 = onnx.helper.make_tensor_value_info("out_resize1", onnx.TensorProto.FLOAT, [1, 32, 8])
+    out_resize2 = onnx.helper.make_tensor_value_info("out_resize2", onnx.TensorProto.FLOAT, [1, 32, 16])
+
+    roi_resize1 = onnx.helper.make_tensor_value_info("roi_resize1", onnx.TensorProto.FLOAT, [4])
+    scales_resize1 = onnx.helper.make_tensor_value_info("scales_resize1", onnx.TensorProto.FLOAT, [])
+    sizes_resize1 = onnx.helper.make_tensor_value_info("sizes_resize1", onnx.TensorProto.INT64, [3])
+
+    roi_resize2 = onnx.helper.make_tensor_value_info("roi_resize2", onnx.TensorProto.FLOAT, [4])
+    scales_resize2 = onnx.helper.make_tensor_value_info("scales_resize2", onnx.TensorProto.FLOAT, [3])
+
+    list_of_nodes = [
+        resize_node1,
+        resize_node2,
+    ]
+    list_of_value_infos = [
+        out_resize1,
+        roi_resize1,
+        sizes_resize1,
+        scales_resize1,
+        roi_resize2,
+        scales_resize2,
+    ]
+
+    graph = onnx.helper.make_graph(
+        nodes=list_of_nodes,
+        name="4d_conversion_resize_test_graph",
+        inputs=[in_resize1],
+        outputs=[out_resize2],
+        value_info=list_of_value_infos,
+    )
+
+    onnx_model = qonnx_make_model(
+        graph, producer_name="4d_conversion_resize_test-model", opset_imports=[make_opsetid("", opset)]
+    )
+    model = ModelWrapper(onnx_model)
+
+    model.set_initializer("sizes_resize1", np.array([1, 32, 8], dtype=np.int64))
+    if opset == 11:
+        model.set_initializer("scales_resize1", np.array([], dtype=np.float32))
+    elif opset == 13:
+        model.graph.node[0].input[2] = ""
+    else:
+        assert False, f"Undefined opset {opset} for Resize testcase creator"
+    model.set_initializer("scales_resize2", np.array([1.0, 1.0, 2.0], dtype=np.float32))
+    model = model.transform(InferShapes())
+    return model
+
+
+@pytest.mark.parametrize("test_model", ["Quartz", "VGG", "ConvUpsample", "Resize11", "Resize13"])
 def test_4d_conversion(test_model):
     """
     Test for the 3D to 4D transformation with a valid graph.
@@ -340,6 +410,8 @@ def test_4d_conversion(test_model):
         model = create_arbitrary_model_vgg()
     elif test_model == "ConvUpsample":
         model = create_conv_upsample()
+    elif "Resize" in test_model:
+        model = create_resize(opset=int(test_model.replace("Resize", "")))
     else:
         raise Exception("Unknown test_model in test_4d_conversion")
 
