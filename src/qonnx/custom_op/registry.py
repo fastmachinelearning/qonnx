@@ -28,7 +28,24 @@
 
 import importlib
 
-from qonnx.util.basic import get_preferred_onnx_opset
+_QONNX_DOMAINS = ["finn", "qonnx.custom_op", "onnx.brevitas"]
+
+
+def register_custom_domain(domain: str):
+    _QONNX_DOMAINS.append(domain)
+
+
+def is_finn_op(op_type):
+    "Return whether given op_type string is a QONNX or FINN custom op"
+    is_finn = False
+    for domain in _QONNX_DOMAINS:
+        is_finn = is_finn or op_type.startswith(domain)
+    return is_finn
+
+
+def get_preferred_onnx_opset():
+    "Return preferred ONNX opset version for QONNX"
+    return 11
 
 
 def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
