@@ -370,10 +370,9 @@ class ModelWrapper:
     def del_initializer(self, initializer_name):
         """Deletes an initializer from the model."""
         graph = self._model_proto.graph
-        for init in graph.initializer:
-            if init.name == initializer_name:
-                graph.initializer.remove(init)
-                break
+        init = util.get_by_name(graph.initializer, initializer_name)
+        if not (init is None):
+            graph.initializer.remove(init)
 
     def find_producer(self, tensor_name):
         """Finds and returns the node that produces the tensor with given name."""
