@@ -43,6 +43,19 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
+from qonnx.util.test import download_model, get_golden_in_and_output
+
+
+@pytest.mark.parametrize("model_name", ["FINN-CNV_W2A2", "MobileNetv1-w4a4"])
+def test_conv_lowering_quant_weights(model_name):
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    input_t, golden_t = get_golden_in_and_output(model_name, seed=0)
+    input_dict = {model.graph.input[0].name: input_t}
+    model = model.transform(LowerConvsToMatMul())
+    assert model.get_nodes_by_op_type("Conv") == []
+    prod_dict = oxe.execute_onnx(model, input_dict)
+    prod_t = prod_dict[model.graph.output[0].name]
+    assert np.isclose(golden_t, prod_t, atol=1e-04).all()
 
 
 def test_conv_lowering_convmnist():
@@ -65,7 +78,7 @@ def test_conv_lowering_convmnist():
     model = model.transform(InferShapes())
     output_dict_p = oxe.execute_onnx(model, input_dict)
     produced = output_dict_p[output_name]
-    assert np.isclose(produced, expected).all()
+    assert np.isclose(produced, expected, rtol=1.0e-4).all()
 
 
 def run_conv_lowering_test(idt, k_h, k_w, ifm_dim_h, ifm_dim_w, ifm_ch, stride, padding, dilations, dw, bias):

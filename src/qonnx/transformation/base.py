@@ -107,8 +107,12 @@ class NodeLocalTransformation(Transformation):
             old_nodes.append(model.graph.node.pop())
 
         # Execute transformation in parallel
-        with mp.Pool(self._num_workers) as p:
-            new_nodes_and_bool = p.map(self.applyNodeLocal, old_nodes, chunksize=1)
+        if self._num_workers > 1:
+            with mp.Pool(self._num_workers) as p:
+                new_nodes_and_bool = p.map(self.applyNodeLocal, old_nodes, chunksize=1)
+        # execute without mp.Pool in case of 1 worker to simplify debugging
+        else:
+            new_nodes_and_bool = [self.applyNodeLocal(node) for node in old_nodes]
 
         # extract nodes and check if the transformation needs to run again
         # Note: .pop() had initially reversed the node order

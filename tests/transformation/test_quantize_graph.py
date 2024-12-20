@@ -120,14 +120,14 @@ def to_verify(model, test_details):
 def test_quantize_graph(test_model):
     test_details = model_details[test_model]
     model = download_model(test_model, do_cleanup=True, return_modelwrapper=True)
-    original_model_inf_cost = inference_cost(model, discount_sparsity=False)
+    original_model_inf_cost = inference_cost(model, discount_sparsity=False)["total_cost"]
     nodes_pos = test_details["test_input"]
     model = model.transform(QuantizeGraph(nodes_pos))
     quantnodes_added = len(model.get_nodes_by_op_type("Quant"))
     assert quantnodes_added == 10  # 10 positions are specified.
     verification = to_verify(model, nodes_pos)
     assert verification == "Success"
-    inf_cost = inference_cost(model, discount_sparsity=False)
+    inf_cost = inference_cost(model, discount_sparsity=False)["total_cost"]
     assert (
         inf_cost["total_macs"] == original_model_inf_cost["total_macs"]
     )  # "1814073344.0" must be same as the original model.

@@ -101,6 +101,7 @@ Inference cost for CNV_2W2A.onnx
 }
 ```
 
+You can use the `--cost-breakdown` option to generate a more detailed report that covers per-node (by name) and per-op-type information.
 You can read more about the BOPS metric in [this paper](https://www.frontiersin.org/articles/10.3389/frai.2021.676564/full), Section 4.2 Bit Operations.
 
 ### Convert between different quantization representations
@@ -114,15 +115,18 @@ Please see the documentation of the `QuantToQCDQ` transformation to learn more a
 
 ## Development
 
-Install in editable mode in a venv:
+Install in editable mode in a Python virtual environment:
 
 ```
 git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
 virtualenv -p python3.8 venv
 source venv/bin/activate
+pip install --upgrade pip
 pip install -e .[qkeras,testing]
 ```
+
+### Running tests
 
 Run entire test suite, parallelized across CPU cores:
 ```
@@ -133,6 +137,22 @@ Run a particular test and fall into pdb if it fails:
 ```
 pytest --pdb -k "test_extend_partition.py::test_extend_partition[extend_id1-2]"
 ```
+
+### Linting
+
+If you plan to make pull requests to the qonnx repo, linting will be required.
+We use a pre-commit hook to auto-format Python code and check for issues. See https://pre-commit.com/ for installation. Once you have `pre-commit`,
+you can install the hooks into your local clone of the qonnx repo:
+
+```
+cd qonnx
+source venv/bin/activate
+pip install pre-commit
+pre-commit install
+```
+
+Every time you commit some code, the pre-commit hooks will first run, performing various checks and fixes. In some cases pre-commit won’t be able to
+fix the issues and you may have to fix it manually, then run git commit once again. The checks are configured in .pre-commit-config.yaml under the repo root.
 
 ## Why QONNX?
 
