@@ -28,8 +28,7 @@
 
 import numpy as np
 
-from qonnx.core.datatype import DataType
-from qonnx.core.datatype import resolve_datatype
+from qonnx.core.datatype import DataType, resolve_datatype
 
 
 def test_datatypes():
@@ -120,12 +119,11 @@ def test_resolve_datatype():
 
 
 def test_input_type_error():
-
     def test_resolve_datatype(input):
         # test with invalid input to check if the TypeError works
         try:
             resolve_datatype(input)  # This should raise a TypeError
-        except TypeError as e:
+        except TypeError:
             pass
         else:
             print("Test with invalid input failed: No TypeError was raised.")
