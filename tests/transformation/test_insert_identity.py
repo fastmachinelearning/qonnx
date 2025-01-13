@@ -33,7 +33,7 @@ from onnx import helper as oh
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.transformation.insert import InsertIdentity
+from qonnx.transformation.insert import InsertIdentity, InsertIdentityOnAllTopLevelIO
 
 
 @pytest.fixture
@@ -49,9 +49,16 @@ def simple_model():
     return model
 
 
-def save_transformed_model(model, test_name):
-    output_path = f"{test_name}.onnx"
-    model.save(output_path)
+def test_insert_identity_on_all_top_level_io(simple_model):
+    orig_top_inp_names = [inp.name for inp in simple_model.graph.input]
+    orig_top_out_names = [out.name for out in simple_model.graph.output]
+    model = simple_model.transform(InsertIdentityOnAllTopLevelIO())
+    for inp in orig_top_inp_names:
+        assert model.find_consumer(inp).op_type == "Identity"
+    for out in orig_top_out_names:
+        assert model.find_producer(out).op_type == "Identity"
+    assert orig_top_inp_names == [inp.name for inp in model.graph.input]
+    assert orig_top_out_names == [out.name for out in model.graph.output]
 
 
 def test_insert_identity_before_input(simple_model):
@@ -63,9 +70,6 @@ def test_insert_identity_before_input(simple_model):
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
 
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_before_input")
-
 
 def test_insert_identity_after_input(simple_model):
     # Apply the transformation
@@ -75,9 +79,6 @@ def test_insert_identity_after_input(simple_model):
     identity_node = model.find_consumer("input")
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
-
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_after_input")
 
 
 def test_insert_identity_before_intermediate(simple_model):
@@ -89,9 +90,6 @@ def test_insert_identity_before_intermediate(simple_model):
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
 
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_before_intermediate")
-
 
 def test_insert_identity_after_intermediate(simple_model):
     # Apply the transformation
@@ -101,9 +99,6 @@ def test_insert_identity_after_intermediate(simple_model):
     identity_node = model.find_consumer("intermediate")
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
-
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_after_intermediate")
 
 
 def test_insert_identity_before_output(simple_model):
@@ -115,9 +110,6 @@ def test_insert_identity_before_output(simple_model):
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
 
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_before_output")
-
 
 def test_insert_identity_after_output(simple_model):
     # Apply the transformation
@@ -127,9 +119,6 @@ def test_insert_identity_after_output(simple_model):
     identity_node = model.find_consumer("output")
     assert identity_node is not None
     assert identity_node.op_type == "Identity"
-
-    # Save the transformed model
-    save_transformed_model(model, "test_insert_identity_after_output")
 
 
 def test_tensor_not_found(simple_model):
