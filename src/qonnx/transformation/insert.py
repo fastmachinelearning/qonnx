@@ -32,6 +32,22 @@ from qonnx.transformation.base import Transformation
 from qonnx.transformation.general import SortGraph
 
 
+class InsertIdentityOnAllTopLevelIO(Transformation):
+    """
+    Transformation that inserts an Identity node on all top-level inputs and outputs
+    of the ONNX graph. This can be useful before calling transformations that do not
+    gracefully handle edge cases where transformed tensors are top-level inputs or outputs.
+    """
+
+    def apply(self, model):
+        graph = model.graph
+        for inp in graph.input:
+            model = model.transform(InsertIdentity(inp.name, "consumer"))
+        for out in graph.output:
+            model = model.transform(InsertIdentity(out.name, "producer"))
+        return model, False
+
+
 class InsertIdentity(Transformation):
     """
     Transformation that inserts an Identity node in the ONNX graph. For edge cases
