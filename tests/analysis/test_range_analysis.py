@@ -44,29 +44,9 @@ from qonnx.util.range_analysis import (
     range_analysis,
     unbroadcast_tensor,
 )
-from qonnx.util.test import download_model, test_model_details
+from qonnx.util.test import download_model, test_model_details, uint8_to_unitfloat
 
-uint8_to_unitfloat = {
-    "range": (np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-    "int_range": (np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-    "scale": np.asarray(1.0 / 255.0, dtype=np.float32),
-    "bias": np.asarray(0.0, dtype=np.float32),
-    "is_initializer": False,
-}
-
-model_details_scaledint = {
-    "FINN-TFC_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat)},
-    "FINN-CNV_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat)},
-    "MobileNetv1-w4a4": {"scaledint_input_range": RangeInfo(shape=(1, 3, 224, 224), **uint8_to_unitfloat)},
-    "rn18_w4a4_a2q_16b": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 3, 32, 32),
-            # TODO: the A2Q networks have actually different scale and bias
-            # due to input preprocessing, should be taken into account
-            **uint8_to_unitfloat
-        )
-    },
-}
+ra_models = ["FINN-TFC_W2A2", "FINN-CNV_W2A2", "MobileNetv1-w4a4", "rn18_w4a4_a2q_16b"]
 
 
 def test_unbroadcast_tensor():
@@ -166,13 +146,19 @@ def test_calc_matmul_node_range():
     assert range_dict[matmul_node.output[0]].range[1][0][-1] == 190
 
 
-@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+@pytest.mark.parametrize("model_name", ra_models)
 def test_range_analysis_full_network_noscaledint(model_name):
-    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    current_details = test_model_details[model_name]
+    irange = current_details["input_metadata"]
+    if "a2q" in model_name or "MobileNetv1-w4a4" in model_name:
+        # use simpler input scale/bias for A2Q and MNv1 models for now
+        # TODO test and fix non-scalar bias propagation?
+        irange.scale = uint8_to_unitfloat["scale"]
+        irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     ret = range_analysis(
         model,
-        irange=current_details["input_range"],
+        irange=irange,
         report_mode="range",
         do_cleanup=True,
         strip_initializers_from_report=False,
@@ -183,14 +169,20 @@ def test_range_analysis_full_network_noscaledint(model_name):
         assert not (ret[tname].range is None)
 
 
-@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+@pytest.mark.parametrize("model_name", ra_models)
 def test_range_analysis_full_network_scaledint(model_name):
-    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    current_details = test_model_details[model_name]
+    irange = current_details["input_metadata"]
+    if "a2q" in model_name or "MobileNetv1-w4a4" in model_name:
+        # use simpler input scale/bias for A2Q and MNv1 models for now
+        # TODO test and fix non-scalar bias propagation?
+        irange.scale = uint8_to_unitfloat["scale"]
+        irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     model = cleanup_model(model, extract_conv_bias=True)
     ret = range_analysis(
         model,
-        irange=current_details["scaledint_input_range"],
+        irange=irange,
         report_mode="range",
         do_cleanup=False,
         scaled_int=True,

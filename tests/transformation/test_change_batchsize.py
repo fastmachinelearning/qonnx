@@ -43,8 +43,8 @@ model_details = test_model_details
 def test_change_batchsize(test_model):
     test_details = model_details[test_model]
     batch_size = 10
-    old_ishape = test_details["input_shape"]
-    imin, imax = test_details["input_range"]
+    old_ishape = test_details["input_metadata"].shape
+    imin, imax = test_details["input_metadata"].range
     # some models spec per-channel ranges, be conservative for those
     if isinstance(imin, np.ndarray):
         imin = imin.max()

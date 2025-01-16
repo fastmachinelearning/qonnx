@@ -36,39 +36,19 @@ from qonnx.core.onnx_exec import execute_onnx
 from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.streamline import ExtractAggregateScaleBias, Streamline
-from qonnx.util.range_analysis import RangeInfo, range_analysis
-from qonnx.util.test import download_model, get_random_input, test_model_details
+from qonnx.util.range_analysis import range_analysis
+from qonnx.util.test import download_model, get_random_input, test_model_details, uint8_to_unitfloat
 
-uint8_to_unitfloat = {
-    "range": (np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-    "int_range": (np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-    "scale": np.asarray(1.0 / 255.0, dtype=np.float32),
-    "bias": np.asarray(0.0, dtype=np.float32),
-    "is_initializer": False,
-}
-
-model_details_scaledint = {
-    "FINN-TFC_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat)},
-    "FINN-CNV_W2A2": {"scaledint_input_range": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat)},
-    "MobileNetv1-w4a4": {"scaledint_input_range": RangeInfo(shape=(1, 3, 224, 224), **uint8_to_unitfloat)},
-    "rn18_w4a4_a2q_16b": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 3, 32, 32),
-            # TODO: the A2Q networks have actually different scale and bias
-            # due to input preprocessing, should be taken into account
-            **uint8_to_unitfloat
-        )
-    },
-}
+ra_models = ["FINN-TFC_W2A2", "FINN-CNV_W2A2", "MobileNetv1-w4a4", "rn18_w4a4_a2q_16b"]
 
 
 def test_extractaggregatescalebias():
     model_name = "FINN-TFC_W2A2"
-    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    current_details = test_model_details[model_name]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     golden_dict = range_analysis(
         model,
-        irange=current_details["scaledint_input_range"],
+        irange=current_details["input_metadata"],
         report_mode="range",
         scaled_int=True,
     )
@@ -76,7 +56,7 @@ def test_extractaggregatescalebias():
     model = model.transform(ExtractAggregateScaleBias(golden_dict, target_tensor_name))
     ret_dict = range_analysis(
         model,
-        irange=current_details["scaledint_input_range"],
+        irange=current_details["input_metadata"],
         report_mode="range",
         scaled_int=True,
     )
@@ -88,12 +68,17 @@ def test_extractaggregatescalebias():
     assert np.isclose(ri_golden.scale, ri_ret.scale).all()
 
 
-@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+@pytest.mark.parametrize("model_name", ra_models)
 def test_streamline_full_network(model_name):
-    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    current_details = test_model_details[model_name]
+    irange = current_details["input_metadata"]
+    if "a2q" in model_name or "MobileNetv1-w4a4" in model_name:
+        # use simpler input scale/bias for A2Q and MNv1 models for now
+        # TODO test and fix non-scalar bias propagation?
+        irange.scale = uint8_to_unitfloat["scale"]
+        irange.bias = uint8_to_unitfloat["bias"]
     orig_model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
-    current_irange = current_details["scaledint_input_range"]
-    model = orig_model.transform(Streamline(irange=current_irange))
+    model = orig_model.transform(Streamline(irange=irange))
     # check if streamlining succeeded structurally:
     # all compute-intensive ops (MatMul and Conv) must have integer inputs
     iname = model.graph.input[0].name
@@ -107,7 +92,7 @@ def test_streamline_full_network(model_name):
     noscales_t = noscales_dict[oname]
     # streamlining should remove the effect of input scaling too, so we multiply
     # our original input by (1/original scale)
-    inp_dict = {iname: inp_t * (1 / current_irange.scale)}
+    inp_dict = {iname: inp_t * (1 / irange.scale)}
     ret_dict = execute_onnx(model, inp_dict, return_full_exec_context=True)
     ret_t = ret_dict[oname]
     assert np.isclose(noscales_t, ret_t, atol=1e-04).all()
