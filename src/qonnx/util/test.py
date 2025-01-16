@@ -33,10 +33,22 @@ import urllib.request
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.util.cleanup import cleanup
+from qonnx.util.range_analysis import RangeInfo
 
 # utility functions to fetch models and data for
 # testing various qonnx transformations
 
+# common range pattern from preproc: many image processing networks use
+# ToTensor in pytorch to convert uint8 input data into floats in [0, 1]
+uint8_to_unitfloat = {
+    "range": (np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+    "int_range": (np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+    "scale": np.asarray(1.0 / 255.0, dtype=np.float32),
+    "bias": np.asarray(0.0, dtype=np.float32),
+    "is_initializer": False,
+}
+
+# common settings for A2Q example networks
 a2q_rn18_preproc_mean = np.asarray([0.491, 0.482, 0.447], dtype=np.float32)
 a2q_rn18_preproc_std = np.asarray([0.247, 0.243, 0.262], dtype=np.float32)
 a2q_rn18_int_range = (0, 255)
@@ -50,11 +62,13 @@ a2q_rn18_rmax = a2q_rn18_rmax.reshape(1, 3, 1, 1)
 a2q_rn18_scale = a2q_rn18_scale.reshape(1, 3, 1, 1)
 a2q_rn18_bias = a2q_rn18_bias.reshape(1, 3, 1, 1)
 a2q_rn18_common = {
-    "input_shape": (1, 3, 32, 32),
-    "input_range": (a2q_rn18_rmin, a2q_rn18_rmax),
-    "int_range": a2q_rn18_int_range,
-    "scale": a2q_rn18_scale,
-    "bias": a2q_rn18_bias,
+    "input_metadata": RangeInfo(
+        shape=(1, 3, 32, 32),
+        range=(a2q_rn18_rmin, a2q_rn18_rmax),
+        int_range=a2q_rn18_int_range,
+        scale=a2q_rn18_scale,
+        bias=a2q_rn18_bias,
+    )
 }
 a2q_rn18_urlbase = "https://github.com/fastmachinelearning/qonnx_model_zoo/releases/download/a2q-20240905/"
 
@@ -118,8 +132,7 @@ test_model_details = {
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_2W2A.onnx"
         ),
-        "input_shape": (1, 3, 32, 32),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat),
     },
     "FINN-CNV_W1A2": {
         "description": "1/2-bit VGG-10-like CNN on CIFAR-10",
@@ -127,8 +140,7 @@ test_model_details = {
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_1W2A.onnx"
         ),
-        "input_shape": (1, 3, 32, 32),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat),
     },
     "FINN-CNV_W1A1": {
         "description": "1-bit VGG-10-like CNN on CIFAR-10",
@@ -136,8 +148,7 @@ test_model_details = {
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "QONNX_model_zoo/main/models/CIFAR10/Brevitas_FINN_CNV/CNV_1W1A.onnx"
         ),
-        "input_shape": (1, 3, 32, 32),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 3, 32, 32), **uint8_to_unitfloat),
     },
     "FINN-TFC_W1A1": {
         "description": "1-bit tiny MLP on MNIST",
@@ -145,8 +156,7 @@ test_model_details = {
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W1A.onnx"
         ),
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat),
     },
     "FINN-TFC_W1A2": {
         "description": "1/2-bit tiny MLP on MNIST",
@@ -154,8 +164,7 @@ test_model_details = {
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_1W2A.onnx"
         ),
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat),
     },
     "FINN-TFC_W2A2": {
         "description": "2-bit tiny MLP on MNIST",
@@ -163,8 +172,7 @@ test_model_details = {
             "https://github.com/fastmachinelearning/QONNX_model_zoo/"
             "raw/main/models/MNIST/Brevitas_FINN_TFC/TFC/TFC_2W2A.onnx"
         ),
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (0, +1),
+        "input_metadata": RangeInfo(shape=(1, 1, 28, 28), **uint8_to_unitfloat),
     },
     "RadioML_VGG10": {
         "description": "8-bit VGG-10-like CNN on RadioML 2018",
@@ -172,14 +180,15 @@ test_model_details = {
             "https://github.com/Xilinx/brevitas-radioml-challenge-21/raw/"
             "9eef6a2417d6a0c078bfcc3a4dc95033739c5550/sandbox/notebooks/models/pretrained_VGG10_w8a8_20_export.onnx"
         ),
-        "input_shape": (1, 2, 1024),
-        "input_range": (-1, +1),
+        "input_metadata": RangeInfo(shape=(1, 2, 1024), range=(-1, +1)),
     },
     "Conv_bias_example": {
         "description": "",
         "url": "https://zenodo.org/record/7626922/files/super_resolution.onnx",
-        "input_shape": (1, 1, 28, 28),
-        "input_range": (-1, +1),
+        "input_metadata": RangeInfo(
+            shape=(1, 1, 28, 28),
+            range=(-1, +1),
+        ),
     },
     "MobileNetv1-w4a4": {
         "description": "4-bit MobileNet-v1 on ImageNet",
@@ -187,8 +196,13 @@ test_model_details = {
             "https://raw.githubusercontent.com/fastmachinelearning/"
             "qonnx_model_zoo/main/models/ImageNet/Brevitas_FINN_mobilenet/mobilenet_4W4A.onnx"
         ),
-        "input_shape": (1, 3, 224, 224),
-        "input_range": (0, 1),
+        "input_metadata": RangeInfo(
+            shape=(1, 3, 224, 224),
+            range=(0, +1),
+            int_range=(0, 255),
+            scale=np.asarray([1.0 / 255.0], dtype=np.float32) / 0.226,
+            bias=np.asarray([-0.485, -0.456, -0.406], dtype=np.float32) / 0.226,
+        ),
     },
     **a2q_model_details,
 }
@@ -222,8 +236,8 @@ def qonnx_download_model():
 
 def get_random_input(test_model, seed=42):
     rng = np.random.RandomState(seed)
-    input_shape = test_model_details[test_model]["input_shape"]
-    (low, high) = test_model_details[test_model]["input_range"]
+    input_shape = test_model_details[test_model]["input_metadata"].shape
+    (low, high) = test_model_details[test_model]["input_metadata"].range
     # some models spec per-channel ranges, be conservative for those
     if isinstance(low, np.ndarray):
         low = low.max()
