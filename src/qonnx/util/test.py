@@ -32,6 +32,9 @@ import urllib.request
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.insert import InsertIdentityOnAllTopLevelIO
+from qonnx.transformation.remove import RemoveIdentityOps
+from qonnx.transformation.streamline import ExtractAggregateScaleBias
 from qonnx.util.cleanup import cleanup
 from qonnx.util.range_analysis import RangeInfo
 
@@ -213,7 +216,18 @@ test_model_keys = clize.parameters.mapped(
 )
 
 
-def download_model(test_model: test_model_keys, *, dl_dir="/tmp", do_cleanup=False, return_modelwrapper=False):
+def add_input_preproc_to_model(model, inp_range_info):
+    model = model.transform(InsertIdentityOnAllTopLevelIO())
+    placeholder_inp_name = model.graph.input[0].name + "_identity"
+    inp_range_dict = {placeholder_inp_name: inp_range_info}
+    model = model.transform(ExtractAggregateScaleBias(inp_range_dict, placeholder_inp_name))
+    model = model.transform(RemoveIdentityOps())
+    return model
+
+
+def download_model(
+    test_model: test_model_keys, *, dl_dir="/tmp", do_cleanup=False, return_modelwrapper=False, add_preproc=False
+):
     qonnx_url = test_model_details[test_model]["url"]
     # download test data
     dl_file = dl_dir + f"/{test_model}.onnx"
@@ -227,6 +241,15 @@ def download_model(test_model: test_model_keys, *, dl_dir="/tmp", do_cleanup=Fal
         ret = out_file
     if return_modelwrapper:
         ret = ModelWrapper(ret)
+    if add_preproc:
+        assert do_cleanup, "add_preproc requires do_cleanup"
+        if not return_modelwrapper:
+            ret = ModelWrapper(ret)
+        ret = add_input_preproc_to_model(ret, test_model_details[test_model]["input_metadata"])
+        if not return_modelwrapper:
+            out_file = dl_dir + f"/{test_model}_preproc.onnx"
+            ret.save(out_file)
+            ret = out_file
     return ret
 
 
