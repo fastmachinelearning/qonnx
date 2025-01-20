@@ -37,18 +37,18 @@ from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZer
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.streamline import ExtractAggregateScaleBias, Streamline
 from qonnx.util.range_analysis import range_analysis
-from qonnx.util.test import download_model, get_random_input, test_model_details, uint8_to_unitfloat
+from qonnx.util.test import download_model, get_model_input_metadata, get_random_input
 
 ra_models = ["FINN-TFC_W2A2", "FINN-CNV_W2A2", "MobileNetv1-w4a4", "rn18_w4a4_a2q_16b"]
 
 
 def test_extractaggregatescalebias():
     model_name = "FINN-TFC_W2A2"
-    current_details = test_model_details[model_name]
+    current_details = get_model_input_metadata(model_name, include_preprocessing=True)["range"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     golden_dict = range_analysis(
         model,
-        irange=current_details["input_metadata"],
+        irange=current_details,
         report_mode="range",
         scaled_int=True,
     )
@@ -56,7 +56,7 @@ def test_extractaggregatescalebias():
     model = model.transform(ExtractAggregateScaleBias(golden_dict, target_tensor_name))
     ret_dict = range_analysis(
         model,
-        irange=current_details["input_metadata"],
+        irange=current_details,
         report_mode="range",
         scaled_int=True,
     )
@@ -70,14 +70,9 @@ def test_extractaggregatescalebias():
 
 @pytest.mark.parametrize("model_name", ra_models)
 def test_streamline_full_network(model_name):
-    current_details = test_model_details[model_name]
-    irange = current_details["input_metadata"]
-    if "a2q" in model_name or "MobileNetv1-w4a4" in model_name:
-        # use simpler input scale/bias for A2Q and MNv1 models for now
-        # TODO test and fix non-scalar bias propagation?
-        irange.scale = uint8_to_unitfloat["scale"]
-        irange.bias = uint8_to_unitfloat["bias"]
-    orig_model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    current_details = get_model_input_metadata(model_name, include_preprocessing=True)["range"]
+    irange = current_details
+    orig_model = download_model(model_name, return_modelwrapper=True, do_cleanup=True, add_preproc=True)
     model = orig_model.transform(Streamline(irange=irange))
     # check if streamlining succeeded structurally:
     # all compute-intensive ops (MatMul and Conv) must have integer inputs
@@ -90,13 +85,12 @@ def test_streamline_full_network(model_name):
     noscales_model = orig_model.transform(ExtractQuantScaleZeroPt())
     noscales_dict = execute_onnx(noscales_model, inp_dict, return_full_exec_context=True)
     noscales_t = noscales_dict[oname]
-    # streamlining should remove the effect of input scaling too, so we multiply
-    # our original input by (1/original scale)
-    inp_dict = {iname: inp_t * (1 / irange.scale)}
+    # now execute the streamlined model
     ret_dict = execute_onnx(model, inp_dict, return_full_exec_context=True)
     ret_t = ret_dict[oname]
     assert np.isclose(noscales_t, ret_t, atol=1e-04).all()
     # note that we expect the input data type to change for the streamlined graph
+    # TODO remove this bit if redundant?
     model.set_tensor_datatype(iname, DataType["UINT8"])
     model = model.transform(InferDataTypes())
     all_compint_ops = [x for x in model.graph.node if x.op_type in ["Conv", "MatMul"]]
