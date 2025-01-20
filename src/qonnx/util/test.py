@@ -60,6 +60,9 @@ uint8_to_unitfloat = {
 # common settings for A2Q example networks
 a2q_rn18_preproc_mean = np.asarray([0.491, 0.482, 0.447], dtype=np.float32)
 a2q_rn18_preproc_std = np.asarray([0.247, 0.243, 0.262], dtype=np.float32)
+# TODO taking the avg stddev here to make streamlining possible - accuracy OK?
+a2q_rn18_preproc_std = np.asarray(np.average(a2q_rn18_preproc_std))
+
 a2q_rn18_int_range = range_zero_to_255
 a2q_rn18_iscale = 1 / 255
 a2q_rn18_rmin = (a2q_rn18_int_range[0] * a2q_rn18_iscale - a2q_rn18_preproc_mean) / a2q_rn18_preproc_std
