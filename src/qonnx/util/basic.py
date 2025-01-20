@@ -218,23 +218,40 @@ def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
     return (min_value, max_value)
 
 
-def gen_finn_dt_tensor(finn_dt, tensor_shape):
-    """Generates random tensor in given shape and with given QONNX DataType."""
+def gen_finn_dt_tensor(finn_dt, tensor_shape, rmin=None, rmax=None, seed=42):
+    """Generates random tensor in given shape and with given QONNX DataType. If rmin and rmax
+    are spacified, the values will be generated in the range [rmin, rmax]."""
+    rng = np.random.RandomState(seed)
     if type(tensor_shape) == list:
         tensor_shape = tuple(tensor_shape)
     if finn_dt == DataType["BIPOLAR"]:
-        tensor_values = np.random.randint(2, size=tensor_shape)
+        tensor_values = rng.randint(2, size=tensor_shape)
         tensor_values = 2 * tensor_values - 1
     elif finn_dt == DataType["BINARY"]:
-        tensor_values = np.random.randint(2, size=tensor_shape)
+        tensor_values = rng.randint(2, size=tensor_shape)
     elif "INT" in finn_dt.name or finn_dt == DataType["TERNARY"]:
-        tensor_values = np.random.randint(finn_dt.min(), high=finn_dt.max() + 1, size=tensor_shape)
+        if rmin is None:
+            rmin = finn_dt.min()
+        if rmax is None:
+            rmax = finn_dt.max() + 1
+        tensor_values = rng.randint(rmin, high=rmax, size=tensor_shape)
     elif "FIXED" in finn_dt.name:
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
-        tensor_values = np.random.randint(int_dt.min(), high=int_dt.max() + 1, size=tensor_shape)
+        if rmin is None:
+            rmin = int_dt.min()
+        if rmax is None:
+            rmax = int_dt.max() + 1
+        tensor_values = rng.randint(rmin, high=rmax, size=tensor_shape)
         tensor_values = tensor_values * finn_dt.scale_factor()
     elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
-        tensor_values = np.random.randn(*tensor_shape)
+        if rmin is None and rmax is None:
+            tensor_values = rng.randn(*tensor_shape)
+        else:
+            if rmin is None:
+                rmin = -1.0
+            if rmax is None:
+                rmax = 1.0
+            tensor_values = rng.uniform(rmin, rmax, size=tensor_shape)
     else:
         raise ValueError("Datatype {} is not supported, no tensor could be generated".format(finn_dt))
     # always use float type as container
