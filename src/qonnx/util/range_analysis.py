@@ -678,14 +678,15 @@ def check_matmul_for_intrange_prop(node, range_dict):
         return False
     # for the output dot product to have a non-dynamic scale & bias, we need to put
     # some constraints on the scale & bias for the inputs
-    # for now: no biases, TODO figure out if we can have shared bias in some cases
-    i0_zerobias_ok = (irange_0_inf.bias == 0).all()
-    if not i0_zerobias_ok:
-        warn(f"Input 0 of {node.name} has non-0 bias, can't do scaled-int propagation")
-        return False
-    i1_zerobias_ok = (irange_1_inf.bias == 0).all()
-    if not i1_zerobias_ok:
-        warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
+    # for the output dot product to have a non-dynamic scale & bias, we need to put
+    # some constraints on the scale & bias for the inputs
+    # for biases, we need the following conditions:
+    # - one of the inputs must be constant-valued (point interval)
+    # - the bias of the constant-valued input must be zero
+    i0_bias_ok = irange_0_inf.is_point_interval() and (irange_0_inf.bias == 0).all()
+    i1_bias_ok = irange_1_inf.is_point_interval() and (irange_1_inf.bias == 0).all()
+    if not (i0_bias_ok or i1_bias_ok):
+        warn(f"Non-const inputs of {node.name} have non-zero bias, can't do scaled-int propagation")
         return False
     # ensure scale information is un-broadcasted so we can check shapes etc properly
     i0_scale = unbroadcast_tensor(irange_0_inf.scale)
@@ -724,14 +725,28 @@ def calc_intrange_matmul(node, model, range_dict):
         return
     for node_in in node.input:
         irange_inf = range_dict[node_in]
-        # be extra conservative for now: no negative scales, no biases
+        # be extra conservative for now: no negative scales
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
-        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
+
     # compute updated scale and bias
     i0scale = unbroadcast_tensor(range_dict[node.input[0]].scale)
     i1scale = unbroadcast_tensor(range_dict[node.input[1]].scale)
     scale = i0scale * i1scale
-    bias = np.asarray(0.0, dtype=np.float32)
+    # new bias = (bias_0 * scale_1 * input_1) OR (scale_0 * input_0 * bias_1)
+    irange_0_inf = range_dict[node.input[0]]
+    irange_1_inf = range_dict[node.input[1]]
+    i0_bias_ok = irange_0_inf.is_point_interval() and (irange_0_inf.bias == 0).all()
+    i1_bias_ok = irange_1_inf.is_point_interval() and (irange_1_inf.bias == 0).all()
+    if i0_bias_ok and not i1_bias_ok:
+        # new_bias is ((scale_0 * input_0) @ bias_1)
+        # where @ is MatMul
+        bias = (irange_0_inf.scale * irange_0_inf.int_range[0]) @ np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape)
+    elif i1_bias_ok and not i0_bias_ok:
+        # new bias is (bias_0 @ (scale_1 * input_1))
+        # where @ is MatMul
+        bias = np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape) @ (irange_1_inf.scale * irange_1_inf.int_range[0])
+    else:
+        assert False, f"Unhandled bias condition in {node.name}"
     range_dict[node.output[0]].scale = scale
     range_dict[node.output[0]].bias = bias
     calc_intrange_from_scalebias(node, model, range_dict)
@@ -768,14 +783,13 @@ def check_conv_for_intrange_prop(node, range_dict):
         return False
     # for the output dot product to have a non-dynamic scale & bias, we need to put
     # some constraints on the scale & bias for the inputs
-    # for now: no biases, TODO figure out if we can have shared bias in some cases
-    i0_zerobias_ok = (irange_0_inf.bias == 0).all()
-    if not i0_zerobias_ok:
-        warn(f"Input 0 of {node.name} has non-0 bias, can't do scaled-int propagation")
-        return False
-    i1_zerobias_ok = (irange_1_inf.bias == 0).all()
-    if not i1_zerobias_ok:
-        warn(f"Input 1 of {node.name} has non-0 bias, can't do scaled-int propagation")
+    # for biases, we need the following conditions:
+    # - one of the inputs must be constant-valued (point interval)
+    # - the bias of the constant-valued input must be zero
+    i0_bias_ok = irange_0_inf.is_point_interval() and (irange_0_inf.bias == 0).all()
+    i1_bias_ok = irange_1_inf.is_point_interval() and (irange_1_inf.bias == 0).all()
+    if not (i0_bias_ok or i1_bias_ok):
+        warn(f"Non-const inputs of {node.name} have non-zero bias, can't do scaled-int propagation")
         return False
     # ensure scale information is un-broadcasted so we can check shapes etc properly
     i0_scale = unbroadcast_tensor(irange_0_inf.scale)
@@ -813,9 +827,9 @@ def calc_intrange_conv(node, model, range_dict):
         return
     for node_in in node.input:
         irange_inf = range_dict[node_in]
-        # be extra conservative for now: no negative scales, no biases
+        # be extra conservative for now: no negative scales
         assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
-        assert (irange_inf.bias == 0).all(), "Need zero bias for weights"
+
     # compute updated scale and bias
     iscale_fixed = unbroadcast_tensor(range_dict[node.input[0]].scale)
     wscale_fixed = unbroadcast_tensor(range_dict[node.input[1]].scale)
@@ -826,9 +840,37 @@ def calc_intrange_conv(node, model, range_dict):
         desired_scale_shape[1] = target_example[1]
         wscale_fixed = wscale_fixed.reshape(desired_scale_shape)
     scale = iscale_fixed * wscale_fixed
-    bias = np.asarray(0.0, dtype=np.float32)
+
+    # new bias = (bias_0 * scale_1 * input_1) OR (scale_0 * input_0 * bias_1)
+    irange_0_inf = range_dict[node.input[0]]
+    irange_1_inf = range_dict[node.input[1]]
+    i0_bias_ok = irange_0_inf.is_point_interval() and (irange_0_inf.bias == 0).all()
+    i1_bias_ok = irange_1_inf.is_point_interval() and (irange_1_inf.bias == 0).all()
+
+    if i0_bias_ok and not i1_bias_ok:
+        # new_bias is ((scale_0 * input_0) @ bias_1)
+        # where @ is convolution
+        node_ctx = {
+            node.input[0]: irange_0_inf.scale * irange_0_inf.int_range[0],
+            node.input[1]: np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape),
+        }
+        execute_node(node, node_ctx, model.graph)
+        bias = node_ctx[node.output[0]]
+    elif i1_bias_ok and not i0_bias_ok:
+        # new bias is (bias_0 @ (scale_1 * input_1))
+        # where @ is convolution
+        node_ctx = {
+            node.input[0]: np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape),
+            node.input[1]: irange_1_inf.scale * irange_1_inf.int_range[0],
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape),
+        }
+        execute_node(node, node_ctx, model.graph)
+        bias = node_ctx[node.output[0]]
+    else:
+        assert False, f"Unhandled bias condition in {node.name}"
     range_dict[node.output[0]].scale = scale
-    range_dict[node.output[0]].bias = bias
+    range_dict[node.output[0]].bias = unbroadcast_tensor(bias)
     calc_intrange_from_scalebias(node, model, range_dict)
     # inherit scale/bias history from both sides
     range_dict[node.output[0]].history_scale = (

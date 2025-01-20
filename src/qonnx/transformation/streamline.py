@@ -36,7 +36,14 @@ from qonnx.transformation.base import Transformation
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
 from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
-from qonnx.transformation.general import ConvertDivToMul, ConvertSubToAdd, SortGraph
+from qonnx.transformation.general import (
+    ConvertDivToMul,
+    ConvertSubToAdd,
+    DuplicateForkingMulAdd,
+    GiveReadableTensorNames,
+    GiveUniqueNodeNames,
+    SortGraph,
+)
 from qonnx.transformation.remove import RemoveIdentityOps
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.range_analysis import REPORT_MODE_RANGE, range_analysis, unbroadcast_tensor
@@ -71,6 +78,9 @@ class Streamline(Transformation):
         model = model.transform(ConvertDivToMul())
         model = model.transform(ConvertSubToAdd())
         model = cleanup_model(model, extract_conv_bias=True)
+        model = model.transform(DuplicateForkingMulAdd())
+        model = model.transform(GiveUniqueNodeNames())
+        model = model.transform(GiveReadableTensorNames())
         # now run range analysis
         range_dict = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
         # use results of range analysis to move out scale/bias factors
