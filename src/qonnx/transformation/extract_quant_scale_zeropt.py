@@ -36,16 +36,16 @@ from qonnx.transformation.remove import RemoveIdentityOps
 
 
 class ExtractQuantScaleZeroPt(Transformation):
-    """Extract any non-identity scale and zero-point Quant inputs as
+    """Extract any non-identity scale and zero-point Quant and Trunc inputs as
     separate Div/Mul (for scale) and Add/Sub (for zeropoint" nodes,
     preceding and following the Quant node."""
 
     def apply(self, model: ModelWrapper):
         graph = model.graph
         for node in graph.node:
-            if node.op_type == "Quant":
+            if node.op_type in ["Quant", "Trunc"]:
                 quant_node = node
-                input_nm, scale_nm, zeropt_nm, _ = node.input
+                input_nm, scale_nm, zeropt_nm, *rest = node.input
                 scale_t = model.get_initializer(scale_nm)
                 zeropt_t = model.get_initializer(zeropt_nm)
                 ishp = model.get_tensor_shape(input_nm)

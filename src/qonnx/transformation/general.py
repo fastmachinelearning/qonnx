@@ -32,7 +32,7 @@ import warnings
 
 # Protobuf onnx graph node type
 from onnx import NodeProto  # noqa
-from onnx import mapping
+from onnx import helper, mapping
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
@@ -421,3 +421,40 @@ class SortCommutativeInputsInitializerLast(Transformation):
         # Return the transformed model and indicate whether the graph actually
         # has been transformed
         return model, graph_modified
+
+
+class DuplicateForkingMulAdd(Transformation):
+    """Duplicate Mul/Add nodes that have multiple consumers. This is useful for
+    optimizations that want to modify or remove Mul/Add nodes on one branch at a time,
+    without affecting the other branch.
+    """
+
+    def apply(self, model):
+        graph = model.graph
+        graph_modified = False
+        for node in graph.node:
+            if node.op_type in ["Mul", "Add"]:
+                direct_successors = model.find_consumers(node.output[0])
+                if len(direct_successors) > 1:
+                    oshape = model.get_tensor_shape(node.output[0])
+                    for i, succ in enumerate(direct_successors):
+                        # duplicate the node
+                        # note that we don't duplicate initialized inputs,
+                        # that will be taken care of by the GiveUniqueParameterTensors transform
+                        new_node = helper.make_node(node.op_type, list(node.input), list(node.output))
+                        # each branch gets its own output tensor
+                        new_out_tensor_name = node.output[0] + ("_%d" % i)
+                        new_node.output[0] = new_out_tensor_name
+                        model.set_tensor_shape(new_out_tensor_name, oshape)
+                        # rewire the consumer
+                        succ_inp_ind = list(succ.input).index(node.output[0])
+                        succ.input[succ_inp_ind] = new_out_tensor_name
+                        # append node, sorting will be handled by SortGraph
+                        graph.node.append(new_node)
+                    # remove the original node
+                    graph.node.remove(node)
+                    graph_modified = True
+        if graph_modified:
+            model = model.transform(SortGraph())
+            model = model.transform(GiveUniqueParameterTensors())
+        return (model, graph_modified)

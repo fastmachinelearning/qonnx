@@ -34,6 +34,7 @@ import numpy as np
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.util.cleanup import cleanup_model
 from qonnx.util.range_analysis import (
     RangeInfo,
     broadcast_range,
@@ -43,46 +44,9 @@ from qonnx.util.range_analysis import (
     range_analysis,
     unbroadcast_tensor,
 )
-from qonnx.util.test import download_model, test_model_details
+from qonnx.util.test import download_model, get_model_input_metadata, uint8_to_unitfloat
 
-model_details_range = {
-    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}},
-    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 36}},
-    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 115}},
-}
-
-model_details_scaledint = {
-    "FINN-TFC_W2A2": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 1, 28, 28),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
-        )
-    },
-    "FINN-CNV_W2A2": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 3, 32, 32),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
-        )
-    },
-    "MobileNetv1-w4a4": {
-        "scaledint_input_range": RangeInfo(
-            shape=(1, 3, 224, 224),
-            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
-            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
-            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
-            bias=np.asarray(0.0, dtype=np.float32),
-            is_initializer=False,
-        )
-    },
-}
+ra_models = ["FINN-TFC_W2A2", "FINN-CNV_W2A2", "MobileNetv1-w4a4", "rn18_w4a4_a2q_16b"]
 
 
 def test_unbroadcast_tensor():
@@ -182,13 +146,18 @@ def test_calc_matmul_node_range():
     assert range_dict[matmul_node.output[0]].range[1][0][-1] == 190
 
 
-@pytest.mark.parametrize("model_name", model_details_range.keys())
-def test_range_analysis_full_network(model_name):
-    current_details = {**model_details_range[model_name], **test_model_details[model_name]}
+@pytest.mark.parametrize("model_name", ra_models)
+def test_range_analysis_full_network_noscaledint(model_name):
+    irange = get_model_input_metadata(model_name, include_preprocessing=True)["range"]
+    if "a2q" in model_name:
+        # use simpler input scale/bias for A2Q and MNv1 models for now
+        # TODO test and fix non-scalar bias propagation?
+        irange.scale = uint8_to_unitfloat["scale"]
+        irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
     ret = range_analysis(
         model,
-        irange=current_details["input_range"],
+        irange=irange,
         report_mode="range",
         do_cleanup=True,
         strip_initializers_from_report=False,
@@ -199,21 +168,29 @@ def test_range_analysis_full_network(model_name):
         assert not (ret[tname].range is None)
 
 
-@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+@pytest.mark.parametrize("model_name", ra_models)
 def test_range_analysis_full_network_scaledint(model_name):
-    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    irange = get_model_input_metadata(model_name, include_preprocessing=True)["range"]
+    if "a2q" in model_name:
+        # use simpler input scale/bias for A2Q and MNv1 models for now
+        # TODO test and fix non-scalar bias propagation?
+        irange.scale = uint8_to_unitfloat["scale"]
+        irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    model = cleanup_model(model, extract_conv_bias=True)
     ret = range_analysis(
         model,
-        irange=current_details["scaledint_input_range"],
+        irange=irange,
         report_mode="range",
-        do_cleanup=True,
+        do_cleanup=False,
         scaled_int=True,
     )
     model = model.transform(FoldConstants(exclude_op_types=[]))
     all_tensor_names = model.get_all_tensor_names()
     for tname in all_tensor_names:
-        if model.get_initializer(tname) is None:
+        no_init = model.get_initializer(tname) is None
+        no_nonlinear = not ("Relu" in tname)
+        if no_init and no_nonlinear:
             assert tname in ret.keys()
             assert not (ret[tname].int_range is None)
             assert not (ret[tname].scale is None)

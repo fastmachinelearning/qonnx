@@ -34,17 +34,14 @@ import qonnx.core.onnx_exec as oxe
 from qonnx.transformation.change_batchsize import ChangeBatchSize
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.onnx import valueinfo_to_tensor
-from qonnx.util.test import download_model, test_model_details
-
-model_details = test_model_details
+from qonnx.util.test import download_model, get_model_input_metadata, test_model_details
 
 
-@pytest.mark.parametrize("test_model", model_details.keys())
+@pytest.mark.parametrize("test_model", test_model_details.keys())
 def test_change_batchsize(test_model):
-    test_details = model_details[test_model]
     batch_size = 10
-    old_ishape = test_details["input_shape"]
-    imin, imax = test_details["input_range"]
+    old_ishape = get_model_input_metadata(test_model)["range"].shape
+    imin, imax = get_model_input_metadata(test_model)["range"].range
     # some models spec per-channel ranges, be conservative for those
     if isinstance(imin, np.ndarray):
         imin = imin.max()

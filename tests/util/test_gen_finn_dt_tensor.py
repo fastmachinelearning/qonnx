@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
+
 import qonnx.util.basic as util
 from qonnx.core.datatype import DataType
 
@@ -102,8 +104,6 @@ def test_finn_tensor_generator():
         ], """Data type of generated tensor
             does not match the desired Data type"""
 
-    # import pdb; pdb.set_trace()
-
     # fixed point
     dt_t = DataType["FIXED<9,6>"]
     tensor_t = util.gen_finn_dt_tensor(dt_t, shape_t)
@@ -119,3 +119,20 @@ def test_finn_tensor_generator():
             value
         ), """Data type of generated tensor
             does not match the desired Data type"""
+
+
+def test_gen_finn_dt_tensor_rmin_rmax():
+    rmin = -5.0
+    rmax = 5.0
+    shape = (2, 3)
+    dtype = DataType["FLOAT32"]
+    tensor = util.gen_finn_dt_tensor(dtype, shape, rmin=rmin, rmax=rmax)
+    assert tensor.shape == shape
+    assert np.all(tensor >= rmin)
+    assert np.all(tensor <= rmax)
+
+    dtype = DataType["INT8"]
+    tensor = util.gen_finn_dt_tensor(dtype, shape, rmin=rmin, rmax=rmax)
+    assert tensor.shape == shape
+    assert np.all(tensor >= rmin)
+    assert np.all(tensor <= rmax)
