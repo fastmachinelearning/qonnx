@@ -26,88 +26,195 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 import pytest
 
 import numpy as np
 
-from qonnx.util.range_analysis import range_analysis
+from qonnx.core.datatype import DataType
+from qonnx.custom_op.registry import getCustomOp
+from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.util.range_analysis import (
+    RangeInfo,
+    broadcast_range,
+    calc_matmul_node_range,
+    calc_matmul_range,
+    calc_monotonic_range,
+    range_analysis,
+    unbroadcast_tensor,
+)
 from qonnx.util.test import download_model, test_model_details
 
-model_details_stuckchans = {
-    "MobileNetv1-w4a4": {
-        "stuck_chans": {
-            "Quant_29_out0": [
-                (0, 0.4813263),
-                (4, 0.0),
-                (6, 0.0),
-                (10, 0.0),
-                (13, 0.0),
-                (15, 0.0),
-                (16, 0.0),
-                (19, 0.0),
-                (26, 0.0),
-                (28, 0.0),
-            ],
-            "Quant_30_out0": [
-                (0, 0.0),
-                (4, 0.0),
-                (6, 0.0),
-                (10, 0.0),
-                (13, 0.15743902),
-                (15, 0.0),
-                (16, 0.47231707),
-                (19, 0.0),
-                (26, 0.0),
-                (28, 0.0),
-            ],
-            "Quant_31_out0": [(42, 0.0)],
-            "Quant_32_out0": [(42, 0.0)],
-            "Quant_35_out0": [(102, 0.0)],
-            "Quant_36_out0": [(102, 0.0)],
-        }
+model_details_range = {
+    "FINN-TFC_W2A2": {"range_info": {"n_dynamic_tensors": 19}},
+    "FINN-CNV_W2A2": {"range_info": {"n_dynamic_tensors": 36}},
+    "MobileNetv1-w4a4": {"range_info": {"n_dynamic_tensors": 115}},
+}
+
+model_details_scaledint = {
+    "FINN-TFC_W2A2": {
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 1, 28, 28),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
     },
     "FINN-CNV_W2A2": {
-        "stuck_chans": {
-            "Quant_10_out0": [(5, -1.0), (10, 1.0), (26, 1.0), (30, -1.0), (34, -1.0), (54, -1.0)],
-            "Quant_11_out0": [(30, 1.0), (35, 1.0), (37, -1.0), (42, 1.0), (45, -1.0), (57, -1.0)],
-            "Quant_13_out0": [(40, -1.0)],
-            "Quant_14_out0": [(4, 1.0), (175, 1.0), (209, -1.0)],
-            "Quant_16_out0": [
-                (5, -1.0),
-                (50, 1.0),
-                (77, -1.0),
-                (95, -1.0),
-                (153, 1.0),
-                (186, 1.0),
-                (199, 1.0),
-                (209, -1.0),
-                (241, 1.0),
-                (329, 1.0),
-                (340, 1.0),
-                (465, -1.0),
-                (478, -1.0),
-                (510, -1.0),
-            ],
-            "Quant_17_out0": [(101, -0.0), (230, -0.0), (443, 0.0)],
-        }
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 3, 32, 32),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
+    },
+    "MobileNetv1-w4a4": {
+        "scaledint_input_range": RangeInfo(
+            shape=(1, 3, 224, 224),
+            range=(np.asarray(0.0, dtype=np.float32), np.asarray(1.0, dtype=np.float32)),
+            int_range=(np.asarray(0.0, dtype=np.float32), np.asarray(255.0, dtype=np.float32)),
+            scale=np.asarray(1.0 / 255.0, dtype=np.float32),
+            bias=np.asarray(0.0, dtype=np.float32),
+            is_initializer=False,
+        )
     },
 }
 
-# inherit basics for matching testcases from test util
-model_details = {k: v for (k, v) in test_model_details.items() if k in model_details_stuckchans.keys()}
-model_details = {**model_details, **model_details_stuckchans}
+
+def test_unbroadcast_tensor():
+    x_vec = np.asarray([0.1, -0.2, 0.3])
+    x2 = np.broadcast_to(x_vec, (4, 3))
+    x3 = np.broadcast_to(x_vec, (4, 5, 3))
+    assert (unbroadcast_tensor(x2) == x_vec).all()
+    assert (unbroadcast_tensor(x3) == x_vec).all()
+    x_scalar = np.asarray([0.1])
+    x2 = np.broadcast_to(x_scalar, (4, 3))
+    x3 = np.broadcast_to(x_scalar, (4, 5, 3))
+    assert (unbroadcast_tensor(x2) == x_scalar).all()
+    assert (unbroadcast_tensor(x3) == x_scalar).all()
 
 
-@pytest.mark.parametrize("model_name", model_details.keys())
-def test_range_analysis(model_name):
-    model = download_model(model_name, return_modelwrapper=True)
-    irange = test_model_details[model_name]["input_range"]
-    ret = range_analysis(model, irange=irange, report_mode="stuck_channel", key_filter="Quant", do_cleanup=True)
-    golden_stuck_channels = model_details[model_name]["stuck_chans"]
-    for tname, ret_chans in ret.items():
-        tg_chans = golden_stuck_channels[tname]
-        for i in range(len(tg_chans)):
-            tg_ind, tg_val = tg_chans[i]
-            ret_ind, ret_val = ret_chans[i]
-            assert tg_ind == ret_ind
-            assert np.isclose(tg_val, ret_val)
+def test_promote_range_shape():
+    tshape = (2, 2)
+    tmin = 0
+    tmax = 1
+    trange_minimal = (tmin, tmax)
+    trange_full = (np.zeros(tshape), np.ones(tshape))
+    ret = broadcast_range(trange_minimal, tshape)
+    assert (ret[0] == trange_full[0]).all()
+    assert (ret[1] == trange_full[1]).all()
+    ret = broadcast_range(trange_full, tshape)
+    assert (ret[0] == trange_full[0]).all()
+    assert (ret[1] == trange_full[1]).all()
+
+
+def test_calc_monotonic_range():
+    model_name = "MobileNetv1-w4a4"
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    relu_node = model.get_nodes_by_op_type("Relu")[0]
+    relu_in = relu_node.input[0]
+    relu_out = relu_node.output[0]
+    relu_in_shape = tuple(model.get_tensor_shape(relu_in))
+    relu_in_vi = model.get_tensor_valueinfo(relu_in)
+    relu_in_range = RangeInfo(shape=relu_in_shape, range=broadcast_range((-1.0, 1.0), relu_in_vi))
+    range_dict = {relu_in: relu_in_range, relu_out: RangeInfo(shape=relu_in_shape)}
+    calc_monotonic_range(relu_node, model, range_dict)
+    assert range_dict[relu_out].range[0].shape == relu_in_shape
+    assert range_dict[relu_out].range[1].shape == relu_in_shape
+    assert (range_dict[relu_out].range[0] == 0).all()
+    assert (range_dict[relu_out].range[1] == 1).all()
+    qnt_node = model.find_consumer(relu_out)
+    qnt_out = qnt_node.output[0]
+    range_dict[qnt_out] = RangeInfo(shape=model.get_tensor_shape(qnt_out))
+    calc_monotonic_range(qnt_node, model, range_dict)
+    assert range_dict[qnt_out].range[0].shape == relu_in_shape
+    assert range_dict[qnt_out].range[1].shape == relu_in_shape
+    assert (range_dict[qnt_out].range[0] == 0).all()
+    ctx = {k: model.get_initializer(k) for k in qnt_node.input}
+    ctx[relu_out] = range_dict[relu_out].range[1]
+    getCustomOp(qnt_node).execute_node(ctx, model.graph)
+    assert (range_dict[qnt_out].range[1] == ctx[qnt_out]).all()
+
+
+@pytest.mark.parametrize("shapes", [((14, 14, 200), (200, 16)), ((12, 128, 32), (12, 32, 128))])
+@pytest.mark.parametrize("A_dt", [DataType["UINT4"]])
+@pytest.mark.parametrize("B_dt", [DataType["INT4"]])
+def test_calc_matmul_range(shapes, A_dt, B_dt):
+    A_shape, B_shape = shapes
+    min_A = A_dt.min() * np.ones(A_shape)
+    max_A = A_dt.max() * np.ones(A_shape)
+    range_A = (min_A, max_A)
+    B = np.random.randint(B_dt.min(), B_dt.max(), B_shape)
+    range_B = (B, B)
+    range_C = calc_matmul_range(range_A, range_B)
+    A = np.random.randint(A_dt.min(), A_dt.max(), A_shape)
+    C = np.matmul(A, B)
+    assert (range_C[0] <= C).all()
+    assert (C <= range_C[1]).all()
+
+
+def test_calc_matmul_node_range():
+    model_name = "FINN-TFC_W2A2"
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    matmul_node = model.get_nodes_by_op_type("MatMul")[0]
+    quant_in_node = model.get_node_from_name("Quant_4")
+    quant_in_vi = model.get_tensor_valueinfo(quant_in_node.input[0])
+    quant_in_shape = model.get_tensor_shape(quant_in_node.input[0])
+    quant_act_range = RangeInfo(shape=quant_in_shape, range=broadcast_range((-1.0, 1.0), quant_in_vi))
+    range_dict = {quant_in_node.input[0]: quant_act_range, quant_in_node.output[0]: RangeInfo(shape=quant_in_shape)}
+    calc_monotonic_range(quant_in_node, model, range_dict)
+    quant_w_node = model.get_node_from_name("Quant_0")
+    quant_w_shape = model.get_tensor_shape(quant_w_node.output[0])
+    range_dict[quant_w_node.output[0]] = RangeInfo(shape=quant_w_shape)
+    calc_monotonic_range(quant_w_node, model, range_dict)
+    matmul_out_shape = model.get_tensor_shape(matmul_node.output[0])
+    range_dict[matmul_node.output[0]] = RangeInfo(shape=matmul_out_shape)
+    calc_matmul_node_range(matmul_node, model, range_dict)
+    assert range_dict[matmul_node.output[0]].range[0][0][0] == -233
+    assert range_dict[matmul_node.output[0]].range[1][0][0] == 233
+    assert range_dict[matmul_node.output[0]].range[0][0][1] == -288
+    assert range_dict[matmul_node.output[0]].range[1][0][1] == 288
+    assert range_dict[matmul_node.output[0]].range[0][0][-1] == -190
+    assert range_dict[matmul_node.output[0]].range[1][0][-1] == 190
+
+
+@pytest.mark.parametrize("model_name", model_details_range.keys())
+def test_range_analysis_full_network(model_name):
+    current_details = {**model_details_range[model_name], **test_model_details[model_name]}
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    ret = range_analysis(
+        model,
+        irange=current_details["input_range"],
+        report_mode="range",
+        do_cleanup=True,
+        strip_initializers_from_report=False,
+    )
+    all_tensor_names = model.get_all_tensor_names()
+    for tname in all_tensor_names:
+        assert tname in ret.keys()
+        assert not (ret[tname].range is None)
+
+
+@pytest.mark.parametrize("model_name", model_details_scaledint.keys())
+def test_range_analysis_full_network_scaledint(model_name):
+    current_details = {**model_details_scaledint[model_name], **test_model_details[model_name]}
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    ret = range_analysis(
+        model,
+        irange=current_details["scaledint_input_range"],
+        report_mode="range",
+        do_cleanup=True,
+        scaled_int=True,
+    )
+    model = model.transform(FoldConstants(exclude_op_types=[]))
+    all_tensor_names = model.get_all_tensor_names()
+    for tname in all_tensor_names:
+        if model.get_initializer(tname) is None:
+            assert tname in ret.keys()
+            assert not (ret[tname].int_range is None)
+            assert not (ret[tname].scale is None)
+            assert not (ret[tname].bias is None)
