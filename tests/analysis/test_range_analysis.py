@@ -176,7 +176,7 @@ def test_range_analysis_full_network_scaledint(model_name):
         # TODO test and fix non-scalar bias propagation?
         irange.scale = uint8_to_unitfloat["scale"]
         irange.bias = uint8_to_unitfloat["bias"]
-    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
+    model = download_model(model_name, return_modelwrapper=True, do_cleanup=True, add_preproc=True)
     model = cleanup_model(model, extract_conv_bias=True)
     ret = range_analysis(
         model,
