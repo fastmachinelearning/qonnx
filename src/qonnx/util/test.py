@@ -295,7 +295,8 @@ def download_model(
             ret = ModelWrapper(ret)
         ret = add_input_preproc_to_model(ret, orig_model_details["range"])
         # add input datatype annotation
-        ret.set_tensor_datatype(ret.graph.input[0].name, orig_model_details["dtype"])
+        preproc_model_details = get_model_input_metadata(test_model, include_preprocessing=True)
+        ret.set_tensor_datatype(ret.graph.input[0].name, preproc_model_details["dtype"])
         if not return_modelwrapper:
             out_file = dl_dir + f"/{test_model}_preproc.onnx"
             ret.save(out_file)
