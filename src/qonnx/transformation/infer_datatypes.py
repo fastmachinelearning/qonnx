@@ -49,6 +49,10 @@ def infer_mac_result_dtype(idtypes, odtype_orig, possible_negation):
         ret = DataType["INT32"] if maybe_signed else DataType["UINT32"]
     elif all([is_scaled_int(x) for x in idtypes]):
         ret = DataType["SCALEDINT<32>"]
+    elif any(["FLOAT" in x.name for x in idtypes]):
+        # default to float32 if any inps are float
+        # TODO use output container dtype instead?
+        ret = DataType["FLOAT32"]
     return ret
 
 
