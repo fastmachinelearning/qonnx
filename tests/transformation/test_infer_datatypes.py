@@ -34,6 +34,7 @@ from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNodeNames
 from qonnx.transformation.infer_datatypes import InferDataTypes, infer_mac_result_dtype
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.test import download_model
 
 
 def test_infer_mac_dtype_result():
@@ -79,3 +80,17 @@ def test_infer_datatypes():
     assert model.get_tensor_datatype("Conv_0_out0") == DataType["INT32"]
     assert model.get_tensor_datatype("Relu_0_out0") == DataType["FLOAT32"]
     assert model.get_tensor_datatype("global_out") == DataType["FLOAT32"]
+
+
+def test_infer_datatypes_scaledint():
+    orig_model = download_model("FINN-CNV_W2A2", do_cleanup=True, return_modelwrapper=True)
+    model = orig_model.transform(InferDataTypes(allow_scaledint_dtypes=True))
+    assert model.get_tensor_datatype("Quant_9_out0") == DataType["SCALEDINT<8>"]
+    assert model.get_tensor_datatype("Conv_0_out0") == DataType["SCALEDINT<32>"]
+    model = orig_model.transform(InferDataTypes(allow_scaledint_dtypes=False))
+    assert model.get_tensor_datatype("Quant_9_out0") == DataType["FLOAT32"]
+    assert model.get_tensor_datatype("Conv_0_out0") == DataType["FLOAT32"]
+    # no dtypes should be inferred as SCALEDINT
+    for tname in model.get_all_tensor_names():
+        tensor_dt = model.get_tensor_datatype(tname)
+        assert not ("SCALEDINT" in tensor_dt.get_canonical_name())
