@@ -61,17 +61,17 @@ uint8_to_unitfloat = {
 a2q_rn18_preproc_mean = np.asarray([0.491, 0.482, 0.447], dtype=np.float32)
 a2q_rn18_preproc_std = np.asarray([0.247, 0.243, 0.262], dtype=np.float32)
 # TODO taking the avg stddev here to make streamlining possible - accuracy OK?
-a2q_rn18_preproc_std = np.asarray(np.average(a2q_rn18_preproc_std))
+a2q_rn18_preproc_std = np.asarray(np.average(a2q_rn18_preproc_std), dtype=np.float32)
 
 a2q_rn18_int_range = range_zero_to_255
 a2q_rn18_iscale = 1 / 255
 a2q_rn18_rmin = (a2q_rn18_int_range[0] * a2q_rn18_iscale - a2q_rn18_preproc_mean) / a2q_rn18_preproc_std
 a2q_rn18_rmax = (a2q_rn18_int_range[1] * a2q_rn18_iscale - a2q_rn18_preproc_mean) / a2q_rn18_preproc_std
-a2q_rn18_scale = (1 / a2q_rn18_preproc_std) * a2q_rn18_iscale
+a2q_rn18_scale = ((1 / a2q_rn18_preproc_std) * a2q_rn18_iscale).astype(np.float32)
 a2q_rn18_bias = -a2q_rn18_preproc_mean * a2q_rn18_preproc_std
 a2q_rn18_rmin = a2q_rn18_rmin.reshape(1, 3, 1, 1)
 a2q_rn18_rmax = a2q_rn18_rmax.reshape(1, 3, 1, 1)
-a2q_rn18_scale = a2q_rn18_scale.reshape(1, 3, 1, 1)
+# a2q_rn18_scale = a2q_rn18_scale.reshape(1, 3, 1, 1)
 a2q_rn18_bias = a2q_rn18_bias.reshape(1, 3, 1, 1)
 a2q_rn18_common = {
     "input_metadata": [
@@ -295,7 +295,8 @@ def download_model(
             ret = ModelWrapper(ret)
         ret = add_input_preproc_to_model(ret, orig_model_details["range"])
         # add input datatype annotation
-        ret.set_tensor_datatype(ret.graph.input[0].name, orig_model_details["dtype"])
+        preproc_model_details = get_model_input_metadata(test_model, include_preprocessing=True)
+        ret.set_tensor_datatype(ret.graph.input[0].name, preproc_model_details["dtype"])
         if not return_modelwrapper:
             out_file = dl_dir + f"/{test_model}_preproc.onnx"
             ret.save(out_file)

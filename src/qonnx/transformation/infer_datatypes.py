@@ -49,10 +49,14 @@ def infer_mac_result_dtype(idtypes, odtype_orig, possible_negation):
         ret = DataType["INT32"] if maybe_signed else DataType["UINT32"]
     elif all([is_scaled_int(x) for x in idtypes]):
         ret = DataType["SCALEDINT<32>"]
+    elif any(["FLOAT" in x.name for x in idtypes]):
+        # default to float32 if any inps are float
+        # TODO use output container dtype instead?
+        ret = DataType["FLOAT32"]
     return ret
 
 
-def _infer_node_datatype(model, node):
+def _infer_node_datatype(model, node, allow_scaledint_dtypes):
     """Infer output datatype(s) for a particular node. Returns True if any
     changes were made."""
     dt_identity_optypes = [
@@ -137,6 +141,11 @@ def _infer_node_datatype(model, node):
                     model.set_tensor_datatype(o, odtype)
                 else:
                     model.set_tensor_datatype(o, DataType["FLOAT32"])
+    # if scaled-int dtype inference is disabled, replace those with FLOAT32
+    if not allow_scaledint_dtypes:
+        for out in node.output:
+            if "SCALEDINT" in model.get_tensor_datatype(out).get_canonical_name():
+                model.set_tensor_datatype(out, DataType["FLOAT32"])
     # compare old and new output dtypes to see if anything changed
     new_odtypes = list(map(lambda x: model.get_tensor_datatype(x), node.output))
     graph_modified = new_odtypes != odtypes
@@ -147,9 +156,13 @@ class InferDataTypes(Transformation):
     """Infer QONNX DataType info for all intermediate/output tensors based on
     inputs and node type."""
 
+    def __init__(self, allow_scaledint_dtypes=True):
+        super().__init__()
+        self.allow_scaledint_dtypes = allow_scaledint_dtypes
+
     def apply(self, model):
         graph = model.graph
         graph_modified = False
         for node in graph.node:
-            graph_modified |= _infer_node_datatype(model, node)
+            graph_modified |= _infer_node_datatype(model, node, self.allow_scaledint_dtypes)
         return (model, graph_modified)
