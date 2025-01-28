@@ -39,9 +39,9 @@ import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
+    GiveUniqueParameterTensors,
     RemoveStaticGraphInputs,
     RemoveUnusedTensors,
-    GiveUniqueParameterTensors,
     SortCommutativeInputsInitializerLast,
     SortGraph,
 )
