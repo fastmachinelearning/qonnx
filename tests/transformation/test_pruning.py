@@ -86,7 +86,7 @@ def test_pruning_mnv1():
     model = download_model("MobileNetv1-w4a4", return_modelwrapper=True)
     # mark input as scaled 8-bit to get correct inference cost
     model.set_tensor_datatype(model.graph.input[0].name, DataType["SCALEDINT<8>"])
-    model = model.transform(InferDataTypes())
+    model = model.transform(InferDataTypes(allow_scaledint_dtypes=True))
     # do cleanup including folding quantized weights
     model = cleanup_model(model, False)
     inp, golden = get_golden_in_and_output("MobileNetv1-w4a4")
