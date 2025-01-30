@@ -152,7 +152,7 @@ class InferDataTypes(Transformation):
     """Infer QONNX DataType info for all intermediate/output tensors based on
     inputs and node type."""
 
-    def __init__(self, allow_scaledint_dtypes=True):
+    def __init__(self, allow_scaledint_dtypes=False):
         super().__init__()
         self.allow_scaledint_dtypes = allow_scaledint_dtypes
 
