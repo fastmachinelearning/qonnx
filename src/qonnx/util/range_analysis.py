@@ -1095,10 +1095,10 @@ optype_to_intrange_calc = {
     #  ranges from -0 to +0. So far only observed in rather complex topology
     #  involving residual connections, attention and novel activation functions
     #  and it is unclear how to reproduce this in isolation...
-    "Add": calc_intrange_eltwise_monotonic_intrangefirst,
-    "Reshape": calc_intrange_eltwise_monotonic_intrangefirst,
-    "Transpose": calc_intrange_eltwise_monotonic_intrangefirst,
-    "Split": calc_intrange_eltwise_monotonic_intrangefirst,
+    "Add": calc_intrange_add,
+    "Reshape": calc_intrange_eltwise_monotonic,
+    "Transpose": calc_intrange_eltwise_monotonic,
+    "Split": calc_intrange_eltwise_monotonic,
     # Treat MultiThreshold as monotonic. This might be necessary for iterated
     # rounds of activation function to MultiThreshold conversion to absorb
     # chains of monotonic activation functions into MultiThreshold
@@ -1193,7 +1193,7 @@ def range_analysis(
         assert False, "Unknown irange type"
     if do_cleanup:
         model = cleanup_model(model, preserve_qnt_ops=True)
-    model = model.transform(InferDataTypes())
+    model = model.transform(InferDataTypes(allow_scaledint_dtypes=True))
     if save_modified_model != "":
         model.save(save_modified_model)
     range_dict = {}

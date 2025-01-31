@@ -82,7 +82,7 @@ class Streamline(Transformation):
         model = model.transform(GiveUniqueNodeNames())
         model = model.transform(GiveReadableTensorNames())
         # now run range analysis
-        range_dict = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+        range_dict, _ = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
         # use results of range analysis to move out scale/bias factors
         model = model.transform(StreamlineFromRangeDict(range_dict))
         # finally, remove identity operations
