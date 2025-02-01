@@ -73,6 +73,7 @@ def node_to_model(node, model, override_opset=None):
         node_model.opset_import[0].version = override_opset
     return node_model
 
+
 # optypes with the (elementwise) monotonic property
 monotonic_optypes = {
     "Identity",

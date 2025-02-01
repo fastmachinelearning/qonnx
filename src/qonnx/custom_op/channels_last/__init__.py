@@ -1,7 +1,7 @@
+from qonnx.custom_op.channels_last.avg_pool import AveragePool
 from qonnx.custom_op.channels_last.batch_normalization import BatchNormalization
 from qonnx.custom_op.channels_last.conv import Conv
 from qonnx.custom_op.channels_last.max_pool import MaxPool
-from qonnx.custom_op.channels_last.avg_pool import AveragePool
 
 custom_op = dict()
 
