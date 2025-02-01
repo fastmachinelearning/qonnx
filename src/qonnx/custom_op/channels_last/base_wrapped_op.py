@@ -61,7 +61,7 @@ def to_channels_first_args(ndim):
 class ChannelsLastWrappedOp(CustomOp):
     # ToDo: _channelsLast_node_types should be loaded / inferred from this file or the registry.
     # Standard ONNX nodes which require a ChannelsLast data format to function properly
-    _channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
+    _channelsLast_node_types = ["Conv", "MaxPool", "AveragePool", "BatchNormalization"]
 
     def infer_node_datatype(self, model):
         # data type stays the same for all supported nodes

@@ -120,6 +120,7 @@ eltwise_optypes = monotonic_optypes | {
     "Minimum",
     "BitShift",
     "Pow",
+    "Trunc",
 }
 
 
