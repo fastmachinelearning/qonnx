@@ -55,6 +55,12 @@ class MaxPool(ChannelsLastWrappedOp):
             "pads": ("ints", True, [0, 0, 0, 0]),  # default: no padding
         }
 
+    def infer_node_datatype(self, model):
+        # data type stays the same for all supported nodes
+        node = self.onnx_node
+        dtype = model.get_tensor_datatype(node.input[0])
+        model.set_tensor_datatype(node.output[0], dtype)
+
     def make_shape_compatible_op(self, model):
         """Returns a standard ONNX op which is compatible with this CustomOp
         for performing shape inference."""

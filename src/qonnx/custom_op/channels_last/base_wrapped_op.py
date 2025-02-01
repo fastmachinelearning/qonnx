@@ -32,6 +32,7 @@ from copy import deepcopy
 from onnx import TensorProto, helper
 from onnx.helper import make_opsetid
 
+from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import qonnx_make_model
 
@@ -64,10 +65,8 @@ class ChannelsLastWrappedOp(CustomOp):
     _channelsLast_node_types = ["Conv", "MaxPool", "AveragePool", "BatchNormalization"]
 
     def infer_node_datatype(self, model):
-        # data type stays the same for all supported nodes
         node = self.onnx_node
-        dtype = model.get_tensor_datatype(node.input[0])
-        model.set_tensor_datatype(node.output[0], dtype)
+        model.set_tensor_datatype(node.output[0], DataType["FLOAT32"])
 
     def verify_node(self):
         # Check general compatibility
