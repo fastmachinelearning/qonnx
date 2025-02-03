@@ -4,20 +4,24 @@ import copy
 # QONNX wrapper of ONNX model graphs
 from qonnx.core.modelwrapper import ModelWrapper
 
-# Base class for all QONNX graph transformations and some basic cleanup
-# transformations
-from qonnx.transformation.general import (
-    Transformation,
-    GiveUniqueNodeNames,
-    GiveReadableTensorNames,
-)
-# Cleanup transformations removing identities like multiplication by one or
-# addition of zero
-from qonnx.transformation.remove import RemoveIdentityOps
 # QONNX graph transformations for annotating the graph with datatype and shape
 # information
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
+
+# Cleanup transformations removing identities like multiplication by one or
+# addition of zero
+from qonnx.transformation.remove import RemoveIdentityOps
+
+# Base class for all QONNX graph transformations and some basic cleanup
+# transformations
+# fmt: off
+from qonnx.transformation.general import (  # isort: skip
+    GiveReadableTensorNames, GiveUniqueNodeNames, Transformation
+)
+
+
+# fmt: on
 
 
 # Composes graph transformations such that each individual transformation as
