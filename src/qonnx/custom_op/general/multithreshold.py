@@ -92,7 +92,7 @@ class MultiThreshold(CustomOp):
             "out_dtype": ("s", True, ""),
             "out_scale": ("f", False, 1.0),
             "out_bias": ("f", False, 0.0),
-            "data_layout": ("s", False, "NCHW", {"NCHW", "NHWC"}),
+            "data_layout": ("s", False, ""),
         }
 
     def make_shape_compatible_op(self, model):
@@ -122,53 +122,28 @@ class MultiThreshold(CustomOp):
         # retrieve attributes if output scaling is used
         out_scale = self.get_nodeattr("out_scale")
         out_bias = self.get_nodeattr("out_bias")
-        # transpose input if NHWC data layout is chosen
+
+        # Consider the data layout for transposing the input into the format
+        # accepted by the multithreshold function above, i.e, the channel
+        # dimension is along the axis with index 1.
         data_layout = self.get_nodeattr("data_layout")
-        if data_layout == "NHWC":
-            if v.ndim == 4:
-                # NHWC -> NCHW
-                v = np.transpose(v, (0, 3, 1, 2))
-            elif v.ndim == 2:
-                # no HW dimension means NHWC and NCHW layouts are equivalent
-                pass
-            else:
-                raise Exception("Unknown data_layout and input ndim" " combination for MultiThreshold.")
-
-        # Remember whether the shape has been modified to handle 1d or 3d data
-        # layouts
-        orig_shape = None
-        # If the input tensor has dimensions not covered by the NC or NCWH data
-        # layouts, the shape needs to be adapted such that it can be handled by
-        # multithreshold.
-        # TODO: Seems like a rather sketchy solution to support arbitrary data
-        #  layouts. This does not even validate the assumption of channel last
-        #  layout.
-        if v.ndim not in {2, 4}:
-            # Remember the original shape to be restored later
-            orig_shape = v.shape
-            # Assume last dimension to be the channel dimension C and reshape
-            # into NC layout which is supported by multithreshold
-            v = v.reshape((-1, v.shape[-1]))
-
-        # calculate output
+        # If there is no layout annotation, guess based on rank of the
+        # tensor
+        if not data_layout and len(v.shape) < 5:
+            # Maps tensor rank to layout annotation
+            rank_to_layout = {0: None, 1: "C", 2: "NC", 3: "NWC", 4: "NCHW"}
+            # Lookup the layout required by this input shape
+            data_layout = rank_to_layout[len(v.shape)]
+        # Lookup the index of the channel dimension in the data layout
+        # Note: Assumes there is at most one "C" which denotes the channel
+        # dimension
+        cdim = data_layout.index("C") if "C" in data_layout else 1
+        # Rearrange the input to the expected (N, C, ...) layout
+        v = v.swapaxes(cdim, 1)
+        # Now we can use the multithreshold function to calculate output
         output = multithreshold(v, thresholds, out_scale, out_bias)
-        # setting context according to output
-        if data_layout == "NHWC":
-            if output.ndim == 4:
-                # NCHW -> NHWC
-                output = np.transpose(output, (0, 2, 3, 1))
-            elif output.ndim == 2:
-                # no HW dimension means NHWC and NCHW layouts are equivalent
-                pass
-            else:
-                raise Exception("Unknown data_layout and output ndim" " combination for MultiThreshold.")
-
-        # If the shape has been modified to support arbitrary layouts, restore
-        # the original shape
-        # TODO: Part of the rather sketchy solution above.
-        if orig_shape is not None:
-            output = output.reshape(orig_shape)
-
+        # Rearrange the output back to the original layout
+        output = output.swapaxes(cdim, 1)
         context[node.output[0]] = output
 
     def verify_node(self):
