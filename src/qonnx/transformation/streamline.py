@@ -34,7 +34,9 @@ from warnings import warn
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
+from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
 from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
+from qonnx.transformation.fuse_pad_into_conv import FusePadIntoConv
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import (
     ConvertDivToMul,
@@ -72,12 +74,14 @@ class Streamline(Transformation):
 
     def apply(self, model: ModelWrapper):
         # first, run the lowering pipeline to make model amenable to streamlining
+        model = model.transform(FusePadIntoConv())
         model = model.transform(BatchNormToAffine())
+        model = model.transform(ExtractBiasFromConv())
         model = model.transform(ExtractQuantScaleZeroPt())
         model = model.transform(GemmToMatMul())
         model = model.transform(ConvertDivToMul())
         model = model.transform(ConvertSubToAdd())
-        model = cleanup_model(model, extract_conv_bias=True)
+        model = cleanup_model(model)
         model = model.transform(DuplicateForkingMulAdd())
         model = model.transform(GiveUniqueNodeNames())
         model = model.transform(GiveReadableTensorNames())
