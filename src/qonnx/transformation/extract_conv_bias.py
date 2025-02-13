@@ -49,8 +49,10 @@ class ExtractBiasFromConv(Transformation):
                     # Extract bias
                     bias = model.get_initializer(n.input[2])
                     if bias is None:
-                        warnings.warn(f"Could not extract bias from node {n}")
-                        continue
+                        bias_prod = model.find_producer(n.input[2])
+                        if bias_prod.op_type != "Quant":
+                            warnings.warn(f"Could not extract bias from Conv node {n}")
+                            continue
 
                     # Insert bias as Add node behind the Conv node
                     out_shape = model.get_tensor_shape(n.output[0])
@@ -62,6 +64,17 @@ class ExtractBiasFromConv(Transformation):
                     add_shape[1] = bias_shape[0]
                     if bias is not None:
                         model.set_initializer(n.input[2], bias.reshape(add_shape))
+                    else:
+                        # TODO insert Reshape node instead?
+                        qbias_inp = model.get_initializer(bias_prod.input[0])
+                        qbias_scale = model.get_initializer(bias_prod.input[1])
+                        if not (qbias_inp is None) and not (qbias_scale) is None:
+                            model.set_initializer(bias_prod.input[0], qbias_inp.reshape(add_shape))
+                            model.set_initializer(bias_prod.input[1], qbias_scale.reshape(add_shape))
+                            model.set_tensor_shape(bias_prod.output[0], add_shape)
+                        else:
+                            warnings.warn(f"Could not extract quantized bias from Conv node {n}")
+                            continue
 
                     act_add_tensor = helper.make_tensor_value_info(
                         model.make_new_valueinfo_name(),
