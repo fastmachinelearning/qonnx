@@ -48,7 +48,7 @@ except ModuleNotFoundError:
 
 def get_preferred_onnx_opset():
     "Return preferred ONNX opset version for QONNX"
-    return 12
+    return 13
 
 
 def get_preferred_qonnx_opset():
