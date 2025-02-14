@@ -241,7 +241,7 @@ def gen_finn_dt_tensor(finn_dt, tensor_shape, rmin=None, rmax=None, seed=42):
             rmin = int_dt.min()
         if rmax is None:
             rmax = int_dt.max() + 1
-        tensor_values = rng.randint(rmin, high=rmax, size=tensor_shape, dtype=finn_dt.to_numpy_dt())
+        tensor_values = rng.randint(rmin, high=rmax, size=tensor_shape, dtype=int_dt.to_numpy_dt())
         tensor_values = tensor_values * finn_dt.scale_factor()
     elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         if rmin is None and rmax is None:
