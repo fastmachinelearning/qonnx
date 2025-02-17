@@ -29,14 +29,14 @@
 import json
 import numpy as np
 import warnings
-
-# Protobuf onnx graph node type
-from onnx import NodeProto  # noqa
 from onnx import helper, mapping
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
 from qonnx.transformation.base import Transformation
+
+# Protobuf onnx graph node type
+from onnx import NodeProto  # noqa
 
 
 class MovePadAttributeToTensor(Transformation):
