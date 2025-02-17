@@ -378,7 +378,7 @@ def calc_scalebias_from_execution(node, model, range_dict):
         warn("Cannot infer scale for multi-output node")
         return
     ctx = {}
-    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape)
+    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape, dtype=np.float32)
     for inp in node.input:
         if not (range_dict[inp].scale is None):
             ctx[inp] = np.broadcast_to(range_dict[inp].scale, range_dict[inp].shape)
@@ -870,7 +870,7 @@ def calc_intrange_conv(node, model, range_dict):
         node_ctx = {
             node.input[0]: irange_0_inf.scale * irange_0_inf.int_range[0],
             node.input[1]: np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape),
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=np.float32),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
@@ -880,7 +880,7 @@ def calc_intrange_conv(node, model, range_dict):
         node_ctx = {
             node.input[0]: np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape),
             node.input[1]: irange_1_inf.scale * irange_1_inf.int_range[0],
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=np.float32),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
