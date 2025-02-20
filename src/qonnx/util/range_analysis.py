@@ -740,10 +740,6 @@ def calc_intrange_matmul(node, model, range_dict):
         return
     if not check_matmul_for_intrange_prop(node, range_dict):
         return
-    for node_in in node.input:
-        irange_inf = range_dict[node_in]
-        # be extra conservative for now: no negative scales
-        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
 
     # compute updated scale and bias
     i0scale = unbroadcast_tensor(range_dict[node.input[0]].scale)
@@ -842,10 +838,6 @@ def calc_intrange_conv(node, model, range_dict):
         return
     if not check_conv_for_intrange_prop(node, range_dict):
         return
-    for node_in in node.input:
-        irange_inf = range_dict[node_in]
-        # be extra conservative for now: no negative scales
-        assert (irange_inf.scale >= 0).all(), "Need nonnegative scale for inputs"
 
     # compute updated scale and bias
     iscale_fixed = unbroadcast_tensor(range_dict[node.input[0]].scale)
