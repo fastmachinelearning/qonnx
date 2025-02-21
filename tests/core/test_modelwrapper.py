@@ -54,11 +54,6 @@ def test_modelwrapper():
     assert first_conv_iname != "" and (first_conv_iname is not None)
     assert first_conv_wname != "" and (first_conv_wname is not None)
     assert first_conv_oname != "" and (first_conv_oname is not None)
-    first_conv_weights = model.get_initializer(first_conv_wname)
-    assert first_conv_weights.shape == (8, 1, 5, 5)
-    first_conv_weights_rand = np.random.randn(8, 1, 5, 5)
-    model.set_initializer(first_conv_wname, first_conv_weights_rand)
-    assert (model.get_initializer(first_conv_wname) == first_conv_weights_rand).all()
     inp_cons = model.find_consumer(first_conv_iname)
     assert inp_cons == first_conv
     out_prod = model.find_producer(first_conv_oname)
@@ -73,6 +68,21 @@ def test_modelwrapper():
     inp_sparsity = {"dw": {"kernel_shape": [3, 3]}}
     model.set_tensor_sparsity(first_conv_iname, inp_sparsity)
     assert model.get_tensor_sparsity(first_conv_iname) == inp_sparsity
+
+
+def test_modelwrapper_set_get_rm_initializer():
+    raw_m = get_data("qonnx.data", "onnx/mnist-conv/model.onnx")
+    model = ModelWrapper(raw_m)
+    conv_nodes = model.get_nodes_by_op_type("Conv")
+    first_conv = conv_nodes[0]
+    first_conv_wname = first_conv.input[1]
+    first_conv_weights = model.get_initializer(first_conv_wname)
+    assert first_conv_weights.shape == (8, 1, 5, 5)
+    first_conv_weights_rand = np.random.randn(8, 1, 5, 5)
+    model.set_initializer(first_conv_wname, first_conv_weights_rand)
+    assert (model.get_initializer(first_conv_wname) == first_conv_weights_rand).all()
+    model.del_initializer(first_conv_wname)
+    assert model.get_initializer(first_conv_wname) is None
 
 
 def test_modelwrapper_graph_order():

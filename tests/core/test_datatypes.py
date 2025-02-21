@@ -126,7 +126,7 @@ def test_input_type_error():
         except TypeError:
             pass
         else:
-            print("Test with invalid input failed: No TypeError was raised.")
+            assert False, "Test with invalid input failed: No TypeError was raised."
 
     test_resolve_datatype(123)
     test_resolve_datatype(1.23)

@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Advanced Micro Devices, Inc.
+# Copyright (c) 2024 Advanced Micro Devices, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -26,39 +26,29 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import pytest
-
 import numpy as np
+from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
-from qonnx.transformation.change_batchsize import ChangeBatchSize
-from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.onnx import valueinfo_to_tensor
-from qonnx.util.test import download_model, test_model_details
-
-model_details = test_model_details
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.channels_last import ConvertToChannelsLastAndClean
+from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
+from qonnx.util.basic import gen_finn_dt_tensor
 
 
-@pytest.mark.parametrize("test_model", model_details.keys())
-def test_change_batchsize(test_model):
-    test_details = model_details[test_model]
-    batch_size = 10
-    old_ishape = test_details["input_shape"]
-    imin, imax = test_details["input_range"]
-    # some models spec per-channel ranges, be conservative for those
-    if isinstance(imin, np.ndarray):
-        imin = imin.max()
-    if isinstance(imax, np.ndarray):
-        imax = imax.min()
-    model = download_model(test_model=test_model, do_cleanup=True, return_modelwrapper=True)
+def test_lower_and_channelslast_eltwiseops():
+    raw_m = get_data("qonnx.data", "onnx/eltwise_chanlast_testcase.onnx")
+    model = ModelWrapper(raw_m)
     iname = model.graph.input[0].name
+    idt = model.get_tensor_datatype(iname)
+    ishape = model.get_tensor_shape(iname)
+    idict = {iname: gen_finn_dt_tensor(idt, ishape)}
     oname = model.graph.output[0].name
-    example_inp = valueinfo_to_tensor(model.get_tensor_valueinfo(iname))
-    assert tuple(model.get_tensor_shape(iname)) == old_ishape
-    model = model.transform(ChangeBatchSize(batch_size))
-    model = model.transform(InferShapes())
-    exp_ishape = (batch_size, *old_ishape[1:])
-    assert tuple(model.get_tensor_shape(iname)) == exp_ishape
-    new_inp = np.random.uniform(imin, imax, exp_ishape).astype(example_inp.dtype)
-    ret = oxe.execute_onnx(model, {iname: new_inp})
-    assert ret[oname].shape[0] == batch_size
+    expected_out = oxe.execute_onnx(model, idict)[oname]
+    model = model.transform(LowerConvsToMatMul())
+    model = model.transform(ConvertToChannelsLastAndClean(make_input_channels_last=False))
+    expected_ops = ["Transpose", "Im2Col", "MatMul", "Mul", "Add", "Relu", "Mul", "Quant", "Transpose"]
+    ops = [x.op_type for x in model.graph.node]
+    assert ops == expected_ops, "Did not found expected op sequence after lowering and channels-last"
+    out = oxe.execute_onnx(model, idict)[oname]
+    assert np.isclose(expected_out, out, atol=1e-4).all()
