@@ -28,6 +28,7 @@
 
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
+from qonnx.custom_op.general.floatquant import FloatQuant
 from qonnx.custom_op.general.genericpartition import GenericPartition
 from qonnx.custom_op.general.im2col import Im2Col
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
@@ -49,3 +50,4 @@ custom_op["Im2Col"] = Im2Col
 custom_op["Quant"] = Quant
 custom_op["Trunc"] = Trunc
 custom_op["BipolarQuant"] = BipolarQuant
+custom_op["FloatQuant"] = FloatQuant

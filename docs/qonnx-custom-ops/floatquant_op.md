@@ -91,9 +91,21 @@ xq = float_quantize(x, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bia
 
 #### Sample Implementation
 ```python
-def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias, max_val, rounding_mode):
+def float_quant(
+    X,
+    scale,
+    exponent_bitwidth,
+    mantissa_bitwidth,
+    exponent_bias,
+    signed,
+    max_val=None,
+    has_inf=False,
+    has_nan=False,
+    has_subnormal=False,
+    rounding_mode="ROUND",
+    saturation=True
+):
     """Quantize a given floating point array to minifloat format by specifying the desired minifloat quantization"""
-
     def resolve_rounding_mode(mode_string):
         """Resolve the rounding mode string to the corresponding numpy functions."""
         mode_string = mode_string.upper()
@@ -105,46 +117,56 @@ def float_quantize(X, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias
             return np.floor
         else:
             raise ValueError(f"Could not resolve rounding mode called: {mode_string}")
+    # the comments are left to track the correspondence with the brevitas code
+    # np version of brevitas function
+    def inf_nan_clamp(X, inf_mask, p_max_val_mask, n_max_val_mask):
+        if has_inf:
+            X[p_max_val_mask] = np.inf
+            X[n_max_val_mask] = -np.inf
+        elif has_nan:
+            full_max_val_mask = np.logical_or(p_max_val_mask, n_max_val_mask)
+            X[full_max_val_mask] = np.nan
+            X[inf_mask] = np.nan
+        else:
+            raise RuntimeError(
+                "Clamping is not saturating, but neither `inf_values` nor `nan_values` is specified"
+            )
+        return X
 
-    # copy the sign of the input
-    sign = np.sign(X)
-    # compute the mask of the values equal to 0 - it will always be zero at the output
-    zero_mask = np.where(X == 0)
-    # copy the input in order to not modify it
-    X = X.copy()
-    # set the zeros to 1.0 - but could be any random value
-    X[zero_mask] = 1.0
-    # apply the scale to the input
-    X /= scale
-    # get input exponents from the floats - no need to use eps since the zeros have been already removed
-    e_inp = np.floor(np.log2(np.abs(X)))
-    # compute the max exponent given the exponent bitwidth.
-    # Note: inf/NaN representation is included and it is clipped at the end of this function
-    e_max = np.maximum(2.**(exponent_bitwidth), 1.)
-    # compute exponent range given the max exponent. e_low represent the subnormals of the quantized representation, e_high the infs/NaNs
-    e_low, e_high = -e_max + exponent_bias + 1, e_max + exponent_bias
-    # limit the value of the exponent given the quantization range
-    e_quant = np.clip(e_inp, e_low, e_high)
-    # compute the shift to get the quantized value rounded properly. This part basically quantize the mantissa
-    # (round the mantissa by setting to 0 the bits not beloging to the quantised representation)
-    round_shift = 2.**(e_quant - mantissa_bitwidth)
-    # apply the shift
-    man = X / round_shift
-    # round the mantissa
-    man_quant = resolve_rounding_mode(rounding_mode)(man)
-    # compute the max value of the mantissa (i.e. all the mantissa bits set to 1)
-    man_max = 2.**(mantissa_bitwidth + 1) - 1
-    # if the quantised value is a subnormal, remove 1 from the mantissa (i.e. 1 + 2**m => 2**m)
-    man_max = np.where(e_quant != e_low, man_max, man_max - 1)
-    # make sure the mantissa is in the representable range
-    man_clip = np.clip(man_quant, -man_max, man_max)
-    # go back to float representation
-    qx = man_clip * round_shift
-    # if it's inf or nan, saturates to sign*max_val
-    qx = np.where(e_quant == e_high, sign * max_val, qx)
-    # restore the original zeros
-    qx[zero_mask] = 0.0
-    # unscale the input
-    qx *= scale
-    return qx
-```
+    # consistency check
+    # if bit_width != exponent_bitwidth + mantissa_bitwidth + int(signed):
+    #         raise RuntimeError("Mismatch between total bit-width, exponent, mantissa and sign.")
+
+    # x = self.input_view_impl(x) # assuming input_view_impl is Identity
+
+    # the following lines (up to max_value assignment) implements the float_internal_scale function from brevitas using numpy
+    # internal_scale = float_internal_scale(
+    #     scaled_x, self.mantissa_bit_width(), self.fp_internal_scale_min(), self.eps)
+
+    X = X / scale
+
+    eps = np.finfo(X.dtype).tiny # the datatype used here and in brevitas must be the same to have the same eps
+    fp_internal_scale_min = 1. - exponent_bias - mantissa_bitwidth
+
+    internal_scale = np.floor(np.log2(np.abs(X) + eps)) - mantissa_bitwidth
+    internal_scale = np.maximum(internal_scale, fp_internal_scale_min) # np version of: internal_scale = torch.ok(internal_scale, fp_internal_scale_min)
+    internal_scale = np.exp2(internal_scale)
+
+    x_q = internal_scale * resolve_rounding_mode(rounding_mode)(X / internal_scale) # self.float_to_int_impl(x / internal_scale)
+
+    max_value = compute_max_val(exponent_bitwidth, mantissa_bitwidth, exponent_bias)
+    max_value = max_value if max_val is None else np.minimum(max_value, max_val)
+    min_value = 0. if not signed else -max_value
+
+    # Compute masks
+    inf_mask = np.isinf(x_q)
+    p_max_val_mask = x_q > max_value
+    n_max_val_mask = x_q < min_value
+
+    # first clamp everything to  [min_value,max_value], basically the saturating case
+    x_q = np.clip(x_q, min_value, max_value) # self.saturating_clamp(x_q, max_value, min_value)
+
+    if not saturation:
+        x_q = inf_nan_clamp(x_q, inf_mask, p_max_val_mask, n_max_val_mask)
+
+    return x_q * scale #, self.saturating, self.inf_values, self.nan_values
