@@ -32,6 +32,65 @@ import onnx
 
 import qonnx.core.data_layout as DataLayout
 
+# optypes with the (elementwise) monotonic property
+monotonic_optypes = {
+    "Identity",
+    "Relu",
+    "LeakyRelu",
+    "Clip",
+    "Selu",
+    "Celu",
+    "Elu",
+    "Sigmoid",
+    "HardSigmoid",
+    "Tanh",
+    "Softplus",
+    "Exp",
+    "Log",
+    "Sqrt",
+    "Erf",
+    "Floor",
+    "Ceil",
+    "Round",
+    "Sign",
+}
+
+# optypes that operate in an elementwise fashion
+# (with numpy-style broadcasting when shapes mismatch for binary ops)
+eltwise_optypes = monotonic_optypes | {
+    "Quant",
+    "Mul",
+    "Div",
+    "Sub",
+    "Add",
+    "Mod",
+    "And",
+    "Or",
+    "Xor",
+    "Equal",
+    "Less",
+    "LessOrEqual",
+    "Greater",
+    "GreaterOrEqual",
+    "BitwiseAnd",
+    "BitwiseOr",
+    "BitwiseXor",
+    "Maximum",
+    "Minimum",
+    "BitShift",
+    "Pow",
+}
+
+
+def is_eltwise_monotonic_optype(optype):
+    "Checks whether given ONNX optype is a monotonic elementwise op."
+    return optype in monotonic_optypes
+
+
+def is_eltwise_optype(optype):
+    "Checks whether given ONNX optype is an elementwise op."
+    return optype in eltwise_optypes
+
 
 def valueinfo_to_tensor(vi):
     """Creates an all-zeroes numpy tensor from a ValueInfoProto."""

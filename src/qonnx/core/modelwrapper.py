@@ -38,7 +38,12 @@ import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
-from qonnx.transformation.general import RemoveStaticGraphInputs, RemoveUnusedTensors, SortGraph
+from qonnx.transformation.general import (
+    RemoveStaticGraphInputs,
+    RemoveUnusedTensors,
+    SortCommutativeInputsInitializerLast,
+    SortGraph,
+)
 
 
 class ModelWrapper:
@@ -149,6 +154,7 @@ class ModelWrapper:
             RemoveUnusedTensors(),
             RemoveStaticGraphInputs(),
             SortGraph(),
+            SortCommutativeInputsInitializerLast(),
         ]
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
@@ -177,8 +183,30 @@ class ModelWrapper:
             ret = util.get_by_name(ret.quant_parameter_tensor_names, "finn_datatype", "key")
             if ret is not None:
                 return DataType[ret.value]
-        # TODO maybe use native ONNX tensor type instead of assuming fp32?
-        return DataType["FLOAT32"]
+        onnx_dtype_to_qonnx_dtype = {
+            TensorProto.FLOAT: "FLOAT32",
+            TensorProto.FLOAT16: "FLOAT16",
+            # TODO: dtypes below need testing to ensure they do not break FINN,
+            # since it normally assumes float32 containers for these dtypes
+            # TensorProto.UINT8 : "UINT8",
+            # TensorProto.INT8 : "INT8",
+            # TensorProto.UINT16 : "UINT16",
+            # TensorProto.INT16 : "INT16",
+            # TensorProto.UINT32 : "UINT32",
+            # TensorProto.INT32 : "INT32",
+            # TensorProto.UINT64 : "UINT64",
+            # TensorProto.INT64 : "INT64",
+        }
+        tensor_vi = self.get_tensor_valueinfo(tensor_name)
+        if tensor_vi is None:
+            # some initialized tensors don't get ValueInfo even after shape inference
+            _, onnx_dtype = self.get_initializer(tensor_name, return_dtype=True)
+        else:
+            onnx_dtype = tensor_vi.type.tensor_type.elem_type
+        if onnx_dtype in onnx_dtype_to_qonnx_dtype.keys():
+            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]]
+        else:
+            return DataType["FLOAT32"]
 
     def set_tensor_datatype(self, tensor_name, datatype):
         """Sets the QONNX DataType of tensor with given name."""
@@ -339,6 +367,13 @@ class ModelWrapper:
             else:
                 return None
 
+    def del_initializer(self, initializer_name):
+        """Deletes an initializer from the model."""
+        graph = self._model_proto.graph
+        init = util.get_by_name(graph.initializer, initializer_name)
+        if not (init is None):
+            graph.initializer.remove(init)
+
     def find_producer(self, tensor_name):
         """Finds and returns the node that produces the tensor with given name."""
         for x in self._model_proto.graph.node:
@@ -423,14 +458,24 @@ class ModelWrapper:
         """Checks if the given node is a fork, that is, the node has multiple
         direct successors"""
         direct_successors = self.find_direct_successors(node)
-        is_fork = False if direct_successors is None else (len(direct_successors) > 1)
+        # if the node output is also wired to a top-level output, it is still
+        # a fork with only 1 direct successor
+        if node.output[0] in [x.name for x in self.graph.output]:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 0)
+        else:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 1)
         return is_fork
 
     def is_join_node(self, node):
         """Checks if the given node is a join, that is, the node has multiple
         direct predecessors"""
         direct_predecessors = self.find_direct_predecessors(node)
-        is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
+        # if the node input is also wired to a top-level input, it is still
+        # a fork with only 1 direct predecessor
+        if node.input[0] in [x.name for x in self.graph.input]:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 0)
+        else:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
         return is_join
 
     def get_all_tensor_names(self):
@@ -472,6 +517,9 @@ class ModelWrapper:
         # fill in the constants provided by the initializers (TensorProto to npy)
         for t in graph.initializer:
             execution_context[t.name] = np_helper.to_array(t)
+        # for nodes that use empty string as input (=default value), create a
+        # dummy entry in the context
+        execution_context[""] = None
         return execution_context
 
     def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
@@ -487,7 +535,9 @@ class ModelWrapper:
         # see https://github.com/fastmachinelearning/qonnx/issues/33
         for n in graph.node:
             for i in n.input:
-                ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
+                # skip tensor names with empty string (indicates defaults)
+                if i != "":
+                    ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
             for o in n.output:
                 ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret

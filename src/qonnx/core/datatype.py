@@ -168,7 +168,7 @@ class Float16Type(BaseDataType):
         return False
 
     def get_hls_datatype_str(self):
-        return "float"
+        return "half"
 
     def to_numpy_dt(self):
         return np.float16
@@ -376,6 +376,9 @@ class ScaledIntType(IntType):
 
 
 def resolve_datatype(name):
+    if not isinstance(name, str):
+        raise TypeError(f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'")
+
     _special_types = {
         "BINARY": IntType(1, False),
         "BIPOLAR": BipolarType(),

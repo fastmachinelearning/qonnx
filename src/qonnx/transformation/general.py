@@ -29,6 +29,9 @@
 import json
 import numpy as np
 import warnings
+
+# Protobuf onnx graph node type
+from onnx import NodeProto  # noqa
 from onnx import mapping
 from toposort import toposort_flatten
 
@@ -340,8 +343,14 @@ class ApplyConfig(Transformation):
             used_configurations += [node.name]
 
             # set specified defaults
-            default_configs = {k: v for k, v in model_config["Defaults"].items() if k not in model_config}
-            default_configs = {k: v[0] for k, v in default_configs.items() if v[1] == "all" or node.op_type in v[1]}
+            default_values = []
+            for key, value in model_config["Defaults"].items():
+                assert len(value) % 2 == 0
+                if key not in model_config:
+                    for val, op in zip(value[::2], value[1::2]):
+                        default_values.append((key, val, op))
+                        assert not (op == "all" and len(value) > 2)
+            default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
             for attr, value in default_configs.items():
                 inst.set_nodeattr(attr, value)
 
@@ -359,3 +368,56 @@ class ApplyConfig(Transformation):
 
         # one iteration is enough
         return (model, False)
+
+
+# Groups inputs by categories, i.e., groups dynamic inputs first, followed by
+# initializers. Keeps order of inputs in each category.
+def group_inputs_by_category(node: NodeProto, model):  # noqa
+    # Select all dynamic inputs, which are those without initializer tensor
+    dynamics = [i for i in node.input if model.get_initializer(i) is None]
+    # Select all input which are initializers, which, by exclusion, are all
+    # those not among the dynamic inputs
+    initializers = [i for i in node.input if i not in dynamics]
+    # Return lists of dynamic anc initializer inputs
+    return dynamics, initializers
+
+
+# Tidy-Up transformation sorting the inputs to all commutative operations to
+# have initializer inputs last
+class SortCommutativeInputsInitializerLast(Transformation):
+    """
+    Sorts inputs of nodes describing commutative operations to have initializer
+    inputs last. This order of inputs is assumed by many other transformations.
+    """
+
+    # Set of supported commutative operations
+    #   TODO: There might be more valid operations
+    SUPPORTED_COMMUTATIVE_OPS = {"Add", "Mul", "And", "Or", "Xor", "Sum"}
+
+    # Applies the transform to a whole model graph
+    def apply(self, model):  # noqa
+        # Get the model graph out of the model wrapper object
+        graph = model.graph
+        # Keep track of whether the graph has been modified
+        graph_modified = False
+        # Iterate all nodes in the graph keeping track of the index
+        for index, node in enumerate(graph.node):
+            # Check whether this node is among the supported
+            if node.op_type in self.SUPPORTED_COMMUTATIVE_OPS:
+                # Group node inputs by category
+                dynamics, initializers = group_inputs_by_category(node, model)
+                # Flatten the grouped input list
+                inputs = [*dynamics, *initializers]
+                # Length of sorted and original input list must match
+                assert len(inputs) == len(node.input)
+                # Reassigned inputs from sorted categories
+                for i, name in enumerate(inputs):
+                    # The graph has been modified if any input is reordered
+                    if node.input[i] != name:
+                        # Note: This is never reset back to False
+                        graph_modified = True
+                    # Reassign input name at the new index
+                    node.input[i] = name
+        # Return the transformed model and indicate whether the graph actually
+        # has been transformed
+        return model, graph_modified
