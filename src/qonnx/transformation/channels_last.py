@@ -34,6 +34,7 @@ from onnx import TensorProto, helper
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import SortGraph
@@ -151,6 +152,7 @@ class ConvertToChannelsLastAndClean(Transformation):
             "All tensor shapes must be specified. " "Consider running InferShapes."
         )
         model = model.transform(InsertChannelsLastDomainsAndTrafos())
+        model = model.transform(ConvertAttrDataLayoutOpsToNHWC())
         initial_model_string = model.model.SerializeToString()
         # Apply RemoveConsecutiveChanFirstAndChanLastTrafos
         model = model.transform(RemoveConsecutiveChanFirstAndChanLastTrafos())
@@ -657,3 +659,78 @@ class MoveLinearPastFork(MoveOpPastFork):
 class MoveTransposePastFork(MoveOpPastFork):
     def __init__(self):
         super().__init__(["Transpose"])
+
+
+class ConvertAttrDataLayoutOpsToNHWC(Transformation):
+    """
+    For MultiThreshold and QuantAvgPool2d ops which have a data_layout attribute,
+    converts nodes with data_layout="NCHW" to data_layout="NHWC" and inserts necessary transpose nodes.
+    """
+
+    def apply(self, model):
+        graph = model.graph
+        node_ind = 0
+        graph_modified = False
+        optypes = ["MultiThreshold", "QuantAvgPool2d"]
+
+        for node in graph.node:
+            node_ind += 1
+            if node.op_type in optypes:
+                op_inst = getCustomOp(node)
+                if op_inst.get_nodeattr("data_layout") != "NCHW":
+                    continue
+                # Get the shape of the input tensor
+                # and convert it to the shape for the intermediate tensor
+                i = 0
+                inp = node.input[i]
+                chanFirst_shape = model.get_tensor_shape(inp)
+                ndim = len(chanFirst_shape)
+                assert ndim == 4, "Channels last conversion is only available for 4D tensors."
+                # Change data_layout attribute to NHWC
+                op_inst.set_nodeattr("data_layout", "NHWC")
+
+                chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
+                # Intermediate tensor
+                inp_trans_out = helper.make_tensor_value_info(
+                    model.make_new_valueinfo_name(),
+                    TensorProto.FLOAT,
+                    chanLast_shape,
+                )
+                graph.value_info.append(inp_trans_out)
+                inp_trans_out = inp_trans_out.name
+
+                # channels last transpose
+                inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
+                graph.node.append(inp_trans_node)
+
+                # Attach to original node
+                node.input[i] = inp_trans_out
+
+                # Insert transformation nodes for output nodes
+                i = 0
+                outp = node.output[i]
+                chanFirst_shape = model.get_tensor_shape(outp)
+                ndim = len(chanFirst_shape)
+                assert ndim == 4, "Channels last conversion is only available for 4D tensors."
+                chanLast_shape = [chanFirst_shape[idx] for idx in to_channels_last_args(ndim)]
+                # Intermediat tensor
+                outp_trans_in = helper.make_tensor_value_info(
+                    model.make_new_valueinfo_name(),
+                    TensorProto.FLOAT,
+                    chanLast_shape,
+                )
+                graph.value_info.append(outp_trans_in)
+                outp_trans_in = outp_trans_in.name
+
+                # ChannelsFirst -> ChannelsLast transpose
+                outp_trans_node = helper.make_node("Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim))
+                graph.node.append(outp_trans_node)
+
+                # Attach to original node
+                node.output[i] = outp_trans_in
+
+                # Set modified flag
+                model = model.transform(SortGraph())
+                graph_modified = True
+
+        return model, graph_modified
