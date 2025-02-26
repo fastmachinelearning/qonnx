@@ -52,15 +52,10 @@ def _dims_to_layout(model, node, ndims):
                     return DataLayout.NC
                 else:
                     return DataLayout.UNKNOWN
-            else:
-                if ndims == 4:
-                    return DataLayout.NHWC
-                elif ndims == 3:
-                    return DataLayout.NWC
-                elif ndims == 2:
-                    return DataLayout.NC
-                else:
-                    return DataLayout.UNKNOWN
+            elif node.op_type in ["Quant", "BipolarQuant", "Trunc"]:
+                if layout := model.get_tensor_layout(node.input[0]):
+                    # if annotation present: propagate input layout to output
+                    return layout
         else:
             # Check whether there is a layout annotation for the first input
             # TODO: There are multi-input operations, why should the first
@@ -69,16 +64,15 @@ def _dims_to_layout(model, node, ndims):
                 # If annotation present: propagate input layout to output
                 # TODO: this won't work for concat, squeeze/unsqueeze/reshape...
                 return layout
-            # Fallback to the same defaults as for the FINN-Ops above
-            else:
-                if ndims == 4:
-                    return DataLayout.NHWC
-                elif ndims == 3:
-                    return DataLayout.NWC
-                elif ndims == 2:
-                    return DataLayout.NC
-                else:
-                    return DataLayout.UNKNOWN
+        # fallback to defaults based on ndims
+        if ndims == 4:
+            return DataLayout.NHWC
+        elif ndims == 3:
+            return DataLayout.NWC
+        elif ndims == 2:
+            return DataLayout.NC
+        else:
+            return DataLayout.UNKNOWN
 
 
 def _infer_node_data_layout(model, node):
