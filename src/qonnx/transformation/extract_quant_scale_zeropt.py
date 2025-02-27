@@ -1,4 +1,4 @@
-# Copyright (c) 2023 Advanced Micro Devices, Inc.
+# Copyright (c) 2023-2025 Advanced Micro Devices, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -33,6 +33,51 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.general import GiveUniqueParameterTensors, SortGraph
 from qonnx.transformation.remove import RemoveIdentityOps
+
+
+class AbsorbQuantScale(Transformation):
+    """(Limited) reverse transformation for ExtractQuantScaleZeroPt, re-absorb input side Mul
+    back into Quant node scale."""
+
+    def apply(self, model: ModelWrapper):
+        graph = model.graph
+        for node in graph.node:
+            if node.op_type in ["Quant"]:
+                quant_node = node
+                input_nm, scale_nm, zeropt_nm, *rest = node.input
+                ishp = model.get_tensor_shape(input_nm)
+                scale_t = model.get_initializer(scale_nm)
+                if scale_t is None or (scale_t != 1.0).all():
+                    continue
+                prod = model.find_producer(input_nm)
+                if prod is None or prod.op_type != "Mul":
+                    continue
+                mul_scale = model.get_initializer(prod.input[1])
+                if mul_scale is None:
+                    continue
+                new_scale = 1.0 / mul_scale
+                model.set_initializer(scale_nm, new_scale)
+                quant_node.input[0] = prod.input[0]
+                graph.node.remove(prod)
+                # the scale parameter for the Quant node also introduces
+                # output scaling, so compensate for that with a Div
+                final_output = node.output[0]
+                out_scale_nm = model.make_new_valueinfo_name()
+                out_scale = helper.make_tensor_value_info(
+                    out_scale_nm,
+                    TensorProto.FLOAT,
+                    ishp,
+                )
+                quant_node.output[0] = out_scale_nm
+                graph.value_info.append(out_scale)
+                out_scale_node = helper.make_node("Div", [out_scale_nm, scale_nm], [final_output])
+                graph.node.append(out_scale_node)
+
+                # Sort the graph to ensure correct topological order
+                model = model.transform(SortGraph())
+                return model, True
+
+        return model, False
 
 
 class ExtractQuantScaleZeroPt(Transformation):
