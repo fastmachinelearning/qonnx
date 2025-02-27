@@ -33,7 +33,8 @@ import onnx.parser as oprs
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
-from qonnx.transformation.extract_quant_scale_zeropt import ExtractQuantScaleZeroPt
+from qonnx.transformation.extract_quant_scale_zeropt import AbsorbQuantScale, ExtractQuantScaleZeroPt
+from qonnx.transformation.general import ConvertDivToMul
 
 
 def make_test_model(ishp, channelwise, bitwidth, need_extraction_scale, need_extraction_zeropt):
@@ -107,3 +108,13 @@ def test_extract_quant_scale_zeropt(channelwise, need_extraction_scale, need_ext
     if need_extraction_zeropt:
         assert len(model_new.get_nodes_by_op_type("Add")) == 1
         assert len(model_new.get_nodes_by_op_type("Sub")) == 1
+    if need_extraction_scale and not need_extraction_zeropt:
+        # test the (limited) inverse transform
+        model_new = model_new.transform(ConvertDivToMul())
+        model_new = model_new.transform(AbsorbQuantScale())
+        qnt_node = model_new.get_nodes_by_op_type("Quant")[0]
+        new_scale = model_new.get_initializer(qnt_node.input[1])
+        assert (new_scale != 1).all()
+        assert model_new.find_consumer(qnt_node.output[0]).op_type == "Div"
+        y_ret = execute_onnx(model_new, {"in0": inp})["out0"]
+        assert np.allclose(y_golden, y_ret)
