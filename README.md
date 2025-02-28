@@ -120,7 +120,7 @@ Install in editable mode in a Python virtual environment:
 ```
 git clone https://github.com/fastmachinelearning/qonnx
 cd qonnx
-virtualenv -p python3.8 venv
+virtualenv -p python3.10 venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -e .[qkeras,testing]
