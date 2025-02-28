@@ -5,7 +5,7 @@ from qkeras.quantizers import BaseQuantizer
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 
-def extract_quantizers_from_layer(layer):
+def extract_quantizers_from_qkeras_layer(layer):
     """ """
     layer_class = layer.__class__.__name__
     if layer_class in QKERAS_LAYERS:
