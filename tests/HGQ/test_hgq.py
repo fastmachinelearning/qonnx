@@ -4,7 +4,7 @@ import onnx
 from HGQ import FreeBOPs, ResetMinMax, to_proxy_model, trace_minmax
 from HGQ.layers import HConv2D, HDense, HQuantize, PFlatten, PMaxPooling2D, PReshape
 
-from qonnx.converters.keras import from_keras
+from qonnx.converters import from_keras
 from qonnx.util.exec_qonnx import exec_qonnx
 
 
@@ -39,9 +39,9 @@ def test_convert_HGQ_two_conv2d_to_QONNX():
     trace_minmax(model, x_train, cover_factor=1.0)
     proxy = to_proxy_model(model, aggressive=True)
 
-    onnx_model, external_storage = from_keras(proxy, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(proxy, "test_hgq_conversion", opset=9)
     onnx.save(onnx_model, "/tmp/hgq.onnx")
 
-    qonnx_out = exec_qonnx("/tmp/hgq.onnx", "/tmp/x_test.npy")
+    qonnx_out = exec_qonnx("/tmp/hgq.onnx", "/tmp/x_test.npy", override_opset=9)
     hgq_out = proxy.predict(x_test[:100])
     assert np.isclose(qonnx_out, hgq_out).all(), "Output of HGQ proxy model and converted QONNX model should match."
