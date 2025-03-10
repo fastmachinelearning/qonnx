@@ -473,7 +473,7 @@ class DeduplicateForkingMulAdd(Transformation):
                 predecessors = model.find_direct_predecessors(node)
                 node_inputs = list(node.input)
                 node_output = node.output[0]
-                if len(predecessors) > 1:
+                if predecessors is not None and len(predecessors) > 1:
                     duplicates = []
                     # find duplicates, i.e. nodes with same op_type
                     # and same inputs as the original node
