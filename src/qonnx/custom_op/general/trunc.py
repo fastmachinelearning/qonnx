@@ -66,10 +66,10 @@ def trunc(inp_tensor, scale, zeropt, input_bit_width, narrow, signed, output_sca
 
 
 class Trunc(CustomOp):
-    """Generic truncation operation for QONNX. Takes four inputs:
-    - input tensor to truncate
-    - the scale
-    - the zero-point
+    """Generic truncation operation for QONNX. Takes four inputs:  
+    - input tensor to truncate  
+    - the scale  
+    - the zero-point  
     - the truncation bit-width
 
     The output is a tensor of the same shape as the input tensor, with truncated
