@@ -18,8 +18,8 @@ The description of this operator in this document corresponds to `qonnx.custom_o
 <dd>Defines if the quantization includes a signed bit. E.g. at 8b unsigned=[0, 255] vs signed=[-128, 127].</dd>
 <dt><tt>narrow</tt> : int (default is 0)</dt>
 <dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
-<dt><tt>output_scale</tt> : float32, tensor(float32) (default is -1.0)</dt>
-<dd>The scale factor of the output, either as a global scalar or with a shape matching the number of dimensions of the X tensor. The output scale must represent a shift W.R.T. the input scale (i.e., <tt>scale</tt>) and therefore must be the input scale multiplied by a power-of-2. If output_scale is less-than-or-equal to 0, it is calculated as 2 ** (in_bitwidth - out_bitwidth) to approximately match the behaviour in qonnx.custom_ops.general opset version 1.</dd>
+<dt><tt>output_scale</tt> : float32 (default is -1.0)</dt>
+<dd>The scale factor of the output as a scalar. The output scale must represent a shift W.R.T. the input scale (i.e., scale) and therefore must be the input scale multiplied by a power-of-2. If output_scale is less-than-or-equal to 0, it is calculated as 2 ** (in_bitwidth - out_bitwidth) to approximately match the behaviour of qonnx.custom_ops.general opset version 1.</dd>
 </dl>
 
 #### Inputs
