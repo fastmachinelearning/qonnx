@@ -42,6 +42,7 @@ from qonnx.transformation.general import (
     ConvertDivToMul,
     ConvertSubToAdd,
     DuplicateForkingMulAdd,
+    DeduplicateForkingMulAdd,
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
     SortGraph,
@@ -91,6 +92,7 @@ class Streamline(Transformation):
         model = model.transform(StreamlineFromRangeDict(range_dict))
         # finally, remove identity operations
         model = model.transform(RemoveIdentityOps())
+        model = model.transform(DeduplicateForkingMulAdd())
 
         return model, False
 

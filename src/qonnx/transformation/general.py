@@ -458,3 +458,42 @@ class DuplicateForkingMulAdd(Transformation):
             model = model.transform(SortGraph())
             model = model.transform(GiveUniqueParameterTensors())
         return (model, graph_modified)
+
+
+class DeduplicateForkingMulAdd(Transformation):
+    """Find duplicate Mul/Add nodes that perform exactly the same operation and
+    merge them into single node with duplicated output.
+    """
+
+    def apply(self, model):
+        graph = model.graph
+        graph_modified = False
+        for node in graph.node:
+            if node.op_type in ["Mul", "Add"]:
+                predecessors = model.find_direct_predecessors(node)
+                node_inputs = list(node.input)
+                node_output = node.output[0]
+                if predecessors is not None and len(predecessors) > 1:
+                    duplicates = []
+                    # find duplicates, i.e. nodes with same op_type
+                    # and same inputs as the original node
+                    for p in predecessors:
+                        other_successors = [s for s in model.find_direct_successors(p) if s != node]
+                        duplicates += [s for s in other_successors
+                                      if s.op_type == node.op_type and s.input == node_inputs]
+                        if len(duplicates) > 0:
+                            break
+                    # rewire inputs of duplicates consumers for original node output
+                    # and remove duplicates
+                    if len(duplicates) > 0:
+                        for dupe in duplicates:
+                            dupe_output = dupe.output[0]
+                            dupe_consumer = model.find_consumer(dupe_output)
+                            dupe_consumer_inp_idx = list(dupe_consumer.input).index(dupe_output)
+                            dupe_consumer.input[dupe_consumer_inp_idx] = node_output
+                            graph.node.remove(dupe)
+                            graph_modified = True
+        if graph_modified:
+            model = model.transform(SortGraph())
+            model = model.transform(RemoveUnusedTensors())
+        return (model, graph_modified)
