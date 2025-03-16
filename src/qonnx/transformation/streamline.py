@@ -41,8 +41,8 @@ from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import (
     ConvertDivToMul,
     ConvertSubToAdd,
-    DuplicateForkingMulAdd,
     DeduplicateForkingMulAdd,
+    DuplicateForkingMulAdd,
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
     SortGraph,
@@ -72,6 +72,7 @@ class Streamline(Transformation):
         self.irange = irange
         self.tensor_filter = tensor_filter
         self.include_toplevel_outs = include_toplevel_outs
+        self.range_dict = None
 
     def apply(self, model: ModelWrapper):
         # first, run the lowering pipeline to make model amenable to streamlining
@@ -87,9 +88,9 @@ class Streamline(Transformation):
         model = model.transform(GiveUniqueNodeNames())
         model = model.transform(GiveReadableTensorNames())
         # now run range analysis
-        range_dict, _ = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
+        self.range_dict, _ = range_analysis(model, irange=self.irange, report_mode=REPORT_MODE_RANGE, scaled_int=True)
         # use results of range analysis to move out scale/bias factors
-        model = model.transform(StreamlineFromRangeDict(range_dict))
+        model = model.transform(StreamlineFromRangeDict(self.range_dict, self.tensor_filter, self.include_toplevel_outs))
         # finally, remove identity operations
         model = model.transform(RemoveIdentityOps())
         model = model.transform(DeduplicateForkingMulAdd())
