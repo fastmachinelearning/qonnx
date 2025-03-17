@@ -52,8 +52,8 @@ _channelsLast_node_types = list(channels_last.custom_op.keys())
 _move_through_nodes = ["Quant", "Relu", "Selu", "LeakyRelu", "Sigmoid", "Tanh", "Trunc"]
 
 # Nodes, which do not modify the shape of the tensor,
-# And modify all values in the same way, if the second tensor is a scalar.
-_move_through_nodes_if_scalar = ["Mul", "Div", "Sub", "Add"]
+# And modify all values in the same way
+_move_through_nodes_elementwise = ["Mul", "Div", "Sub", "Add"]
 
 
 def get_transpose_perms(transpose_node, model):
@@ -362,11 +362,17 @@ class MoveChanLastUpstream(Transformation):
 
                     # Check if we can simply move through the previous node
                     move_through_valid = predecessor.op_type in _move_through_nodes
-                    # Check if we have a node, which applies a scalar change,
+                    # Check if we have an elementwise node
                     # then we can also move through.
-                    if predecessor.op_type in _move_through_nodes_if_scalar:
+                    if predecessor.op_type in _move_through_nodes_elementwise:
                         second_inp_shape = model.get_tensor_shape(predecessor.input[1])
+                        elementwise_param = model.get_initializer(predecessor.input[1])
                         if second_inp_shape == [1] or second_inp_shape == []:
+                            move_through_valid |= True
+                        # permute non-scalar constant parameters
+                        elif elementwise_param is not None:
+                            elementwise_param = elementwise_param.transpose(perm)
+                            model.set_initializer(predecessor.input[1], elementwise_param)
                             move_through_valid |= True
 
                     # don't move through if the predecessor output is a fork
