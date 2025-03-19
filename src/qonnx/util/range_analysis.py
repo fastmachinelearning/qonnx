@@ -131,7 +131,10 @@ class RangeInfo:
 
     def is_point_interval(self):
         # whether this is a point interval (min=max for all elements)
-        return (self.range[0] == self.range[1]).all()
+        if isinstance(self.range[0], np.ndarray):
+            return (self.range[0] == self.range[1]).all()
+        else:
+            return self.range[0] == self.range[1]
 
     def has_integer_info(self) -> bool:
         # whether the RangeInfo has its int_range, scale and bias populated
@@ -441,12 +444,23 @@ def calc_intrange_relu(node, model, range_dict):
     range_dict[node.output[0]].history_bias = []
 
 
+def get_point_interval(input_name, range_dict):
+    if input_name not in range_dict:
+        return None
+    else:
+        ret = range_dict[input_name]
+        if ret.is_point_interval():
+            return ret.range[0]
+        else:
+            return None
+
+
 # propagate integer range and scale/bias info for Quant
 def calc_intrange_quant(node, model, range_dict):
     # get quantizer parameters
-    q_scale = model.get_initializer(node.input[1])
-    q_zeropt = model.get_initializer(node.input[2])
-    q_bitwidth = model.get_initializer(node.input[3])
+    q_scale = get_point_interval(node.input[1], range_dict)
+    q_zeropt = get_point_interval(node.input[2], range_dict)
+    q_bitwidth = get_point_interval(node.input[3], range_dict)
     scale_ok = not (q_scale is None)
     zeropt_ok = not (q_zeropt is None)
     bitwidth_ok = not (q_bitwidth is None)
