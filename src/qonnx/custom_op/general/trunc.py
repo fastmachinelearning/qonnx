@@ -82,11 +82,6 @@ class Trunc(CustomOp):
             "rounding_mode": ("s", True, "FLOOR"),
             "narrow": ("i", False, 0, {0, 1}),
             "signed": ("i", False, 1, {0, 1}),
-            "output_scale": (
-                "f",
-                False,
-                -1.0,
-            ),  # Invalid scale signifies that it needs to be computed from input/output bit_width
         }
 
     def make_shape_compatible_op(self, model):
@@ -104,13 +99,13 @@ class Trunc(CustomOp):
         scale = context[node.input[1]]
         zeropt = context[node.input[2]]
         input_bit_width = context[node.input[3]]
-        output_bit_width = context[node.input[4]]
+        output_scale = context[node.input[4]]
+        output_zeropt = context[node.input[5]]
+        output_bit_width = context[node.input[6]]
         # save attributes
         rounding_mode = self.get_nodeattr("rounding_mode")
         narrow = self.get_nodeattr("narrow")
         signed = self.get_nodeattr("signed")
-        output_scale = self.get_nodeattr("output_scale")
-        output_scale = 2 ** (input_bit_width - output_bit_width) if output_scale <= 0.0 else output_scale
         # calculate output
         ret = trunc(
             inp_tensor, scale, zeropt, input_bit_width, narrow, signed, output_scale, output_bit_width, rounding_mode
