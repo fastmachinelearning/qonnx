@@ -70,6 +70,7 @@ class Trunc(CustomOp):
     - input tensor to truncate  
     - the scale  
     - the zero-point  
+    - the truncation scale  
     - the truncation bit-width
 
     The output is a tensor of the same shape as the input tensor, with truncated
