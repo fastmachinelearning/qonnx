@@ -100,8 +100,7 @@ class Trunc(CustomOp):
         zeropt = context[node.input[2]]
         input_bit_width = context[node.input[3]]
         output_scale = context[node.input[4]]
-        output_zeropt = context[node.input[5]]
-        output_bit_width = context[node.input[6]]
+        output_bit_width = context[node.input[5]]
         # save attributes
         rounding_mode = self.get_nodeattr("rounding_mode")
         narrow = self.get_nodeattr("narrow")
