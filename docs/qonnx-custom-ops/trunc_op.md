@@ -18,8 +18,6 @@ The description of this operator in this document corresponds to `qonnx.custom_o
 <dd>Defines if the quantization includes a signed bit. E.g. at 8b unsigned=[0, 255] vs signed=[-128, 127].</dd>
 <dt><tt>narrow</tt> : int (default is 0)</dt>
 <dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
-<dt><tt>output_scale</tt> : float32 (default is -1.0)</dt>
-<dd>The scale factor of the output as a scalar. The output scale must represent a shift W.R.T. the input scale (i.e., scale) and therefore must be the input scale multiplied by a power-of-2. If output_scale is less-than-or-equal to 0, it is calculated as 2 ** (in_bitwidth - out_bitwidth) to approximately match the behaviour of qonnx.custom_ops.general opset version 1.</dd>
 </dl>
 
 #### Inputs
@@ -28,11 +26,13 @@ The description of this operator in this document corresponds to `qonnx.custom_o
 <dt><tt>X</tt> (differentiable) : tensor(float32)</dt>
 <dd>input tensor to truncate</dd>
 <dt><tt>scale</tt> : float32</dt>
-<dd>The scale factor</dd>
+<dd>The scale factor at the input of the truncation</dd>
 <dt><tt>zeropt</tt> : float32</dt>
-<dd>The zero-point</dd>
+<dd>The zero-point at the input of the truncation</dd>
 <dt><tt>in_bitwidth</tt> : int32</dt>
 <dd>The number of bits used at the input of the truncation</dd>
+<dt><tt>out_scale</tt> : float32</dt>
+<dd>The scale factor of the output of the truncation</dd>
 <dt><tt>out_bitwidth</tt> : int32</dt>
 <dd>The number of bits used at the output of the truncation</dd>
 </dl>
