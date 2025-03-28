@@ -27,9 +27,17 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import mock
 import numpy as np
+from brevitas.core.function_wrapper.clamp import FloatClamp, TensorClamp
+from brevitas.core.function_wrapper.misc import Identity
+from brevitas.core.quant.float import FloatQuant as BrevitasFloatQuant
+from hypothesis import HealthCheck, Verbosity, assume, given, settings
+from hypothesis import strategies as st
+from hypothesis.extra.numpy import arrays
 
-from qonnx.custom_op.general.floatquant import compute_max_val, float_quantize
+from qonnx.custom_op.general.floatquant import compute_default_exponent_bias, compute_max_val
+from qonnx.custom_op.general.floatquant import float_quant as qonnx_float_quant
 
 
 def test_compute_max_val():
@@ -42,16 +50,69 @@ def test_compute_max_val():
 def test_float_quantize():
     zero_tensor = np.zeros((2, 2))
     unit_scale = np.asarray([1.0], dtype=np.float32)
-    assert np.all(float_quantize(zero_tensor, unit_scale, 2, 3) == zero_tensor)
+    assert np.all(qonnx_float_quant(zero_tensor, unit_scale, 2, 3) == zero_tensor)
     testcase_a = np.asarray([1.5], dtype=np.float32)
     testcase_b = np.asarray([3.25], dtype=np.float32)
     testcase_c = np.asarray([8.0], dtype=np.float32)
     testcase_d = np.asarray([28.2], dtype=np.float32)
     testcase_e = np.asarray([6.1], dtype=np.float32)
-    testcase_f = np.asarray([0.124], dtype=np.float32)
-    assert np.all(float_quantize(testcase_a, unit_scale, 2, 3) == testcase_a)
-    assert np.all(float_quantize(testcase_b, unit_scale, 2, 3) == testcase_b)
-    assert np.all(float_quantize(testcase_c, unit_scale, 2, 3) == compute_max_val(2, 3))
-    assert np.all(float_quantize(testcase_d, unit_scale, 3, 2) == compute_max_val(3, 2))
-    assert np.all(float_quantize(testcase_e, unit_scale, 2, 1) == compute_max_val(2, 1))
-    assert np.all(float_quantize(testcase_f, unit_scale, 2, 3, lt_subnorm_to_zero=True) == 0.0)
+    assert np.all(qonnx_float_quant(testcase_a, unit_scale, 2, 3) == testcase_a)
+    assert np.all(qonnx_float_quant(testcase_b, unit_scale, 2, 3) == testcase_b)
+    assert np.all(qonnx_float_quant(testcase_c, unit_scale, 2, 3) == compute_max_val(2, 3))
+    assert np.all(qonnx_float_quant(testcase_d, unit_scale, 3, 2) == compute_max_val(3, 2))
+    assert np.all(qonnx_float_quant(testcase_e, unit_scale, 2, 1) == compute_max_val(2, 1))
+
+
+def brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, exponent_bias, signed, max_val):
+    float_clamp = FloatClamp(
+        tensor_clamp_impl=TensorClamp(),
+        signed=signed,
+        inf_values=None,
+        nan_values=None,
+        max_available_float=max_val,
+        saturating=True,
+    )
+    float_scaling_impl = mock.Mock(side_effect=lambda x, y, z: 1.0)
+    float_quant = BrevitasFloatQuant(
+        bit_width=bit_width,
+        float_scaling_impl=float_scaling_impl,
+        exponent_bit_width=exponent_bit_width,
+        mantissa_bit_width=mantissa_bit_width,
+        exponent_bias=exponent_bias,
+        input_view_impl=Identity(),
+        signed=signed,
+        float_clamp_impl=float_clamp,
+    )
+    expected_out, *_ = float_quant(x)
+    return expected_out
+
+
+@given(
+    x=arrays(
+        dtype=np.float64,
+        shape=100,
+        elements=st.floats(
+            allow_nan=False,
+            allow_infinity=False,
+            allow_subnormal=True,
+            width=64,  # Use 64-bit floats
+        ),
+        unique=True,
+    ),
+    exponent_bit_width=st.integers(1, 8),
+    mantissa_bit_width=st.integers(1, 8),
+    sign=st.booleans(),
+)
+@settings(
+    max_examples=1000, verbosity=Verbosity.verbose, suppress_health_check=list(HealthCheck)
+)  # Adjust the number of examples as needed
+def test_brevitas_vs_qonnx(x, exponent_bit_width, mantissa_bit_width, sign):
+    bit_width = exponent_bit_width + mantissa_bit_width + int(sign)
+
+    assume(bit_width <= 8 and bit_width >= 4)
+    scale = 1.0
+    exponent_bias = compute_default_exponent_bias(exponent_bit_width)
+    max_val = compute_max_val(exponent_bit_width, mantissa_bit_width, exponent_bias)
+    xq_t = brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val).numpy()
+    xq = qonnx_float_quant(x, scale, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val)
+    np.testing.assert_array_equal(xq, xq_t)

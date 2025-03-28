@@ -91,6 +91,7 @@ xq = float_quantize(x, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bia
 
 #### Sample Implementation
 ```python
+# see src/qonnx/custom_op/general/floatquant.py for up-to-date implementation
 def float_quant(
     X,
     scale,

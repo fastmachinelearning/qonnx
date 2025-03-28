@@ -52,8 +52,8 @@ def float_quant(
     scale,
     exponent_bitwidth,
     mantissa_bitwidth,
-    exponent_bias,
-    signed,
+    exponent_bias=None,
+    signed=True,
     max_val=None,
     has_inf=False,
     has_nan=False,
@@ -84,7 +84,8 @@ def float_quant(
     # the following lines (up to max_value assignment) implements the float_internal_scale function from brevitas using numpy
     # internal_scale = float_internal_scale(
     #     scaled_x, self.mantissa_bit_width(), self.fp_internal_scale_min(), self.eps)
-
+    if exponent_bias is None:
+        exponent_bias = compute_default_exponent_bias(exponent_bitwidth)
     X = X / scale
 
     eps = np.finfo(X.dtype).tiny  # the datatype used here and in brevitas must be the same to have the same eps
