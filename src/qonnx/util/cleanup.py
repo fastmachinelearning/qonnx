@@ -41,9 +41,10 @@ from qonnx.transformation.general import (
 )
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
+from qonnx.transformation.remove import RemoveIdentityOps
 
 
-def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_conv_bias=False):
+def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_conv_bias=False, rm_identity_ops=False):
     """Execute the transformations for the cleanup function on a model level.
     This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
 
@@ -89,6 +90,12 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
 
     if extract_conv_bias:
         model = model.transform(ExtractBiasFromConv())
+        model = model.transform(InferShapes())
+        model = model.transform(GiveUniqueNodeNames())
+        model = model.transform(GiveReadableTensorNames())
+
+    if rm_identity_ops:
+        model = model.transform(RemoveIdentityOps())
         model = model.transform(InferShapes())
         model = model.transform(GiveUniqueNodeNames())
         model = model.transform(GiveReadableTensorNames())
