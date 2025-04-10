@@ -64,8 +64,110 @@ This operator is not part of the ONNX standard and is not currently versioned.
 </dl>
 
 #### Examples
-TODO
+```python
+def compute_max_val(exponent_bit_width, mantissa_bit_width, exponent_bias):
+    max_exponent = (2. ** exponent_bit_width) - 1. - exponent_bias
+    max_mantissa = np.sum((
+        2. ** np.arange(
+            0,
+            -1. * mantissa_bit_width - 1.,
+            -1.
+            )))
+    max_val = max_mantissa * (2 ** max_exponent)
+    return max_val
+
+import numpy as np
+x = np.random.rand(100).astype(np.float32)
+scale = 1
+exponent_bitwidth = 4
+mantissa_bitwidth = 3
+exponent_bias = 0
+max_val = compute_max_val(exponent_bitwidth, mantissa_bitwidth, exponent_bias)
+rounding_mode = 'ROUND'
+signed = True
+xq = float_quantize(x, scale, exponent_bitwidth, mantissa_bitwidth, exponent_bias, max_val, rounding_mode)
+```
 
 
 #### Sample Implementation
-TODO
+```python
+# see src/qonnx/custom_op/general/floatquant.py for up-to-date implementation
+def float_quant(
+    X,
+    scale,
+    exponent_bitwidth,
+    mantissa_bitwidth,
+    exponent_bias,
+    signed,
+    max_val=None,
+    has_inf=False,
+    has_nan=False,
+    has_subnormal=False,
+    rounding_mode="ROUND",
+    saturation=True
+):
+    """Quantize a given floating point array to minifloat format by specifying the desired minifloat quantization"""
+    def resolve_rounding_mode(mode_string):
+        """Resolve the rounding mode string to the corresponding numpy functions."""
+        mode_string = mode_string.upper()
+        if mode_string == "ROUND":
+            return np.round
+        elif mode_string == "CEIL":
+            return np.ceil
+        elif mode_string == "FLOOR":
+            return np.floor
+        else:
+            raise ValueError(f"Could not resolve rounding mode called: {mode_string}")
+    # the comments are left to track the correspondence with the brevitas code
+    # np version of brevitas function
+    def inf_nan_clamp(X, inf_mask, p_max_val_mask, n_max_val_mask):
+        if has_inf:
+            X[p_max_val_mask] = np.inf
+            X[n_max_val_mask] = -np.inf
+        elif has_nan:
+            full_max_val_mask = np.logical_or(p_max_val_mask, n_max_val_mask)
+            X[full_max_val_mask] = np.nan
+            X[inf_mask] = np.nan
+        else:
+            raise RuntimeError(
+                "Clamping is not saturating, but neither `inf_values` nor `nan_values` is specified"
+            )
+        return X
+
+    # consistency check
+    # if bit_width != exponent_bitwidth + mantissa_bitwidth + int(signed):
+    #         raise RuntimeError("Mismatch between total bit-width, exponent, mantissa and sign.")
+
+    # x = self.input_view_impl(x) # assuming input_view_impl is Identity
+
+    # the following lines (up to max_value assignment) implements the float_internal_scale function from brevitas using numpy
+    # internal_scale = float_internal_scale(
+    #     scaled_x, self.mantissa_bit_width(), self.fp_internal_scale_min(), self.eps)
+
+    X = X / scale
+
+    eps = np.finfo(X.dtype).tiny # the datatype used here and in brevitas must be the same to have the same eps
+    fp_internal_scale_min = 1. - exponent_bias - mantissa_bitwidth
+
+    internal_scale = np.floor(np.log2(np.abs(X) + eps)) - mantissa_bitwidth
+    internal_scale = np.maximum(internal_scale, fp_internal_scale_min) # np version of: internal_scale = torch.ok(internal_scale, fp_internal_scale_min)
+    internal_scale = np.exp2(internal_scale)
+
+    x_q = internal_scale * resolve_rounding_mode(rounding_mode)(X / internal_scale) # self.float_to_int_impl(x / internal_scale)
+
+    max_value = compute_max_val(exponent_bitwidth, mantissa_bitwidth, exponent_bias)
+    max_value = max_value if max_val is None else np.minimum(max_value, max_val)
+    min_value = 0. if not signed else -max_value
+
+    # Compute masks
+    inf_mask = np.isinf(x_q)
+    p_max_val_mask = x_q > max_value
+    n_max_val_mask = x_q < min_value
+
+    # first clamp everything to  [min_value,max_value], basically the saturating case
+    x_q = np.clip(x_q, min_value, max_value) # self.saturating_clamp(x_q, max_value, min_value)
+
+    if not saturation:
+        x_q = inf_nan_clamp(x_q, inf_mask, p_max_val_mask, n_max_val_mask)
+
+    return x_q * scale #, self.saturating, self.inf_values, self.nan_values
