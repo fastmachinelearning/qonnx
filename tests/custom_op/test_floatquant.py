@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+import io
 import mock
 import numpy as np
 from brevitas.core.function_wrapper.clamp import FloatClamp, TensorClamp
@@ -35,9 +36,45 @@ from brevitas.core.quant.float import FloatQuant as BrevitasFloatQuant
 from hypothesis import HealthCheck, Verbosity, assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
+from pkgutil import get_data
 
+import qonnx.core.onnx_exec as oxe
+from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.general.floatquant import compute_default_exponent_bias, compute_max_val
 from qonnx.custom_op.general.floatquant import float_quant as qonnx_float_quant
+from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNodeNames
+from qonnx.transformation.infer_shapes import InferShapes
+
+
+def test_float_exported_graph_exec():
+    # Load the exported QONNX model and reference values
+    qonnx_model = ModelWrapper(get_data("qonnx.data", "onnx/floatquant_exec/qonnx_act_weight_fp8.onnx"))
+    input_values = np.load(io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/input.npy")), allow_pickle=True)
+    brevitas_output = np.load(
+        io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/output.npy")), allow_pickle=True
+    )
+    activation = np.load(
+        io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/activation.npz")), allow_pickle=True
+    )
+    qonnx_model = qonnx_model.transform(InferShapes())
+    qonnx_model = qonnx_model.transform(GiveUniqueNodeNames())
+    qonnx_model = qonnx_model.transform(GiveReadableTensorNames())
+
+    input_name = qonnx_model.graph.input[0].name
+    input_dict = {input_name: input_values}
+    qonnx_output_dict = oxe.execute_onnx(qonnx_model, input_dict, return_full_exec_context=True)
+    qonnx_output = qonnx_output_dict[qonnx_model.graph.output[0].name]
+
+    # Compare the outputs
+    assert np.isclose(brevitas_output, qonnx_output, atol=1e-4).all()
+
+    brevitas_qi = activation["input_quant"]
+    qonnx_qi = qonnx_output_dict["FloatQuant_0_out0"]
+    assert np.isclose(brevitas_qi, qonnx_qi, atol=1e-4).all()
+
+    brevitas_qw = activation["weight_quant"]
+    qonnx_qw = qonnx_output_dict["FloatQuant_1_out0"]
+    assert np.isclose(brevitas_qw, qonnx_qw, atol=1e-4).all()
 
 
 def test_compute_max_val():
