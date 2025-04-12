@@ -32,6 +32,42 @@ from fxpmath import Fxp
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 
+def default_op_filter(op):
+    return op.op_type in ["Add", "Mul"]
+
+class FixedPointQuantizeParamsFromDict(Transformation):
+    """
+    Quantize model parameters to a given fixed-point representation.
+    Uses
+    The self.max_err dictionary stores the maximum error for each quantized input after calling.
+    Parameters:
+        fixedpt_dtype: The fixed-point data type to use for quantization.
+        op_filter: A lambda function to filter operations in the model graph
+                   that should be quantized. By default, it selects operations
+                   of type "Add" and "Mul".
+    """
+
+    def __init__(self, fixedpt_dict):
+        super().__init__()
+        self.fixedpt_dict = fixedpt_dict
+        self.max_err = {}
+
+    def apply(self, model: ModelWrapper):
+        for tname, tdtype in self.fixedpt_dict.items():
+            if (in1_t := model.get_initializer(tname)) is not None:
+                fixpt = Fxp(None, signed=True, n_word=tdtype.bitwidth(), n_frac=tdtype.frac_bits())
+                model.set_tensor_datatype(tname, tdtype)
+                fixpt.set_val(in1_t)
+                # .astype() twice to workaround a bug in fxpmath
+                # (typecast only works for ndarrays and somehow the
+                # val stops being an ndarray at some point...)
+                in1_t_new = fixpt.astype(np.float32).astype(np.float32)
+                model.set_initializer(tname, in1_t_new)
+
+                rel_err = np.abs(in1_t.flatten() - in1_t_new.flatten()) / np.abs(in1_t.flatten())
+                
+                self.max_err[tname] = rel_err.max()
+        return (model, False)
 
 class FixedPointQuantizeParams(Transformation):
     """
@@ -47,7 +83,7 @@ class FixedPointQuantizeParams(Transformation):
 
     """
 
-    def __init__(self, fixedpt_dtype, op_filter=lambda op: op.op_type in ["Add", "Mul"]):
+    def __init__(self, fixedpt_dtype, op_filter=default_op_filter):
         super().__init__()
         self.fixedpt_dtype = fixedpt_dtype
         self.n_word = fixedpt_dtype.bitwidth()
@@ -65,7 +101,9 @@ class FixedPointQuantizeParams(Transformation):
                     current_dtype = model.get_tensor_datatype(inp_name)
                     if current_dtype is None or (not current_dtype.is_fixed_point()):
                         fixpt.set_val(in1_t)
-                        in1_t_new = fixpt.astype(np.float32)
+                        # double .astype to workaround bug in fixpt
+                        # for 0d numpy arrays it seems .astype is skipped
+                        in1_t_new = fixpt.astype(np.float32).astype(np.float32)
                         model.set_initializer(inp_name, in1_t_new)
                         model.set_tensor_datatype(inp_name, self.fixedpt_dtype)
                         self.max_err[inp_name] = np.linalg.norm(in1_t.flatten() - in1_t_new.flatten(), ord=np.inf)

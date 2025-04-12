@@ -202,6 +202,7 @@ def exec_qonnx(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
+    return (ok, nok)
 
 
 def main():
