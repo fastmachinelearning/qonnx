@@ -68,7 +68,8 @@ def exec_qonnx(
     input_pix2float=False,
     input_zerocenter=False,
     maxiters: int = None,
-    output_nosave=False
+    output_nosave=False,
+    early_exit_acc_ratio=None
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -92,6 +93,7 @@ def exec_qonnx(
     :param input_zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
     :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
     :param output_nosave: If specified, do not save output tensors to files
+    :param early_exit_acc_ratio: If specified as a float number between 0 and 1, early exit if any batch accuracy falls under
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -202,6 +204,8 @@ def exec_qonnx(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
+            if early_exit_acc_ratio is not None and accuracy_batch < early_exit_acc_ratio:
+                return (ok, nok)
     return (ok, nok)
 
 
