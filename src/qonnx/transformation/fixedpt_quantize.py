@@ -61,7 +61,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 # .astype() twice to workaround a bug in fxpmath
                 # (typecast only works for ndarrays and somehow the
                 # val stops being an ndarray at some point...)
-                in1_t_new = fixpt.astype(np.float32).astype(np.float32)
+                in1_t_new = np.asarray(fixpt.astype(np.float32), dtype=np.float32)
                 model.set_initializer(tname, in1_t_new)
 
                 rel_err = np.abs(in1_t.flatten() - in1_t_new.flatten()) / np.abs(in1_t.flatten())
