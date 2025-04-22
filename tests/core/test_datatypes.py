@@ -91,6 +91,22 @@ def test_datatypes_fixedpoint():
     assert str(DataType["FIXED<4,2"]) == "FIXED<4,2>"
 
 
+def test_datatypes_arbprecfloat():
+    assert DataType["FLOAT<4,3>"].allowed(0.0)
+    assert DataType["FLOAT<4,3>"].allowed(0.5)
+    assert DataType["FLOAT<4,3>"].allowed(1.875)
+    assert DataType["FLOAT<4,3>"].allowed(-1.5)
+    assert DataType["FLOAT<4,3>"].allowed(1.8) is False
+    assert DataType["FLOAT<4,3>"].allowed(-(2.0**2**8)) is False
+    assert DataType["FLOAT<4,3>"].min() == -1.875 * 2**8
+    assert DataType["FLOAT<4,3>"].max() == 1.875 * 2**8
+    assert DataType["FLOAT<4,3>"].to_numpy_dt() == np.float32
+    assert DataType["FLOAT<4,3>"].signed()
+    assert DataType["FLOAT<4,3>"].is_integer() is False
+    assert DataType["FLOAT<4,3>"].is_fixed_point() is False
+    assert str(DataType["FLOAT<4,3>"]) == "FLOAT<4,3>"
+
+
 def test_smallest_possible():
     assert DataType.get_smallest_possible(1) == DataType["BINARY"]
     assert DataType.get_smallest_possible(1.1) == DataType["FLOAT32"]
