@@ -30,6 +30,7 @@
 import numpy as np
 from onnx import TensorProto, helper
 
+from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.quant import resolve_rounding_mode
 
@@ -207,8 +208,54 @@ class FloatQuant(CustomOp):
             to=int(TensorProto.FLOAT),
         )
 
+    def get_output_dtype(self, model):
+        node = self.onnx_node
+        # scale, zero-point and bitwidth must be read from initializers
+        scale = model.get_initializer(node.input[1])
+        exponent_bitwidth = model.get_initializer(node.input[2])
+        mantissa_bitwidth = model.get_initializer(node.input[3])
+        expoent_bias = model.get_initializer(node.input[4])
+        max_val = model.get_initializer(node.input[5])
+        assert scale is not None, "Found unspecified scale for FloatQuant node: " + str(node)
+        assert exponent_bitwidth is not None, "Found unspecified exponent width for FloatQuant node: " + str(node)
+        assert mantissa_bitwidth is not None, "Found unspecified mantissa width for FloatQuant node: " + str(node)
+        assert expoent_bias is not None, "Found unspecified exponent bias for FloatQuant node: " + str(node)
+        assert max_val is not None, "Found unspecified maximum value for FloatQuant node: " + str(node)
+        # extract the exponent and mantissa widths (assume scalar)
+        assert exponent_bitwidth.ndim == 0, "Exponent width must be scalar for FloatQuant node: " + str(node)
+        assert mantissa_bitwidth.ndim == 0, "Mantissa width must be scalar for FloatQuant node: " + str(node)
+        exponent_bitwidth = exponent_bitwidth.item()
+        mantissa_bitwidth = mantissa_bitwidth.item()
+        assert int(exponent_bitwidth) == exponent_bitwidth, "Exponent width must be integer for FloatQuant node: " + str(
+            node
+        )
+        assert int(mantissa_bitwidth) == mantissa_bitwidth, "Mantissa width must be integer for FloatQuant node: " + str(
+            node
+        )
+        exponent_bitwidth = int(exponent_bitwidth)
+        mantissa_bitwidth = int(mantissa_bitwidth)
+        # extract the exponent bias (assume scalar)
+        assert expoent_bias.ndim == 0, "Exponent bias must be scalar for FloatQuant node: " + str(node)
+        expoent_bias = expoent_bias.item()
+        assert int(expoent_bias) == expoent_bias, "Exponent bias must be integer for FloatQuant node: " + str(node)
+        expoent_bias = int(expoent_bias)
+        # extract the maximum value (assume scalar)
+        assert max_val.ndim == 0, "Maximum value must be scalar for FloatQuant node: " + str(node)
+        max_val = max_val.item()
+        # ensure unit scale
+        unit_scale = np.all(scale == 1.0)
+        assert unit_scale, "Only scale=1 FloatQuant nodes supported for now"
+        # determine the FINN DataType
+        finn_dt = DataType[f"FLOAT<{exponent_bitwidth},{mantissa_bitwidth},{expoent_bias}>"]
+        return finn_dt
+
     def infer_node_datatype(self, model):
-        pass
+        try:
+            finn_dt = self.get_output_dtype(model)
+        except AssertionError:
+            finn_dt = DataType["FLOAT32"]
+        node = self.onnx_node
+        model.set_tensor_datatype(node.output[0], finn_dt)
 
     def verify_node(self):
         pass
