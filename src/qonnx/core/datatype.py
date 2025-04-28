@@ -226,7 +226,7 @@ class ArbPrecFloatType(BaseDataType):
         return np.float32
 
     def get_canonical_name(self):
-        return "FLOAT<%d,%d>" % (self.exponent_bits(), self.mantissa_bits())
+        return "FLOAT<%d,%d,%d>" % (self.exponent_bits(), self.mantissa_bits(), self.exponent_bias())
 
     def get_num_possible_values(self):
         # TODO: consider -0 and +0 as different values?
