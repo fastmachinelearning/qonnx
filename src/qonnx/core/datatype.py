@@ -146,9 +146,14 @@ class FloatType(BaseDataType):
 
 
 class ArbPrecFloatType(BaseDataType):
-    def __init__(self, exponent_bits, mantissa_bits):
+    def __init__(self, exponent_bits, mantissa_bits, exponent_bias=None):
         self._exponent_bits = exponent_bits
         self._mantissa_bits = mantissa_bits
+
+        if not exponent_bias:
+            # default (IEEE-style) exponent bias
+            exponent_bias = (2.0 ** (exponent_bits - 1)) - 1
+        self._exponent_bias = exponent_bias
 
     def signed(self):
         "Returns whether this DataType can represent negative numbers."
@@ -165,8 +170,7 @@ class ArbPrecFloatType(BaseDataType):
         return self._mantissa_bits
 
     def exponent_bias(self):
-        # default (IEEE-style) exponent bias
-        return (2.0 ** (self.exponent_bits() - 1)) - 1
+        return self._exponent_bias
 
     def min(self):
         return -1 * self.max()
@@ -183,26 +187,19 @@ class ArbPrecFloatType(BaseDataType):
 
     def allowed(self, value):
         # extract fields from fp32 representation
-        fp32_exponent_bias = 127
         fp32_mantissa_bitwidth = 23
         bin_val = np.float32(value).view(np.uint32)
-        exp = (bin_val & 0b01111111100000000000000000000000) >> fp32_mantissa_bitwidth
         mant = bin_val & 0b00000000011111111111111111111111
-        exponent_bias = self.exponent_bias()
-        exponent_bitwidth = self.exponent_bits()
         mantissa_bitwidth = self.mantissa_bits()
-        max_exponent = (2.0**exponent_bitwidth) - 1.0 - exponent_bias
-        min_exponent = -exponent_bias
         # for this value to be representable as this ArbPrecFloatType:
-        # the exponent must be within the representable range
-        actual_exp = exp - fp32_exponent_bias
-        exponent_ok = (min_exponent <= actual_exp) and (actual_exp <= max_exponent)
+        # the value must be within the representable range
+        range_ok = (value <= self.max()) and (value >= self.min())
         # the mantissa must be within representable range:
-        # no set bits in the mantissa beyond the allowed number of bits
+        # no set bits in the mantissa beyond the allowed number of bits (assume no denormals)
         # (computed by a mask here)
         mantissa_mask = "0" * mantissa_bitwidth + "1" * (fp32_mantissa_bitwidth - mantissa_bitwidth)
         mantissa_ok = (mant & int(mantissa_mask, base=2)) == 0
-        return mantissa_ok and exponent_ok
+        return mantissa_ok and range_ok
 
     def is_integer(self):
         return False
@@ -488,9 +485,17 @@ def resolve_datatype(name):
         name = name.replace("FLOAT<", "")
         name = name.replace(">", "")
         nums = name.split(",")
-        exp_bits = int(nums[0].strip())
-        mant_bits = int(nums[1].strip())
-        return ArbPrecFloatType(exp_bits, mant_bits)
+        if len(nums) == 2:
+            exp_bits = int(nums[0].strip())
+            mant_bits = int(nums[1].strip())
+            return ArbPrecFloatType(exp_bits, mant_bits)
+        elif len(nums) == 3:
+            exp_bits = int(nums[0].strip())
+            mant_bits = int(nums[1].strip())
+            exp_bias = int(nums[2].strip())
+            return ArbPrecFloatType(exp_bits, mant_bits, exp_bias)
+        else:
+            raise KeyError("Could not resolve DataType " + name)
     else:
         raise KeyError("Could not resolve DataType " + name)
 
