@@ -264,6 +264,27 @@ def calc_softmax_range(node, model, range_dict):
     range_dict[oname].range = (0, 1)
 
 
+# Top-K always produces outputs in [0,n_classes-1]
+def calc_topk_range(node, model, range_dict):
+    oname = node.output[0]
+    assert node.op_type == "TopK"
+    ishape = model.get_tensor_shape(node.input[0])
+    axis_ind = get_by_name(node.attribute, "axis").i
+    n_classes = ishape[axis_ind]
+    range_dict[oname].range = (0, n_classes - 1)
+
+
+def calc_intrange_topk(node, model, range_dict):
+    oname = node.output[0]
+    assert node.op_type == "TopK"
+    ishape = model.get_tensor_shape(node.input[0])
+    axis_ind = get_by_name(node.attribute, "axis").i
+    n_classes = ishape[axis_ind]
+    range_dict[oname].int_range = (0, n_classes - 1)
+    range_dict[oname].scale = np.asarray([1.0], dtype=np.float32)
+    range_dict[oname].bias = np.asarray([0.0], dtype=np.float32)
+
+
 # LogSoftmax always produces outputs in [-inf,0], which is the log of the range
 # of the Softmax
 def calc_logsoftmax_range(node, model, range_dict):
@@ -1084,6 +1105,7 @@ optype_to_range_calc = {
     "MultiThreshold": calc_monotonic_range,
     "Conv": calc_conv_range,
     "Gemm": calc_gemm_range,
+    "TopK": calc_topk_range,
 }
 
 # handler functions for scaled-integer range analysis
@@ -1116,6 +1138,7 @@ optype_to_intrange_calc = {
     "BatchNormalization": calc_intrange_bn,
     "AveragePool": calc_intrange_eltwise_monotonic,
     "Trunc": calc_intrange_trunc,
+    "TopK": calc_intrange_topk,
 }
 
 
