@@ -155,7 +155,7 @@ def test_range_analysis_full_network_noscaledint(model_name):
         irange.scale = uint8_to_unitfloat["scale"]
         irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True)
-    ret = range_analysis(
+    ret, _ = range_analysis(
         model,
         irange=irange,
         report_mode="range",
@@ -178,7 +178,7 @@ def test_range_analysis_full_network_scaledint(model_name):
         irange.bias = uint8_to_unitfloat["bias"]
     model = download_model(model_name, return_modelwrapper=True, do_cleanup=True, add_preproc=True)
     model = cleanup_model(model, extract_conv_bias=True)
-    ret = range_analysis(
+    ret, _ = range_analysis(
         model,
         irange=irange,
         report_mode="range",
