@@ -149,11 +149,13 @@ class ExtractAggregateScaleBias(Transformation):
         assert head is not None
         tshape = self.target_tensor_ri.shape
         # cast scale and bias to be compatible with the target tensor
-        scale = self.target_tensor_ri.scale.astype(idt_npy)
-        bias = self.target_tensor_ri.bias.astype(idt_npy)
+        scale = self.target_tensor_ri.scale
+        bias = self.target_tensor_ri.bias
         if scale is None or bias is None:
             warn(f"{self.target_tensor_name} has no scaled-int information for ExtractAggregateScaleBias, skipping ")
             return model, False
+        scale = self.target_tensor_ri.scale.astype(idt_npy)
+        bias = self.target_tensor_ri.bias.astype(idt_npy)
         if self.unbroadcast:
             scale = unbroadcast_tensor(scale)
             bias = unbroadcast_tensor(bias)
