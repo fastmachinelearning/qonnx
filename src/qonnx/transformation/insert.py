@@ -30,6 +30,7 @@ from onnx import helper as oh
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.general import SortGraph
+from qonnx.transformation.infer_shapes import InferShapes
 
 
 class InsertIdentityOnAllTopLevelIO(Transformation):
@@ -123,5 +124,6 @@ class InsertIdentity(Transformation):
             raise ValueError("producer_or_consumer must be either 'producer' or 'consumer'.")
 
         model = model.transform(SortGraph())
+        model = model.transform(InferShapes())
         # important to return run_again=False to avoid infinite loop
         return (model, False)
