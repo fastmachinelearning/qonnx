@@ -141,8 +141,11 @@ class RangeInfo:
         # ensure selected analysis dtypes are respected
         if name in ["range", "int_range"]:
             (tv0, tv1) = value
+            tv0 = np.array(tv0)
+            tv1 = np.array(tv1)
             self.__dict__[name] = (tv0.astype(ra_range_dtype), tv1.astype(ra_range_dtype))
         elif name in ["scale", "bias"]:
+            value = np.array(value)
             self.__dict__[name] = value.astype(ra_scalebias_dtype)
         else:
             # for all other attributes, use the default behavior
