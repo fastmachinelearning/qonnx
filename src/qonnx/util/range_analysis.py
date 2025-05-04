@@ -55,7 +55,8 @@ from qonnx.util.onnx import node_to_model, valueinfo_to_tensor
 #   to the elementwise shape
 
 # datatype for representing ranges, scales, biases during range analysis
-ra_dtype = np.float32
+ra_range_dtype = np.float32
+ra_scalebias_dtype = np.float64
 
 
 # try to recover original broadcasted array by applying np.unique along all
@@ -104,7 +105,7 @@ def broadcast_range(tensor_range: tuple, tensor_vi_or_shape):
         tensor_shape = proto_tensor.shape
     else:
         tensor_shape = tensor_vi_or_shape
-        proto_tensor = np.zeros(tensor_shape, ra_dtype)
+        proto_tensor = np.zeros(tensor_shape, ra_range_dtype)
     # fix shape using numpy broadcasting
     range_min = np.broadcast_to(tensor_range[0], proto_tensor.shape).astype(proto_tensor.dtype)
     range_max = np.broadcast_to(tensor_range[1], proto_tensor.shape).astype(proto_tensor.dtype)
@@ -131,6 +132,21 @@ class RangeInfo:
     # history of scale/bias tensors suitable for later removal during streamlining
     history_scale: list = dc.field(default_factory=lambda: [])
     history_bias: list = dc.field(default_factory=lambda: [])
+
+    def __setattr__(self, name, value):
+        if value is None:
+            # always permit setting attributes to None
+            self.__dict__[name] = value
+            return
+        # ensure selected analysis dtypes are respected
+        if name in ["range", "int_range"]:
+            (tv0, tv1) = value
+            self.__dict__[name] = (tv0.astype(ra_range_dtype), tv1.astype(ra_range_dtype))
+        elif name in ["scale", "bias"]:
+            self.__dict__[name] = value.astype(ra_scalebias_dtype)
+        else:
+            # for all other attributes, use the default behavior
+            self.__dict__[name] = value
 
     def is_point_interval(self):
         # whether this is a point interval (min=max for all elements)
@@ -284,8 +300,8 @@ def calc_intrange_topk(node, model, range_dict):
     axis_ind = get_by_name(node.attribute, "axis").i
     n_classes = ishape[axis_ind]
     range_dict[oname].int_range = (0, n_classes - 1)
-    range_dict[oname].scale = np.asarray([1.0], dtype=ra_dtype)
-    range_dict[oname].bias = np.asarray([0.0], dtype=ra_dtype)
+    range_dict[oname].scale = np.asarray([1.0], dtype=ra_scalebias_dtype)
+    range_dict[oname].bias = np.asarray([0.0], dtype=ra_scalebias_dtype)
 
 
 # LogSoftmax always produces outputs in [-inf,0], which is the log of the range
@@ -319,8 +335,8 @@ def calc_range_all_initializers(model, range_dict):
             # operands which would give rise to false scaled-int propagation)
             if ((tensor_init % 1) == 0).all() and not is_shape_operand(tensor_name, model):
                 range_dict[tensor_name].int_range = (tensor_init, tensor_init)
-                range_dict[tensor_name].scale = np.asarray([1.0], dtype=ra_dtype)
-                range_dict[tensor_name].bias = np.asarray([0.0], dtype=ra_dtype)
+                range_dict[tensor_name].scale = np.asarray([1.0], dtype=ra_scalebias_dtype)
+                range_dict[tensor_name].bias = np.asarray([0.0], dtype=ra_scalebias_dtype)
 
 
 # for several types of nodes, we dynamically convert ("lower") the node to something else that we can
@@ -405,22 +421,28 @@ def calc_scalebias_from_execution(node, model, range_dict):
         warn("Cannot infer scale for multi-output node")
         return
     ctx = {}
-    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape, dtype=ra_dtype)
+    out_dt = model.get_tensor_npydatatype(node.output[0])
+    ctx[node.output[0]] = np.zeros(range_dict[node.output[0]].shape, dtype=out_dt)
+    # note below the typecasting prior to execution - since the analysis datatypes can differ from
+    # the actual dtypes in the ONNX graphs, need to make sure we cast to correct dtype before
+    # executing the node
     for inp in node.input:
+        inp_npy_dt = model.get_tensor_npydatatype(inp)
         if not (range_dict[inp].scale is None):
-            ctx[inp] = np.broadcast_to(range_dict[inp].scale, range_dict[inp].shape)
+            ctx[inp] = np.broadcast_to(range_dict[inp].scale.astype(inp_npy_dt), range_dict[inp].shape)
         elif range_dict[inp].is_point_interval():
-            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0].astype(inp_npy_dt), range_dict[inp].shape)
         else:
             warn(f"Cannot infer scale for f{node.name}")
             return
     execute_node(node, ctx, model.graph, opset_version=opset_version)
     range_dict[node.output[0]].scale = ctx[node.output[0]]
     for inp in node.input:
+        inp_npy_dt = model.get_tensor_npydatatype(inp)
         if not (range_dict[inp].bias is None):
-            ctx[inp] = np.broadcast_to(range_dict[inp].bias, range_dict[inp].shape)
+            ctx[inp] = np.broadcast_to(range_dict[inp].bias.astype(inp_npy_dt), range_dict[inp].shape)
         elif range_dict[inp].is_point_interval():
-            ctx[inp] = np.broadcast_to(range_dict[inp].range[0], range_dict[inp].shape)
+            ctx[inp] = np.broadcast_to(range_dict[inp].range[0].astype(inp_npy_dt), range_dict[inp].shape)
         else:
             warn(f"Cannot infer bias for f{node.name}")
             return
@@ -709,7 +731,7 @@ def calc_intrange_mul(node, model, range_dict):  #
         irange_1 = range_dict[node.input[1]]
         if (irange_0.bias == 0).all() and (irange_1.bias == 0).all():
             range_dict[node.output[0]].scale = irange_0.scale * irange_1.scale
-            range_dict[node.output[0]].bias = np.asarray(0, dtype=ra_dtype)
+            range_dict[node.output[0]].bias = np.asarray(0, dtype=ra_scalebias_dtype)
             range_dict[node.output[0]].int_range = interval_prod(irange_0.int_range, irange_1.int_range)
             # bias history (should be empty) and scale history inherits from both sides
             range_dict[node.output[0]].history_scale = irange_0.history_scale + irange_1.history_scale
@@ -900,7 +922,7 @@ def calc_intrange_conv(node, model, range_dict):
         node_ctx = {
             node.input[0]: irange_0_inf.scale * irange_0_inf.int_range[0],
             node.input[1]: np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape),
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=ra_dtype),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=model.get_tensor_npydatatype(node.output[0])),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
@@ -910,7 +932,7 @@ def calc_intrange_conv(node, model, range_dict):
         node_ctx = {
             node.input[0]: np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape),
             node.input[1]: irange_1_inf.scale * irange_1_inf.int_range[0],
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=ra_dtype),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=model.get_tensor_npydatatype(node.output[0])),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
@@ -1208,15 +1230,15 @@ def range_analysis(
             irange = eval(irange)
             range_min, range_max = irange
             if not isinstance(range_min, np.ndarray):
-                range_min = np.asarray(range_min, dtype=ra_dtype)
+                range_min = np.asarray(range_min, dtype=ra_range_dtype)
             if not isinstance(range_max, np.ndarray):
-                range_max = np.asarray(range_max, dtype=ra_dtype)
+                range_max = np.asarray(range_max, dtype=ra_range_dtype)
     elif isinstance(irange, tuple):
         range_min, range_max = irange
         if not isinstance(range_min, np.ndarray):
-            range_min = np.asarray(range_min, dtype=ra_dtype)
+            range_min = np.asarray(range_min, dtype=ra_range_dtype)
         if not isinstance(range_max, np.ndarray):
-            range_max = np.asarray(range_max, dtype=ra_dtype)
+            range_max = np.asarray(range_max, dtype=ra_range_dtype)
     elif isinstance(irange, RangeInfo):
         pass
     elif isinstance(irange, dict):
