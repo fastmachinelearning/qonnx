@@ -68,7 +68,9 @@ def exec_qonnx(
     input_pix2float=False,
     input_zerocenter=False,
     maxiters: int = None,
-    output_nosave=False
+    output_nosave=False,
+    early_exit_acc_ratio=None,
+    override_exec_onnx=None
 ):
     """Execute a given QONNX model by initializing its inputs from .npy files, and write outputs
     as .npy files.
@@ -92,6 +94,8 @@ def exec_qonnx(
     :param input_zerocenter: If specified together with pix2float, do uint8 [0,255] -> fp32 [-1,+1] mapping for input
     :param maxiters: If specified, limit maximum number of iterations (batches) to be processed
     :param output_nosave: If specified, do not save output tensors to files
+    :param early_exit_acc_ratio: If specified as a float number between 0 and 1, early exit if any batch accuracy falls under
+    :param override_exec_onnx: If specified, use this function to execute the model instead of qonnx
     """
     assert output_mode in output_modes, "Unrecognized output mode"
 
@@ -172,14 +176,18 @@ def exec_qonnx(
                 idict[inp.name] = np.transpose(idict[inp.name], (0, 2, 3, 1))
             if input_to_nchw:
                 idict[inp.name] = np.transpose(idict[inp.name], (0, 3, 1, 2))
-        if n_custom_nodes > 0:
-            # run node-by-node in qonnx
-            odict = execute_onnx(model, idict)
+        if override_exec_onnx is not None:
+            # run using specified custom execution function
+            odict = override_exec_onnx(model, idict)
         else:
-            # run using onnxruntime
-            sess = rt.InferenceSession(model.model.SerializeToString())
-            output_list = sess.run(None, idict)
-            odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
+            if n_custom_nodes > 0:
+                # run node-by-node in qonnx
+                odict = execute_onnx(model, idict)
+            else:
+                # run using onnxruntime
+                sess = rt.InferenceSession(model.model.SerializeToString())
+                output_list = sess.run(None, idict)
+                odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
         if not output_nosave:
             for out_ind, outp in enumerate(model.graph.output):
                 # save generated outputs
@@ -202,6 +210,9 @@ def exec_qonnx(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
+            if early_exit_acc_ratio is not None and accuracy_batch < early_exit_acc_ratio:
+                return (ok, nok)
+    return (ok, nok)
 
 
 def main():
