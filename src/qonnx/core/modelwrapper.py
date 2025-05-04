@@ -251,6 +251,13 @@ class ModelWrapper:
         except ValueError:
             return None
 
+    def get_tensor_npydatatype(self, tensor_name):
+        vi = self.get_tensor_valueinfo(tensor_name)
+        if vi is None:
+            return None
+        else:
+            return onnxutil.valueinfo_to_tensor(vi).dtype
+
     def get_tensor_shape(self, tensor_name, fix_missing_init_shape=False):
         """Returns the shape of tensor with given name, if it has ValueInfoProto.
         If fix_missing_init_shape is specified, it will add a ValueInfoProto for initializers
