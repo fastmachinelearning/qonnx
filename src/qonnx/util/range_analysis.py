@@ -916,13 +916,17 @@ def calc_intrange_conv(node, model, range_dict):
     i0_bias_ok = irange_0_inf.is_point_interval() and (irange_0_inf.bias == 0).all()
     i1_bias_ok = irange_1_inf.is_point_interval() and (irange_1_inf.bias == 0).all()
 
+    i0_npy_dt = model.get_tensor_npydatatype(node.input[0])
+    i1_npy_dt = model.get_tensor_npydatatype(node.input[1])
+    o_npy_dt = model.get_tensor_npydatatype(node.output[0])
+
     if i0_bias_ok and not i1_bias_ok:
         # new_bias is ((scale_0 * input_0) @ bias_1)
         # where @ is convolution
         node_ctx = {
-            node.input[0]: irange_0_inf.scale * irange_0_inf.int_range[0],
-            node.input[1]: np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape),
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=model.get_tensor_npydatatype(node.output[0])),
+            node.input[0]: (irange_0_inf.scale * irange_0_inf.int_range[0]).astype(i0_npy_dt),
+            node.input[1]: np.broadcast_to(irange_1_inf.bias, irange_1_inf.shape).astype(i1_npy_dt),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=o_npy_dt),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
@@ -930,9 +934,9 @@ def calc_intrange_conv(node, model, range_dict):
         # new bias is (bias_0 @ (scale_1 * input_1))
         # where @ is convolution
         node_ctx = {
-            node.input[0]: np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape),
-            node.input[1]: irange_1_inf.scale * irange_1_inf.int_range[0],
-            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=model.get_tensor_npydatatype(node.output[0])),
+            node.input[0]: np.broadcast_to(irange_0_inf.bias, irange_0_inf.shape).astype(i0_npy_dt),
+            node.input[1]: (irange_1_inf.scale * irange_1_inf.int_range[0]).astype(i1_npy_dt),
+            node.output[0]: np.zeros(range_dict[node.output[0]].shape, dtype=o_npy_dt),
         }
         execute_node(node, node_ctx, model.graph)
         bias = node_ctx[node.output[0]]
