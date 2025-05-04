@@ -28,7 +28,7 @@
 
 import numpy as np
 from functools import partial
-from onnx import TensorProto, helper
+from onnx import helper
 from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
@@ -144,10 +144,13 @@ class ExtractAggregateScaleBias(Transformation):
         # TODO insert Identity nodes around target tensor to always guarantee
         # head node below (needed for for top-level tensors)
         head = model.find_producer(self.target_tensor_name)
+        idt_npy = model.get_tensor_npydatatype(self.target_tensor_name)
+        idt_vi_type = model.get_tensor_valueinfo(self.target_tensor_name).type.tensor_type.elem_type
         assert head is not None
         tshape = self.target_tensor_ri.shape
-        scale = self.target_tensor_ri.scale
-        bias = self.target_tensor_ri.bias
+        # cast scale and bias to be compatible with the target tensor
+        scale = self.target_tensor_ri.scale.astype(idt_npy)
+        bias = self.target_tensor_ri.bias.astype(idt_npy)
         if scale is None or bias is None:
             warn(f"{self.target_tensor_name} has no scaled-int information for ExtractAggregateScaleBias, skipping ")
             return model, False
@@ -159,13 +162,13 @@ class ExtractAggregateScaleBias(Transformation):
         new_tensor1_tname = self.target_tensor_name + "_prebias"
         new_tensor0_vi = helper.make_tensor_value_info(
             new_tensor0_tname,
-            TensorProto.FLOAT,
+            idt_vi_type,
             tshape,
         )
         graph.value_info.append(new_tensor0_vi)
         new_tensor1_vi = helper.make_tensor_value_info(
             new_tensor1_tname,
-            TensorProto.FLOAT,
+            idt_vi_type,
             tshape,
         )
         graph.value_info.append(new_tensor1_vi)
