@@ -425,7 +425,7 @@ class DataType(Enum, metaclass=DataTypeMeta):
     def get_accumulator_dt_cands():
         cands = ["BINARY"]
         cands += ["UINT%d" % (x + 1) for x in range(64)]
-        cands += ["BIPOLAR", "TERNARY"]
+        cands += ["TERNARY"]
         cands += ["INT%d" % (x + 1) for x in range(64)]
         return cands
 

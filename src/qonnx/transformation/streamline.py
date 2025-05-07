@@ -61,6 +61,13 @@ def default_streamline_tensor_filter(model: ModelWrapper, tname: str):
     return not_initializer and consumer_is_quant and not_toplevel
 
 
+def macprod_streamline_tensor_filter(model: ModelWrapper, tname: str):
+    not_initializer = model.get_initializer(tname) is None
+    not_toplevel = not (tname in [x.name for x in model.graph.output])
+    producer_is_mac = ((x := model.find_producer(tname)) is not None) and (x.op_type in ["MatMul", "Conv"])
+    return not_initializer and producer_is_mac and not_toplevel
+
+
 class Streamline(Transformation):
     """
     Given input range information, first lower model ops to make it amenable to streamlining, followed by
