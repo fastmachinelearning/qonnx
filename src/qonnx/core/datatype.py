@@ -146,9 +146,14 @@ class FloatType(BaseDataType):
 
 
 class ArbPrecFloatType(BaseDataType):
-    def __init__(self, exponent_bits, mantissa_bits):
+    def __init__(self, exponent_bits, mantissa_bits, exponent_bias=None):
         self._exponent_bits = exponent_bits
         self._mantissa_bits = mantissa_bits
+
+        if not exponent_bias:
+            # default (IEEE-style) exponent bias
+            exponent_bias = (2.0 ** (exponent_bits - 1)) - 1
+        self._exponent_bias = exponent_bias
 
     def signed(self):
         "Returns whether this DataType can represent negative numbers."
@@ -165,8 +170,7 @@ class ArbPrecFloatType(BaseDataType):
         return self._mantissa_bits
 
     def exponent_bias(self):
-        # default (IEEE-style) exponent bias
-        return (2.0 ** (self.exponent_bits() - 1)) - 1
+        return self._exponent_bias
 
     def min(self):
         return -1 * self.max()
@@ -182,27 +186,32 @@ class ArbPrecFloatType(BaseDataType):
         return max_val
 
     def allowed(self, value):
-        # extract fields from fp32 representation
+        # fp32 format parameters
         fp32_exponent_bias = 127
         fp32_mantissa_bitwidth = 23
+        fp32_nrm_mantissa_bitwidth = fp32_mantissa_bitwidth + 1  # width of normalized mantissa with implicit 1
+        # minifloat format parameters
+        exponent_bias = self.exponent_bias()
+        min_exponent = -exponent_bias + 1  # minimum exponent if IEEE-style denormals are supported
+        mantissa_bitwidth = self.mantissa_bits()
+        nrm_mantissa_bitwidth = mantissa_bitwidth + 1  # width of normalized mantissa with implicit 1
+        # extract fields from fp32 representation
         bin_val = np.float32(value).view(np.uint32)
         exp = (bin_val & 0b01111111100000000000000000000000) >> fp32_mantissa_bitwidth
         mant = bin_val & 0b00000000011111111111111111111111
-        exponent_bias = self.exponent_bias()
-        exponent_bitwidth = self.exponent_bits()
-        mantissa_bitwidth = self.mantissa_bits()
-        max_exponent = (2.0**exponent_bitwidth) - 1.0 - exponent_bias
-        min_exponent = -exponent_bias
+        exp_biased = exp - fp32_exponent_bias  # bias the extracted raw exponent (assume not denormal)
+        mant_normalized = mant + int((2**fp32_mantissa_bitwidth) * (exp != 0))  # append implicit 1
         # for this value to be representable as this ArbPrecFloatType:
-        # the exponent must be within the representable range
-        actual_exp = exp - fp32_exponent_bias
-        exponent_ok = (min_exponent <= actual_exp) and (actual_exp <= max_exponent)
+        # the value must be within the representable range
+        range_ok = (value <= self.max()) and (value >= self.min())
         # the mantissa must be within representable range:
-        # no set bits in the mantissa beyond the allowed number of bits
-        # (computed by a mask here)
-        mantissa_mask = "0" * mantissa_bitwidth + "1" * (fp32_mantissa_bitwidth - mantissa_bitwidth)
-        mantissa_ok = (mant & int(mantissa_mask, base=2)) == 0
-        return mantissa_ok and exponent_ok
+        # no set bits in the mantissa beyond the allowed number of bits (assume value is not denormal in fp32)
+        # compute bits of precision lost to tapered precision if denormal, clamp to: 0 <= dnm_shift <= nrm_mantissa_bitwidth
+        dnm_shift = int(min(max(0, min_exponent - exp_biased), nrm_mantissa_bitwidth))
+        available_bits = nrm_mantissa_bitwidth - dnm_shift  # number of bits of precision available
+        mantissa_mask = "0" * available_bits + "1" * (fp32_nrm_mantissa_bitwidth - available_bits)
+        mantissa_ok = (mant_normalized & int(mantissa_mask, base=2)) == 0
+        return bool(mantissa_ok and range_ok)
 
     def is_integer(self):
         return False
@@ -217,7 +226,7 @@ class ArbPrecFloatType(BaseDataType):
         return np.float32
 
     def get_canonical_name(self):
-        return "FLOAT<%d,%d>" % (self.exponent_bits(), self.mantissa_bits())
+        return "FLOAT<%d,%d,%d>" % (self.exponent_bits(), self.mantissa_bits(), self.exponent_bias())
 
     def get_num_possible_values(self):
         # TODO: consider -0 and +0 as different values?
@@ -488,9 +497,17 @@ def resolve_datatype(name):
         name = name.replace("FLOAT<", "")
         name = name.replace(">", "")
         nums = name.split(",")
-        exp_bits = int(nums[0].strip())
-        mant_bits = int(nums[1].strip())
-        return ArbPrecFloatType(exp_bits, mant_bits)
+        if len(nums) == 2:
+            exp_bits = int(nums[0].strip())
+            mant_bits = int(nums[1].strip())
+            return ArbPrecFloatType(exp_bits, mant_bits)
+        elif len(nums) == 3:
+            exp_bits = int(nums[0].strip())
+            mant_bits = int(nums[1].strip())
+            exp_bias = int(nums[2].strip())
+            return ArbPrecFloatType(exp_bits, mant_bits, exp_bias)
+        else:
+            raise KeyError("Could not resolve DataType " + name)
     else:
         raise KeyError("Could not resolve DataType " + name)
 

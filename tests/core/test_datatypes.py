@@ -91,6 +91,45 @@ def test_datatypes_fixedpoint():
     assert str(DataType["FIXED<4,2"]) == "FIXED<4,2>"
 
 
+def test_datatypes_arbprecfloat():
+    assert DataType["FLOAT<4,3>"].allowed(0.0)
+    assert DataType["FLOAT<4,0>"].allowed(0.0)
+    assert DataType["FLOAT<4,3>"].allowed(0.5)
+    assert DataType["FLOAT<4,3>"].allowed(1.875)
+    assert DataType["FLOAT<4,3>"].allowed(-1.5)
+    assert DataType["FLOAT<4,3>"].allowed(1.8) is False
+    assert DataType["FLOAT<4,3>"].allowed(-(2.0 * 2**8)) is False
+    assert DataType["FLOAT<4,3>"].min() == -1.875 * 2**8
+    assert DataType["FLOAT<4,3>"].max() == 1.875 * 2**8
+    assert DataType["FLOAT<4,3>"].to_numpy_dt() == np.float32
+    assert DataType["FLOAT<4,3>"].signed()
+    assert DataType["FLOAT<4,3>"].is_integer() is False
+    assert DataType["FLOAT<4,3>"].is_fixed_point() is False
+    assert str(DataType["FLOAT<4,3>"]) == "FLOAT<4,3,7>"
+    # test denormals
+    assert DataType["FLOAT<4,3>"].allowed(0.013671875) is True  # b1.110 * 2**-7
+    assert DataType["FLOAT<4,3>"].allowed(0.0087890625) is False  # b1.001 * 2**-7
+    assert DataType["FLOAT<4,3>"].allowed(0.001953125) is True  # b1.000 * 2**-9
+    assert DataType["FLOAT<4,3>"].allowed(0.0009765625) is False  # b1.000 * 2**-10
+    assert DataType["FLOAT<4,0>"].allowed(0.5) is True  # b1.000 * 2**-1
+    assert DataType["FLOAT<4,0>"].allowed(0.75) is False  # b1.100 * 2**-1
+    assert DataType["FLOAT<4,0>"].allowed(0.015625) is True  # b1.000 * 2**-6
+    assert DataType["FLOAT<4,0>"].allowed(0.0078125) is False  # b1.000 * 2**-7
+    # test custom exponent bias
+    assert DataType["FLOAT<4,3,5>"].allowed(0.0)
+    assert DataType["FLOAT<4,0,5>"].allowed(0.0)
+    assert DataType["FLOAT<4,3,5>"].allowed(0.5)
+    assert DataType["FLOAT<4,3,5>"].allowed(1.875)
+    assert DataType["FLOAT<4,3,5>"].allowed(-1.5)
+    assert DataType["FLOAT<4,3,5>"].allowed(1.8) is False
+    assert DataType["FLOAT<4,3,5>"].allowed(-(2.0 * 2**8)) is True
+    assert DataType["FLOAT<4,3,5>"].min() == -1.875 * 2**10
+    assert DataType["FLOAT<4,3,5>"].max() == 1.875 * 2**10
+    assert str(DataType["FLOAT<4,3,5>"]) == "FLOAT<4,3,5>"
+    assert DataType["FLOAT<4,0,5>"].allowed(0.0625) is True  # b1.000 * 2**-4
+    assert DataType["FLOAT<4,0,5>"].allowed(0.03125) is False  # b1.000 * 2**-5
+
+
 def test_smallest_possible():
     assert DataType.get_smallest_possible(1) == DataType["BINARY"]
     assert DataType.get_smallest_possible(1.1) == DataType["FLOAT32"]
