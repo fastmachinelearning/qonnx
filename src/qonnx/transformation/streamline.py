@@ -152,8 +152,13 @@ class ExtractAggregateScaleBias(Transformation):
         # TODO insert Identity nodes around target tensor to always guarantee
         # head node below (needed for for top-level tensors)
         head = model.find_producer(self.target_tensor_name)
+        idt_vi = model.get_tensor_valueinfo(self.target_tensor_name)
+        if idt_vi is None:
+            warn(f"{self.target_tensor_name} has no ValueInfo, optimized away? skipping ")
+            return model, False
+        idt_vi_type = idt_vi.type.tensor_type.elem_type
         idt_npy = model.get_tensor_npydatatype(self.target_tensor_name)
-        idt_vi_type = model.get_tensor_valueinfo(self.target_tensor_name).type.tensor_type.elem_type
+        
         assert head is not None
         tshape = self.target_tensor_ri.shape
         # cast scale and bias to be compatible with the target tensor
