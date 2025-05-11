@@ -191,6 +191,13 @@ def exec_qonnx(
                 output_list = sess.run(None, idict)
                 odict = {outp.name: output_list[oind] for oind, outp in enumerate(model.graph.output)}
         if not output_nosave:
+            for inp_ind, inp in enumerate(model.graph.input):
+                # save inputs
+                if output_mode == OUTPUT_MODE_IND:
+                    oname = "%d" % inp_ind
+                elif output_mode == OUTPUT_MODE_NAME:
+                    oname = inp.name
+                np.save(output_prefix + oname + iter_suffix + ".npy", idict[inp.name])
             for out_ind, outp in enumerate(model.graph.output):
                 # save generated outputs
                 if output_mode == OUTPUT_MODE_IND:
