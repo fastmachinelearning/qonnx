@@ -220,7 +220,7 @@ def exec_qonnx(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
-            if early_exit_acc_ratio is not None and accuracy_batch < early_exit_acc_ratio:
+            if early_exit_acc_ratio is not None and accuracy_overall < early_exit_acc_ratio:
                 return (ok, nok)
     return (ok, nok)
 
