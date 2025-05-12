@@ -210,7 +210,7 @@ def exec_qonnx(
             ret = odict[model.graph.output[0].name]
             if verify_argmax:
                 ret = np.argmax(ret, axis=-1)
-            ok_batch = np.count_nonzero(ret == labels[iter])
+            ok_batch = np.count_nonzero(ret.flatten() == labels[iter].flatten())
             nok_batch = bsize - ok_batch
             ok += ok_batch
             nok += nok_batch
