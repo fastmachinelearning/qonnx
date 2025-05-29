@@ -135,22 +135,16 @@ class ModelWrapper:
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
         """
-        if transformation.apply_to_subgraphs:
-            subgraphs = self.subgraphs_in_bfs_order()
-        else:
-            subgraphs = [self]
-
-        for transformed_model in subgraphs:
-            #transformed_model = self
-            if make_deepcopy:
-                transformed_model = copy.deepcopy(self)
-            if self.fix_float64:
-                (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
-            model_was_changed = True
-            while model_was_changed:
-                (transformed_model, model_was_changed) = transformation.apply(transformed_model)
-            if cleanup:
-                transformed_model.cleanup()
+        transformed_model = self
+        if make_deepcopy:
+            transformed_model = copy.deepcopy(self)
+        if self.fix_float64:
+            (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
+        model_was_changed = True
+        while model_was_changed:
+            (transformed_model, model_was_changed) = transformation.apply(transformed_model)
+        if cleanup:
+            transformed_model.cleanup()
         return transformed_model
 
     def cleanup(self):
@@ -690,22 +684,3 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
-
-    def subgraphs_in_bfs_order(self):
-        """Find all subgraphs in the model by looking for graphs in node attributes.
-           Return them as a list of ModelWrappers in breadth-first search order."""
-
-        nodes_to_search = []
-        nodes_to_search.extend(self.graph.node)
-        subgraphs = [self]
-        while len(nodes_to_search) > 0:
-            node = nodes_to_search.pop(0)
-            for attr in node.attribute:
-                if attr.type == onnx.AttributeProto.GRAPH:
-                    # this is a subgraph, add it to the list
-                    subgraph = ModelWrapper(util.qonnx_make_model(attr.g))
-                    subgraphs.append(subgraph)
-                    # add the subgraph nodes to the search list
-                    nodes_to_search.extend(subgraph.graph.node)
-
-        return subgraphs
