@@ -296,11 +296,19 @@ class ModelWrapper:
         target_container = self.graph.value_info
         if util.get_by_name(self.graph.input, tensor_name) is not None:
             target_container = self.graph.input
+            # create list from inputs to find index
+            inputs = [x.name for x in self.graph.input]
+            # save index of input to preserve order
+            ind = inputs.index(tensor_name)
         if util.get_by_name(self.graph.output, tensor_name) is not None:
             target_container = self.graph.output
+            # create list from inputs to find index
+            outputs = [x.name for x in self.graph.output]
+            # save index of input to preserve order
+            ind = outputs.index(tensor_name)
         # remove from target container and add new
         util.remove_by_name(target_container, tensor_name)
-        target_container.append(new_vi)
+        target_container.insert(ind, new_vi)
 
     def set_initializer(self, tensor_name, tensor_value):
         """Sets the initializer value for tensor with given name."""
