@@ -65,13 +65,13 @@ class Transformation(ABC):
     def apply(self, model):
         pass
 
-    @property
-    def apply_to_subgraphs(self):
-        """
-        If True, the transformation will be applied to all subgraphs of the model.
-        If False, it will only be applied to the main graph.
-        """
-        return False
+    # @property
+    # def apply_to_subgraphs(self):
+    #     """
+    #     If True, the transformation will be applied to all subgraphs of the model.
+    #     If False, it will only be applied to the main graph.
+    #     """
+    #     return False
 
 class NodeLocalTransformation(Transformation):
     """

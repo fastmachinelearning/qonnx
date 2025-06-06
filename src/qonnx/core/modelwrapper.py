@@ -128,20 +128,27 @@ class ModelWrapper:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True):
+    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
-        if transformation.apply_to_subgraphs:
-            subgraphs = self.subgraphs_in_bfs_order()
+        parent_model = self
+        if apply_to_subgraphs:
+            child_models = self.get_subgraph_modelwrappers()
+            models = [parent_model] + child_models
         else:
-            subgraphs = [self]
+            models = [parent_model]
 
-        for transformed_model in subgraphs:
-            #transformed_model = self
+        for transformed_model in models:
+            # extract all meta data from loop model and apply to body
+            if transformed_model is not parent_model:
+                for metadata in parent_model.model.metadata_props:
+                    transformed_model.set_metadata_prop(metadata.key, metadata.value)
+
             if make_deepcopy:
                 transformed_model = copy.deepcopy(self)
             if self.fix_float64:
@@ -151,7 +158,12 @@ class ModelWrapper:
                 (transformed_model, model_was_changed) = transformation.apply(transformed_model)
             if cleanup:
                 transformed_model.cleanup()
-        return transformed_model
+
+            # update the parent model metadata after each transformation is run on a subgraph
+            if transformed_model is not parent_model:
+                for metadata in transformed_model.model.metadata_props:
+                    parent_model.set_metadata_prop(metadata.key, metadata.value)
+        return parent_model
 
     def cleanup(self):
         "Run cleanup transformations on the model."
@@ -691,13 +703,13 @@ class ModelWrapper:
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
 
-    def subgraphs_in_bfs_order(self):
+    def get_subgraph_modelwrappers(self):
         """Find all subgraphs in the model by looking for graphs in node attributes.
            Return them as a list of ModelWrappers in breadth-first search order."""
 
         nodes_to_search = []
         nodes_to_search.extend(self.graph.node)
-        subgraphs = [self]
+        subgraphs = []
         while len(nodes_to_search) > 0:
             node = nodes_to_search.pop(0)
             for attr in node.attribute:
