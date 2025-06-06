@@ -65,6 +65,12 @@ class DummyTransform(Transformation):
 
         return model_wrapper, False
 
+class NestedTransform(Transformation):
+    def __init__(self):
+        self.dummy_transform = DummyTransform()
+    def apply(self, model_wrapper):
+        return model_wrapper.transform(self.dummy_transform), False
+
 def get_subgraph_names(tree):
     """
     Recursively collect the names of all subgraphs in the tree structure.
@@ -129,4 +135,19 @@ def test_traversal(tree, cleanup, make_deepcopy):
     t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
 
     check_all_visted_once(tree, transform)
+    check_all_metadata_set(tree, t_model)
+
+
+@pytest.mark.parametrize("cleanup", [False, True])
+@pytest.mark.parametrize("make_deepcopy", [False, True])
+@pytest.mark.parametrize("tree", [("top", [("sub1", []), ("sub2", [])]),
+                                  ("top", [("sub1", [("sub1_1", []), ("sub1_2",[])]), ("sub2", [("sub2_1", [])])])])
+def test_traversal_nested(tree, cleanup, make_deepcopy):
+    # Check that the top-level model and all subgraphs are transformed when apply_to_subgraphs is True.
+    # This should always be done correctly regardless of cleanup and make_deepcopy.
+    model = make_subgraph_model(tree)
+    transform = NestedTransform()
+    t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
+
+    check_all_visted_once(tree, transform.dummy_transform)
     check_all_metadata_set(tree, t_model)
