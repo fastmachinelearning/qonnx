@@ -64,7 +64,7 @@ def qonnx_make_model(graph_proto, **kwargs):
 
 def is_finn_op(op_type):
     "Return whether given op_type string is a QONNX or FINN custom op"
-    return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas")
+    return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas") or op_type.startswith("brainsmith")
 
 
 def get_num_default_workers():

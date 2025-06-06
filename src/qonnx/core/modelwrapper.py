@@ -128,24 +128,52 @@ class ModelWrapper:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True):
+    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
-        transformed_model = self
-        if make_deepcopy:
-            transformed_model = copy.deepcopy(self)
-        if self.fix_float64:
-            (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
-        model_was_changed = True
-        while model_was_changed:
-            (transformed_model, model_was_changed) = transformation.apply(transformed_model)
-        if cleanup:
-            transformed_model.cleanup()
-        return transformed_model
+        parent_model = self
+        if apply_to_subgraphs:
+            child_models = self.get_subgraph_modelwrappers()
+            models = [parent_model] + child_models
+        else:
+            models = [parent_model]
+
+        for transformed_model in models:
+            # the reference to the parent model may change if deepcopy is True
+            # if it chances we need to make sure that reference to the parent model
+            # is updated to the new transformed_model
+            if transformed_model is parent_model:
+                is_parent_model = True
+            else:
+                is_parent_model = False
+                # extract all meta data from loop model and apply to body
+                for metadata in parent_model.model.metadata_props:
+                    transformed_model.set_metadata_prop(metadata.key, metadata.value)
+
+            if make_deepcopy:
+                transformed_model = copy.deepcopy(transformed_model)
+            if self.fix_float64:
+                (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
+            model_was_changed = True
+            while model_was_changed:
+                (transformed_model, model_was_changed) = transformation.apply(transformed_model)
+            if cleanup:
+                transformed_model.cleanup()
+
+            if is_parent_model:
+                # if this is the parent model, we return it
+                parent_model = transformed_model
+
+            # update the parent model metadata after each transformation is run on a subgraph
+            if transformed_model is not parent_model:
+                for metadata in transformed_model.model.metadata_props:
+                    parent_model.set_metadata_prop(metadata.key, metadata.value)
+        return parent_model
 
     def cleanup(self):
         "Run cleanup transformations on the model."
@@ -695,3 +723,22 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
+
+    def get_subgraph_modelwrappers(self):
+        """Find all subgraphs in the model by looking for graphs in node attributes.
+           Return them as a list of ModelWrappers in breadth-first search order."""
+
+        nodes_to_search = []
+        nodes_to_search.extend(self.graph.node)
+        subgraphs = []
+        while len(nodes_to_search) > 0:
+            node = nodes_to_search.pop(0)
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    # this is a subgraph, add it to the list
+                    subgraph = ModelWrapper(util.qonnx_make_model(attr.g))
+                    subgraphs.append(subgraph)
+                    # add the subgraph nodes to the search list
+                    nodes_to_search.extend(subgraph.graph.node)
+
+        return subgraphs
