@@ -27,7 +27,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
-import time
 
 from qonnx.custom_op.general.multithreshold import multithreshold
 
@@ -299,20 +298,10 @@ def test_multithreshold():
     np.random.seed(0)
     inputs = np.random.random((1, 256, 64, 64))
     thresholds = (np.array([[1, 2, 3, 4, 5, 6]]) - 0.5) / 6
-
-    before = time.time()
     vec_results = multithreshold(inputs, thresholds)
-    after = time.time()
-    vector_runtime = after - before
-
-    before = time.time()
     nonvec_results = multithreshold_elementwise(inputs, thresholds)
-    after = time.time()
-    non_vector_runtime = after - before
 
     assert (vec_results == nonvec_results).all()
-
-    return vector_runtime, non_vector_runtime
 
 
 if __name__ == "__main__":
