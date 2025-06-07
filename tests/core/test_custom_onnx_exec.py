@@ -274,7 +274,9 @@ def test_execute_custom_node_multithreshold():
     assert (execution_context["out"] == outputs_nhwc).all()
     # check the set of allowed values
     op_inst = getCustomOp(node_def)
-    assert op_inst.get_nodeattr_allowed_values("data_layout") == {"NCHW", "NHWC"}
+    # TODO: Removed this check to generalize the supported data layouts, but do
+    #  we need some other check to verify the validity of data layouts?
+    # assert op_inst.get_nodeattr_allowed_values("data_layout") == {"NCHW", "NHWC", "NC", "NWC", "NCW"}
     # exercise the allowed value checks
     # try to set attribute to non-allowed value, should raise an exception
     try:
