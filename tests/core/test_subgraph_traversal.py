@@ -4,7 +4,7 @@ from collections import Counter
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 
-from qonnx.util.basic import qonnx_make_model
+from qonnx.util.basic import qonnx_make_model, get_by_name
 import onnx
 from onnx import helper
 
@@ -118,14 +118,6 @@ def check_all_visted_once(tree, transform):
     expected = get_subgraph_names(tree)
     assert Counter(visited) == Counter(expected), f"Visited: {visited}, Expected: {expected}"
 
-def check_all_metadata_set(tree, t_model):
-    """
-    Check that all subgraphs in the tree structure have their metadata set correctly.
-    """
-    expected_metadata_keys = get_subgraph_names(tree)
-    for key in expected_metadata_keys:
-        assert t_model.get_metadata_prop(key) == "visited", f"Metadata for {key} not set correctly"
-
 def check_all_subgraphs_transformed(graph):
     """
     Check that all subgraphs in the tree structure have been transformed.
@@ -139,6 +131,16 @@ def check_all_subgraphs_transformed(graph):
             break
     if not dummynode_found:
         raise AssertionError(f"DummyNode not found in the transformed model graph {graph.name}")
+
+    # check that metadata is set for all subgraphs
+    def get_metadata_props(graph, key):
+        metadata_prop = get_by_name(graph.metadata_props, key, "key")
+        if metadata_prop is None:
+            return None
+        else:
+            return metadata_prop.value
+
+    assert(get_metadata_props(graph, graph.name) == "visited"), f"Metadata for {graph.name} not set correctly"
 
     # recursively check all subgraphs
     for node in graph.node:
@@ -177,7 +179,6 @@ def test_traversal(tree, cleanup, make_deepcopy):
     t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
 
     check_all_visted_once(tree, transform)
-    check_all_metadata_set(tree, t_model)
     check_all_subgraphs_transformed(t_model.model.graph)
 
 
@@ -193,5 +194,4 @@ def test_traversal_nested(tree, cleanup, make_deepcopy):
     t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
 
     check_all_visted_once(tree, transform.dummy_transform)
-    check_all_metadata_set(tree, t_model)
     check_all_subgraphs_transformed(t_model.model.graph)
