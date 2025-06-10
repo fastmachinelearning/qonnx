@@ -593,7 +593,7 @@ class ModelWrapper:
     def get_metadata_prop(self, key):
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
-        metadata_prop = util.get_by_name(self.model.metadata_props, key, "key")
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
             return None
         else:
@@ -601,12 +601,12 @@ class ModelWrapper:
 
     def set_metadata_prop(self, key, value):
         """Sets metadata property with given key to the given value."""
-        metadata_prop = util.get_by_name(self.model.metadata_props, key, "key")
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
             metadata_prop = onnx.StringStringEntryProto()
             metadata_prop.key = key
             metadata_prop.value = value
-            self.model.metadata_props.append(metadata_prop)
+            self.model.graph.metadata_props.append(metadata_prop)
         else:
             metadata_prop.value = value
 
