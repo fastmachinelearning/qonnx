@@ -69,8 +69,6 @@ class ExtractQuantScaleZeroPt(Transformation):
                     )
                     graph.value_info.append(inp_scaled)
                     inp_scale_node = helper.make_node("Div", [running_input, scale_nm], [inp_scaled_nm])
-                    if hasattr(node, "metadata_props"):
-                       inp_scale_node.metadata_props.extend(node.metadata_props)
                     graph.node.append(inp_scale_node)
                     # create new Mul node
                     # remove scale from Quant node
@@ -89,8 +87,6 @@ class ExtractQuantScaleZeroPt(Transformation):
                     )
                     graph.value_info.append(inp_zeropt)
                     inp_zeropt_node = helper.make_node("Add", [running_input, zeropt_nm], [inp_zeropt_nm])
-                    if hasattr(node, "metadata_props"):
-                       inp_zeropt_node.metadata_props.extend(node.metadata_props)
                     graph.node.append(inp_zeropt_node)
                     # remove zeropt from Quant node
                     new_zeropt_nm = model.make_new_valueinfo_name()
@@ -112,8 +108,6 @@ class ExtractQuantScaleZeroPt(Transformation):
                     )
                     graph.value_info.append(out_zeropt)
                     out_zeropt_node = helper.make_node("Sub", [out_zeropt_nm, zeropt_nm], [final_output])
-                    if hasattr(node, "metadata_props"):
-                       out_zeropt_node.metadata_props.extend(node.metadata_props)
                     last_node.output[0] = out_zeropt_nm
                     graph.node.append(out_zeropt_node)
                     # important: when tracking a pointer to newly added nodes,
@@ -133,8 +127,6 @@ class ExtractQuantScaleZeroPt(Transformation):
                     last_node.output[0] = out_scale_nm
                     graph.value_info.append(out_scale)
                     out_scale_node = helper.make_node("Mul", [out_scale_nm, scale_nm], [final_output])
-                    if hasattr(node, "metadata_props"):
-                       out_scale_node.metadata_props.extend(node.metadata_props)
                     graph.node.append(out_scale_node)
 
                 if extract_scale or extract_zeropt:
