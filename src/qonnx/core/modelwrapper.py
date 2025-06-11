@@ -154,12 +154,12 @@ class ModelWrapper:
                     if attr.type == onnx.AttributeProto.GRAPH:
                         # this is a subgraph, add it to the list
                         subgraph = ModelWrapper(util.qonnx_make_model(attr.g))
-                        # extract all meta data from loop model and apply to body
+                        # extract all model metadata from loop model and apply to body
                         for metadata in transformed_model.model.metadata_props:
                             subgraph.set_metadata_prop(metadata.key, metadata.value)
                         # apply the transformation to the subgraph
                         subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs)
-                        # copy the metadata from the subgraph to the parent model
+                        # copy model metadata from the subgraph to the parent model
                         for metadata in subgraph.model.metadata_props:
                             transformed_model.set_metadata_prop(metadata.key, metadata.value)
                         # update the new subgraph in the attrubute
