@@ -137,9 +137,8 @@ class ModelWrapper:
         - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
         transformed_model = self
-
         if make_deepcopy:
-            transformed_model = copy.deepcopy(transformed_model)
+            transformed_model = copy.deepcopy(self)
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
         model_was_changed = True
