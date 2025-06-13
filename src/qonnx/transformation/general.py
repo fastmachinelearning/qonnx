@@ -244,27 +244,16 @@ class SortGraph(Transformation):
         for node_idx, n in enumerate(node_list):
             node_pred = model.find_direct_predecessors(n)
             if node_pred is None:
-                # if connected only to input and output it doesn't matter where it goes
-                # but should not be removed from the grpah
-                if len(n.input) == 0 or len(n.output) == 0:
-                    continue
-
-                connected_to_graph_inputs_only = True
-                for inp in n.input:
-                    tensor_names = [vi.name for vi in model.graph.input]
-                    if inp not in tensor_names:
-                        connected_to_graph_inputs_only = False
-                        break
-                connected_to_graph_outputs_only = True
-                for outp in n.output:
-                    tensor_names = [vi.name for vi in model.graph.output]
-                    if outp not in tensor_names:
-                        connected_to_graph_outputs_only = False
-                        break
-                if connected_to_graph_inputs_only and connected_to_graph_outputs_only:
-                    graph_dependencies[node_idx] = set()
-                    continue
-
+                if len(n.input) > 0:
+                    # check if node inputs are connected to graph inputs or initializers
+                    # if so, we can keep the node in the graph
+                    for name in n.input:
+                        if util.get_by_name(model.graph.initializer, name) or \
+                           util.get_by_name(model.graph.input, name):
+                            # this node is connected to graph inputs or initializers
+                            # so we can keep it in the graph
+                            graph_dependencies[node_idx] = set()
+                            break
                 # Will also eliminate nodes that are floating around for some reason
                 continue
 
