@@ -156,12 +156,12 @@ class ModelWrapper:
                         subgraph = self.make_subgraph_modelwrapper(attr.g)
                         # extract all model metadata from loop model and apply to body
                         for metadata in transformed_model.model.metadata_props:
-                            subgraph.set_metadata_prop(metadata.key, metadata.value)
+                            subgraph.set_model_metadata_prop(metadata.key, metadata.value)
                         # apply the transformation to the subgraph
                         subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs)
                         # copy model metadata from the subgraph to the parent model
                         for metadata in subgraph.model.metadata_props:
-                            transformed_model.set_metadata_prop(metadata.key, metadata.value)
+                            transformed_model.set_model_metadata_prop(metadata.key, metadata.value)
                         # update the new subgraph in the attrubute
                         transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
                 # replace the attributes in the node with the transformed subgraph attributes
@@ -595,25 +595,32 @@ class ModelWrapper:
                 fanout += 1
         return fanout
 
+    def get_model_metadata_prop(self, key):
+        """Returns the value associated with model metadata_prop with given key,
+        or None otherwise."""
+        return util.get_metadata_prop(self.model.metadata_props, key)
+
+    def get_graph_metadata_prop(self, key):
+        """Returns the value associated with graph metadata_prop with given key,
+        or None otherwise."""
+        return util.get_metadata_prop(self.model.graph.metadata_props, key)
+
     def get_metadata_prop(self, key):
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
-        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
-        if metadata_prop is None:
-            return None
-        else:
-            return metadata_prop.value
+        return self.get_graph_metadata_prop(key)
+
+    def set_model_metadata_prop(self, key, value):
+        """Sets the value associated with model metadata_prop with given key."""
+        util.set_metadata_prop(self.model.metadata_props, key, value)
+
+    def set_graph_metadata_prop(self, key, value):
+        """Sets the value associated with graph metadata_prop with given key."""
+        util.set_metadata_prop(self.model.graph.metadata_props, key, value)
 
     def set_metadata_prop(self, key, value):
-        """Sets metadata property with given key to the given value."""
-        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
-        if metadata_prop is None:
-            metadata_prop = onnx.StringStringEntryProto()
-            metadata_prop.key = key
-            metadata_prop.value = value
-            self.model.graph.metadata_props.append(metadata_prop)
-        else:
-            metadata_prop.value = value
+        """Sets the value associated with metadata_prop with given key."""
+        self.set_graph_metadata_prop(key, value)
 
     def get_nodes_by_op_type(self, op_type):
         """Returns a list of nodes with specified op_type."""
