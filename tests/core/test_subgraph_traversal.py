@@ -151,15 +151,16 @@ def check_all_subgraphs_transformed(graph):
 
 @pytest.mark.parametrize("cleanup", [False, True])
 @pytest.mark.parametrize("make_deepcopy", [False, True])
-@pytest.mark.parametrize("model, apply_to_subgraphs",
-                         [(make_subgraph_model(("top", [])), True),
-                          (make_subgraph_model(("top", [])), False),
-                          (make_subgraph_model(("top", [("sub1", [])])), False)])
-def test_no_traversal(model, cleanup, make_deepcopy, apply_to_subgraphs):
+@pytest.mark.parametrize("tree, apply_to_subgraphs",
+                         [(("top", []), True),
+                          (("top", []), False),
+                          (("top", [("sub1", [])]), False)])
+def test_no_traversal(tree, cleanup, make_deepcopy, apply_to_subgraphs):
     # Check that the top-level model is transformed exactly once when there are no subgraphs.
     # Check that the top-level model is transformed exactly once when there are subgraphs, but apply_to_subgraphs is False.
     # This should always be done correctly regardless of cleanup and make_deepcopy.
 
+    model = make_subgraph_model(tree)
     transform = DummyTransform()
     t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs)
 
