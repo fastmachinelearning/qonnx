@@ -32,6 +32,8 @@ import random
 import string
 import warnings
 
+import onnx
+
 from qonnx.core.datatype import DataType
 
 # TODO solve by moving onnx-dependent fxns to onnx.py
@@ -61,6 +63,26 @@ def qonnx_make_model(graph_proto, **kwargs):
         kwargs["opset_imports"] = opset_imports
     return make_model(graph_proto, **kwargs)
 
+def get_metadata_prop(metadata_props, key):
+    """Returns the value associated with metadata_prop with given key,
+    or None otherwise."""
+    metadata_prop = get_by_name(metadata_props, key, "key")
+    if metadata_prop is None:
+        return None
+    else:
+        return metadata_prop.value
+
+
+def set_metadata_prop(metadata_props, key, value):
+    """Sets metadata property with given key to the given value."""
+    metadata_prop = get_by_name(metadata_props, key, "key")
+    if metadata_prop is None:
+        metadata_prop = onnx.StringStringEntryProto()
+        metadata_prop.key = key
+        metadata_prop.value = value
+        metadata_props.append(metadata_prop)
+    else:
+        metadata_prop.value = value
 
 def is_finn_op(op_type):
     "Return whether given op_type string is a QONNX or FINN custom op"

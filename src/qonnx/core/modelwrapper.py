@@ -128,12 +128,13 @@ class ModelWrapper:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True):
+    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
         transformed_model = self
         if make_deepcopy:
@@ -145,6 +146,31 @@ class ModelWrapper:
             (transformed_model, model_was_changed) = transformation.apply(transformed_model)
         if cleanup:
             transformed_model.cleanup()
+
+        if apply_to_subgraphs:
+            for node in transformed_model.model.graph.node:
+                transformed_subgraph_attrs = []
+                for idx, attr in enumerate(node.attribute):
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        # this is a subgraph, add it to the list
+                        subgraph = self.make_subgraph_modelwrapper(attr.g)
+                        # extract all model metadata from loop model and apply to body
+                        for metadata in transformed_model.model.metadata_props:
+                            subgraph.set_model_metadata_prop(metadata.key, metadata.value)
+                        # apply the transformation to the subgraph
+                        subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs)
+                        # copy model metadata from the subgraph to the parent model
+                        for metadata in subgraph.model.metadata_props:
+                            transformed_model.set_model_metadata_prop(metadata.key, metadata.value)
+                        # update the new subgraph in the attrubute
+                        transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
+                # replace the attributes in the node with the transformed subgraph attributes
+                for idx, new_attr in transformed_subgraph_attrs:
+                    # remove the old attribute
+                    node.attribute.pop(idx)
+                    # add the new attribute
+                    node.attribute.insert(idx, new_attr)
+
         return transformed_model
 
     def cleanup(self):
@@ -159,6 +185,12 @@ class ModelWrapper:
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
         return transformed_model
+
+    def make_subgraph_modelwrapper(self, subgraph):
+        return ModelWrapper(
+            util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import)
+        )
+
 
     def check_compatibility(self):
         """Checks this model for QONNX compatibility:
@@ -563,25 +595,32 @@ class ModelWrapper:
                 fanout += 1
         return fanout
 
+    def get_model_metadata_prop(self, key):
+        """Returns the value associated with model metadata_prop with given key,
+        or None otherwise."""
+        return util.get_metadata_prop(self.model.metadata_props, key)
+
+    def get_graph_metadata_prop(self, key):
+        """Returns the value associated with graph metadata_prop with given key,
+        or None otherwise."""
+        return util.get_metadata_prop(self.model.graph.metadata_props, key)
+
     def get_metadata_prop(self, key):
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
-        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
-        if metadata_prop is None:
-            return None
-        else:
-            return metadata_prop.value
+        return self.get_graph_metadata_prop(key)
+
+    def set_model_metadata_prop(self, key, value):
+        """Sets the value associated with model metadata_prop with given key."""
+        util.set_metadata_prop(self.model.metadata_props, key, value)
+
+    def set_graph_metadata_prop(self, key, value):
+        """Sets the value associated with graph metadata_prop with given key."""
+        util.set_metadata_prop(self.model.graph.metadata_props, key, value)
 
     def set_metadata_prop(self, key, value):
-        """Sets metadata property with given key to the given value."""
-        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
-        if metadata_prop is None:
-            metadata_prop = onnx.StringStringEntryProto()
-            metadata_prop.key = key
-            metadata_prop.value = value
-            self.model.graph.metadata_props.append(metadata_prop)
-        else:
-            metadata_prop.value = value
+        """Sets the value associated with metadata_prop with given key."""
+        self.set_graph_metadata_prop(key, value)
 
     def get_nodes_by_op_type(self, op_type):
         """Returns a list of nodes with specified op_type."""
@@ -695,3 +734,4 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
+

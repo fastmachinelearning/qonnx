@@ -166,3 +166,34 @@ if __name__ == "__main__":
     # import matplotlib.pyplot as plt
     # plt.plot(sizes,times,"--o")
     # plt.grid(True)
+
+def test_sort_graph_node_only_connected_to_graphio():
+    """
+    Test that SortGraph does not remove nodes that are only connected to graph inputs/outputs.
+    Occurs when the graph has more than one node.
+    """
+    ch = 2
+    ifmdim = 16
+    input_shape = (1, ch, ifmdim, ifmdim)
+
+    top_in0 = helper.make_tensor_value_info("top_in0", TensorProto.FLOAT, input_shape)
+    top_in1 = helper.make_tensor_value_info("top_in1", TensorProto.FLOAT, input_shape)
+    top_out0 = helper.make_tensor_value_info("top_out0", TensorProto.FLOAT, input_shape)
+    top_out1 = helper.make_tensor_value_info("top_out1", TensorProto.FLOAT, input_shape)
+
+    modelproto = qonnx_make_model(
+        helper.make_graph(
+            name="test",
+            inputs=[top_in0, top_in1],
+            outputs=[top_out0, top_out1],
+            nodes=[
+                helper.make_node("Identity", ["top_in0"], ["top_out0"], name="id0"),
+                helper.make_node("Identity", ["top_in1"], ["top_out1"], name="id1"),
+            ],
+        )
+    )
+    model = ModelWrapper(modelproto)
+    model = model.transform(SortGraph())
+
+    # Ensure that sort did not remove the Identity nodes
+    assert len(model.graph.node) == 2, "SortGraph removed nodes connected only to graph inputs/outputs."
