@@ -153,7 +153,7 @@ class ModelWrapper:
                 for idx, attr in enumerate(node.attribute):
                     if attr.type == onnx.AttributeProto.GRAPH:
                         # this is a subgraph, add it to the list
-                        subgraph = ModelWrapper(util.qonnx_make_model(attr.g))
+                        subgraph = self.make_subgraph_modelwrapper(attr.g)
                         # extract all model metadata from loop model and apply to body
                         for metadata in transformed_model.model.metadata_props:
                             subgraph.set_metadata_prop(metadata.key, metadata.value)
@@ -185,6 +185,12 @@ class ModelWrapper:
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
         return transformed_model
+
+    def make_subgraph_modelwrapper(self, subgraph):
+        return ModelWrapper(
+            util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import)
+        )
+
 
     def check_compatibility(self):
         """Checks this model for QONNX compatibility:
@@ -734,7 +740,7 @@ class ModelWrapper:
             for attr in node.attribute:
                 if attr.type == onnx.AttributeProto.GRAPH:
                     # this is a subgraph, add it to the list
-                    subgraph = ModelWrapper(util.qonnx_make_model(attr.g))
+                    subgraph = self.make_subgraph_modelwrapper(attr.g)
                     subgraphs.append(subgraph)
                     # add the subgraph nodes to the search list
                     nodes_to_search.extend(subgraph.graph.node)
