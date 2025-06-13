@@ -54,7 +54,7 @@ def make_subgraph_model(tree):
     Build a ModelWrapper with a graph structure based on the provided tree.
     The tree is a nested tuple/list structure where each node can have subgraphs.
     """
-    return ModelWrapper(qonnx_make_model(make_graph(tree)))
+    return ModelWrapper(qonnx_make_model(make_graph(tree), opset_imports=[helper.make_opsetid("", 10)]))
 
 
 class DummyTransform(Transformation):
@@ -66,6 +66,7 @@ class DummyTransform(Transformation):
         graph_name = model_wrapper.model.graph.name
         # set a metadata property to test whether metadata is preserved
         model_wrapper.set_metadata_prop(graph_name, "visited")
+        model_wrapper.set_metadata_prop("opset_id", str(model_wrapper.model.opset_import[0].version))
         # add a dummy node to the graph to simulate a transformation
         # to see if the subgraph transformation is presered
 
@@ -141,7 +142,7 @@ def check_all_subgraphs_transformed(graph):
             return metadata_prop.value
 
     assert(get_metadata_props(graph, graph.name) == "visited"), f"Metadata for {graph.name} not set correctly"
-
+    assert(get_metadata_props(graph, "opset_id") == "10"), "Metadata for opset_id not set correctly"
     # recursively check all subgraphs
     for node in graph.node:
          for attr in node.attribute:
