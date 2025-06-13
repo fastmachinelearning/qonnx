@@ -244,6 +244,15 @@ class SortGraph(Transformation):
         for node_idx, n in enumerate(node_list):
             node_pred = model.find_direct_predecessors(n)
             if node_pred is None:
+                if len(n.input) > 0:
+                    # check if node inputs are connected to graph inputs or initializers
+                    # if so, we can keep the node in the graph
+                    for name in n.input:
+                        if model.get_initializer(name) or util.get_by_name(model.graph.input, name, "name"):
+                            # this node is connected to graph inputs or initializers
+                            # so we can keep it in the graph
+                            graph_dependencies[node_idx] = set()
+                            break
                 # Will also eliminate nodes that are floating around for some reason
                 continue
 
@@ -262,6 +271,7 @@ class SortGraph(Transformation):
             model.graph.node.insert(new_idx, node_list[sorted_idx])
 
         return (model, False)
+
 
 
 class ConvertSubToAdd(Transformation):
