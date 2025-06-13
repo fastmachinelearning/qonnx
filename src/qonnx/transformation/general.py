@@ -274,7 +274,6 @@ class SortGraph(Transformation):
         return (model, False)
 
 
-
 class ConvertSubToAdd(Transformation):
     """Convert subtract-a-constant nodes to add-a-constant nodes."""
 
