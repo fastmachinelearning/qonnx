@@ -735,21 +735,3 @@ class ModelWrapper:
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
 
-    def get_subgraph_modelwrappers(self):
-        """Find all subgraphs in the model by looking for graphs in node attributes.
-           Return them as a list of ModelWrappers in breadth-first search order."""
-
-        nodes_to_search = []
-        nodes_to_search.extend(self.graph.node)
-        subgraphs = []
-        while len(nodes_to_search) > 0:
-            node = nodes_to_search.pop(0)
-            for attr in node.attribute:
-                if attr.type == onnx.AttributeProto.GRAPH:
-                    # this is a subgraph, add it to the list
-                    subgraph = self.make_subgraph_modelwrapper(attr.g)
-                    subgraphs.append(subgraph)
-                    # add the subgraph nodes to the search list
-                    nodes_to_search.extend(subgraph.graph.node)
-
-        return subgraphs
