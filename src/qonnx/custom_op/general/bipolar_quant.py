@@ -31,6 +31,7 @@ import onnx.helper as helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
+from qonnx.custom_op.registry import register_op
 
 
 def binary_quant(inp_tensor, scale):
@@ -47,6 +48,7 @@ def binary_quant(inp_tensor, scale):
     return out_tensor
 
 
+@register_op(domain="qonnx.custom_op.general", op_type="BipolarQuant")
 class BipolarQuant(CustomOp):
     """Bipolar quantization operation for QONNX. Takes four inputs:
     - input tensor to quantize
