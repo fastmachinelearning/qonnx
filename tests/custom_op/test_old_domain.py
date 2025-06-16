@@ -7,7 +7,6 @@ from qonnx.util.basic import qonnx_make_model
 
 
 def test_get_custom_op_old_domain():
-    print('sys.path0', sys.path[0])
     assert "legacy_custom_op" not in sys.modules
 
     node = helper.make_node(
