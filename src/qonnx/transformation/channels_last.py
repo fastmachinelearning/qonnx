@@ -44,7 +44,8 @@ from qonnx.util.basic import get_by_name
 from qonnx.util.onnx import is_eltwise_optype
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-_channelsLast_node_types = list(channels_last.custom_op.keys())
+# use the list of exported op names from the channels_last package
+_channelsLast_node_types = list(channels_last.__all__)
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.

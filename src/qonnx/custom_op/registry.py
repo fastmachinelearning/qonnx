@@ -27,24 +27,78 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import importlib
+import warnings
+from importlib import metadata
 
 from qonnx.util.basic import get_preferred_onnx_opset
 
+# global registry mapping (domain, op_type) -> CustomOp subclass
+CUSTOM_OP_REGISTRY = {}
+
+
+def register_op(domain, op_type):
+    """Decorator for registering CustomOp classes."""
+
+    def decorator(cls):
+        CUSTOM_OP_REGISTRY[(domain, op_type)] = cls
+        return cls
+
+    return decorator
+
+
+def _load_entry_points():
+    """Load custom op modules registered via entry points."""
+
+    try:
+        eps = metadata.entry_points()
+        # compatibility between Python versions
+        if hasattr(eps, "select"):
+            eps = eps.select(group="qonnx_custom_ops")
+        else:
+            eps = eps.get("qonnx_custom_ops", [])
+        for ep in eps:
+            try:
+                ep.load()
+            except Exception as e:  # pragma: no cover - import failure warning
+                warnings.warn(f"Failed to load custom op entry point {ep.name}: {e}")
+    except Exception as e:  # pragma: no cover - metadata failure warning
+        warnings.warn(f"Failed to query custom op entry points: {e}")
+
+
+# load entry points on module import
+_load_entry_points()
+
 
 def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
-    "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
+    """Return a QONNX CustomOp instance for the given ONNX node, if it exists."""
+
     op_type = node.op_type
     domain = node.domain
     if brevitas_exception:
         # transparently resolve Brevitas domain ops to qonnx ones
         domain = domain.replace("onnx.brevitas", "qonnx.custom_op.general")
+
+    key = (domain, op_type)
+    cls = CUSTOM_OP_REGISTRY.get(key)
+    if cls is not None:
+        return cls(node, onnx_opset_version=onnx_opset_version)
+
     try:
         opset_module = importlib.import_module(domain)
-        assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
-        inst_wrapper = opset_module.custom_op[op_type]
-        inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
-        return inst
     except ModuleNotFoundError:
-        raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)
-    except KeyError:
-        raise Exception("Op %s not found in custom opset %s" % (op_type, domain))
+        raise Exception(f"Could not load custom opset {domain}, check your PYTHONPATH")
+
+    # op may have registered itself on import
+    cls = CUSTOM_OP_REGISTRY.get(key)
+    if cls is not None:
+        return cls(node, onnx_opset_version=onnx_opset_version)
+
+    # fallback to legacy custom_op dictionary
+    if hasattr(opset_module, "custom_op") and isinstance(opset_module.custom_op, dict):
+        try:
+            inst_wrapper = opset_module.custom_op[op_type]
+            return inst_wrapper(node, onnx_opset_version=onnx_opset_version)
+        except KeyError:
+            pass
+
+    raise Exception(f"Op {op_type} not found in custom opset {domain}")
