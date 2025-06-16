@@ -37,15 +37,15 @@ from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.trunc import Trunc
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
-custom_op = dict()
-
-custom_op["DebugMarker"] = DebugMarker
-custom_op["QuantAvgPool2d"] = QuantAvgPool2d
-custom_op["MaxPoolNHWC"] = MaxPoolNHWC
-custom_op["GenericPartition"] = GenericPartition
-custom_op["MultiThreshold"] = MultiThreshold
-custom_op["XnorPopcountMatMul"] = XnorPopcountMatMul
-custom_op["Im2Col"] = Im2Col
-custom_op["Quant"] = Quant
-custom_op["Trunc"] = Trunc
-custom_op["BipolarQuant"] = BipolarQuant
+__all__ = [
+    "DebugMarker",
+    "QuantAvgPool2d",
+    "MaxPoolNHWC",
+    "GenericPartition",
+    "MultiThreshold",
+    "XnorPopcountMatMul",
+    "Im2Col",
+    "Quant",
+    "Trunc",
+    "BipolarQuant",
+]
