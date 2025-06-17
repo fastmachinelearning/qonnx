@@ -595,32 +595,26 @@ class ModelWrapper:
                 fanout += 1
         return fanout
 
-    def get_model_metadata_prop(self, key):
-        """Returns the value associated with model metadata_prop with given key,
-        or None otherwise."""
-        return util.get_metadata_prop(self.model.metadata_props, key)
-
-    def get_graph_metadata_prop(self, key):
-        """Returns the value associated with graph metadata_prop with given key,
-        or None otherwise."""
-        return util.get_metadata_prop(self.model.graph.metadata_props, key)
-
     def get_metadata_prop(self, key):
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
-        return self.get_graph_metadata_prop(key)
-
-    def set_model_metadata_prop(self, key, value):
-        """Sets the value associated with model metadata_prop with given key."""
-        util.set_metadata_prop(self.model.metadata_props, key, value)
-
-    def set_graph_metadata_prop(self, key, value):
-        """Sets the value associated with graph metadata_prop with given key."""
-        util.set_metadata_prop(self.model.graph.metadata_props, key, value)
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
+        if metadata_prop is None:
+            return None
+        else:
+            return metadata_prop.value
 
     def set_metadata_prop(self, key, value):
         """Sets the value associated with metadata_prop with given key."""
-        self.set_graph_metadata_prop(key, value)
+        """Sets metadata property with given key to the given value."""
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
+        if metadata_prop is None:
+            metadata_prop = onnx.StringStringEntryProto()
+            metadata_prop.key = key
+            metadata_prop.value = value
+            self.model.graph.metadata_props.append(metadata_prop)
+        else:
+            metadata_prop.value = value
 
     def get_nodes_by_op_type(self, op_type):
         """Returns a list of nodes with specified op_type."""

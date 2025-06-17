@@ -63,31 +63,9 @@ def qonnx_make_model(graph_proto, **kwargs):
         kwargs["opset_imports"] = opset_imports
     return make_model(graph_proto, **kwargs)
 
-def get_metadata_prop(metadata_props, key):
-    """Returns the value associated with metadata_prop with given key,
-    or None otherwise."""
-    metadata_prop = get_by_name(metadata_props, key, "key")
-    if metadata_prop is None:
-        return None
-    else:
-        return metadata_prop.value
-
-
-def set_metadata_prop(metadata_props, key, value):
-    """Sets metadata property with given key to the given value."""
-    metadata_prop = get_by_name(metadata_props, key, "key")
-    if metadata_prop is None:
-        metadata_prop = onnx.StringStringEntryProto()
-        metadata_prop.key = key
-        metadata_prop.value = value
-        metadata_props.append(metadata_prop)
-    else:
-        metadata_prop.value = value
-
 def is_finn_op(op_type):
     "Return whether given op_type string is a QONNX or FINN custom op"
     return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas")
-
 
 def get_num_default_workers():
     """Return the number of workers for parallel transformations. Controllable
@@ -99,7 +77,6 @@ def get_num_default_workers():
         return int(os.environ["NUM_DEFAULT_WORKERS"])
     except KeyError:
         return 1
-
 
 def get_execution_error_thresh():
     "Return the max error that is allowed for rounding in QONNX execution."
