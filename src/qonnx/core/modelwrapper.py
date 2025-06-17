@@ -154,14 +154,8 @@ class ModelWrapper:
                     if attr.type == onnx.AttributeProto.GRAPH:
                         # this is a subgraph, add it to the list
                         subgraph = self.make_subgraph_modelwrapper(attr.g)
-                        # extract all model metadata from loop model and apply to body
-                        for metadata in transformed_model.model.metadata_props:
-                            subgraph.set_model_metadata_prop(metadata.key, metadata.value)
                         # apply the transformation to the subgraph
                         subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs)
-                        # copy model metadata from the subgraph to the parent model
-                        for metadata in subgraph.model.metadata_props:
-                            transformed_model.set_model_metadata_prop(metadata.key, metadata.value)
                         # update the new subgraph in the attrubute
                         transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
                 # replace the attributes in the node with the transformed subgraph attributes
@@ -190,7 +184,6 @@ class ModelWrapper:
         return ModelWrapper(
             util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import)
         )
-
 
     def check_compatibility(self):
         """Checks this model for QONNX compatibility:
@@ -605,7 +598,6 @@ class ModelWrapper:
             return metadata_prop.value
 
     def set_metadata_prop(self, key, value):
-        """Sets the value associated with metadata_prop with given key."""
         """Sets metadata property with given key to the given value."""
         metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
@@ -728,4 +720,3 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
-
