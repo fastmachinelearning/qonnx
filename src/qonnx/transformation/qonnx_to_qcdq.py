@@ -190,4 +190,17 @@ class QuantToQCDQ(Transformation):
                 # Ensure new Pad node requirements are respected
                 model = model.transform(MovePadAttributeToTensor())
 
+        # Ensure opset version is new enough if there were QuantizeLinear nodes inserted
+        # Fixes the corner case where none of the Quant nodes need a Clip node
+        elif len(model.get_nodes_by_op_type("QuantizeLinear")) > 0:
+            model = model.transform(RemoveUnusedTensors())
+
+            qdq_min_opset = 10
+            if model.model.opset_import[0].version < qdq_min_opset:
+                warn(f"QCDQ QuantizeLinear requires ONNX opset >= {qdq_min_opset} but found {model.model.opset_import[0].version}")
+                warn(f"Forcing opset version {qdq_min_opset} upgrade to ensure valid ONNX")
+                model.model.opset_import[0].version = qdq_min_opset
+                # Ensure new Pad node requirements are respected
+                model = model.transform(MovePadAttributeToTensor())
+
         return (model, False)
