@@ -32,8 +32,6 @@ import random
 import string
 import warnings
 
-import onnx
-
 from qonnx.core.datatype import DataType
 
 # TODO solve by moving onnx-dependent fxns to onnx.py
@@ -63,9 +61,11 @@ def qonnx_make_model(graph_proto, **kwargs):
         kwargs["opset_imports"] = opset_imports
     return make_model(graph_proto, **kwargs)
 
+
 def is_finn_op(op_type):
     "Return whether given op_type string is a QONNX or FINN custom op"
     return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas")
+
 
 def get_num_default_workers():
     """Return the number of workers for parallel transformations. Controllable
@@ -77,6 +77,7 @@ def get_num_default_workers():
         return int(os.environ["NUM_DEFAULT_WORKERS"])
     except KeyError:
         return 1
+
 
 def get_execution_error_thresh():
     "Return the max error that is allowed for rounding in QONNX execution."
