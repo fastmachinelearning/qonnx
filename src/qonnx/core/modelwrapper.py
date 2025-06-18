@@ -1,4 +1,5 @@
-# Copyright (c) 2020 Xilinx, Inc.
+# Copyright (c) 2022 - 2025 Advanced Micro Devices, Inc.
+# Copyright (c) 2020 - 2022 Xilinx, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -181,23 +182,7 @@ class ModelWrapper:
         return transformed_model
 
     def make_subgraph_modelwrapper(self, subgraph):
-        return ModelWrapper(
-            util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import)
-        )
-
-    def check_compatibility(self):
-        """Checks this model for QONNX compatibility:
-
-        * no embedded subgraphs
-
-        * all tensor shapes are specified, including activations
-
-        * all constants are initializers
-        """
-        # TODO check for no embedded subgraphs
-        # TODO check that all shapes are inferred
-        # TODO check that all constants are initializers
-        return True
+        return ModelWrapper(util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import))
 
     def get_tensor_datatype(self, tensor_name):
         """Returns the QONNX DataType of tensor with given name."""
