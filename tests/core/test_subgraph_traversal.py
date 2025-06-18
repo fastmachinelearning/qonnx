@@ -119,6 +119,14 @@ def check_all_visted_once(tree, transform):
     expected = get_subgraph_names(tree)
     assert Counter(visited) == Counter(expected), f"Visited: {visited}, Expected: {expected}"
 
+def check_visit_order(tree, transform, order):
+    """
+    Check that the order of visited subgraphs matches the expected preorder or postorder traversal.
+    """
+    visited = transform.visited
+    expected = order(tree)
+    assert visited == expected, f"Visited: {visited}, Expected: {expected}"
+
 def check_all_subgraphs_transformed(graph):
     """
     Check that all subgraphs in the tree structure have been transformed.
@@ -167,21 +175,57 @@ def test_no_traversal(tree, cleanup, make_deepcopy, apply_to_subgraphs):
     assert transform.visited == ["top"]
     assert t_model.get_metadata_prop("top") == "visited"
 
+def build_preorder_traversal(tree):
+    """
+    Build a preorder traversal of the tree structure.
+    """
+    traversal = []
+
+    def traverse(node):
+        name, subtrees = node
+        traversal.append(name)
+        for subtree in subtrees:
+            traverse(subtree)
+
+    traverse(tree)
+    return traversal
+
+def build_postorder_traversal(tree):
+    """
+    Build a postorder traversal of the tree structure.
+    """
+    traversal = []
+
+    def traverse(node):
+        name, subtrees = node
+        for subtree in subtrees:
+            traverse(subtree)
+        traversal.append(name)
+
+    traverse(tree)
+    return traversal
 
 @pytest.mark.parametrize("cleanup", [False, True])
 @pytest.mark.parametrize("make_deepcopy", [False, True])
 @pytest.mark.parametrize("tree", [("top", [("sub1", []), ("sub2", [])]),
                                   ("top", [("sub1", [("sub1_1", []), ("sub1_2",[])]), ("sub2", [("sub2_1", [])])])])
-def test_traversal(tree, cleanup, make_deepcopy):
+@pytest.mark.parametrize("use_preorder_traversal", [True, False])
+def test_traversal(tree, cleanup, make_deepcopy, use_preorder_traversal):
     # Check that the top-level model and all subgraphs are transformed when apply_to_subgraphs is True.
     # This should always be done correctly regardless of cleanup and make_deepcopy.
     print(f"Testing tree: {tree}, cleanup: {cleanup}, make_deepcopy: {make_deepcopy}")
     model = make_subgraph_model(tree)
     transform = DummyTransform()
-    t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
+    t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True, use_preorder_traversal=use_preorder_traversal)
 
     check_all_visted_once(tree, transform)
     check_all_subgraphs_transformed(t_model.model.graph)
+
+    if use_preorder_traversal:
+        traversal_order = build_preorder_traversal
+    else:
+        traversal_order = build_postorder_traversal
+    check_visit_order(tree, transform, traversal_order)
 
 
 @pytest.mark.parametrize("cleanup", [False, True])
