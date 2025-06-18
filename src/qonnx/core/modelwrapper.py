@@ -28,6 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import copy
+import inspect
 import onnx
 import onnx.helper as oh
 import onnx.numpy_helper as np_helper
@@ -125,9 +126,13 @@ class ModelWrapper:
         """Saves the wrapper ONNX ModelProto into a file with given name."""
         onnx.save(self._model_proto, filename)
 
-    def analysis(self, analysis_fxn):
+    def analysis(self, analysis_fxn, apply_to_subgraphs=False):
         """Runs given anaylsis_fxn on this model and return resulting dict."""
-        return analysis_fxn(self)
+        if apply_to_subgraphs == True:
+            assert "apply_to_subgraphs" in inspect.signature(analysis_fxn), "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
+            return analysis_fxn(self, apply_to_subgraphs)
+        else:
+            return analysis_fxn(self)
 
     def transform_subgraphs(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
         """Applies given Transformation to all subgraphs of this ModelWrapper instance.
