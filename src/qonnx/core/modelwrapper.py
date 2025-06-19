@@ -1,4 +1,5 @@
-# Copyright (c) 2020 Xilinx, Inc.
+# Copyright (c) 2022 - 2025 Advanced Micro Devices, Inc.
+# Copyright (c) 2020 - 2022 Xilinx, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -128,23 +129,58 @@ class ModelWrapper:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True):
+    def transform_subgraphs(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
+        """Applies given Transformation to all subgraphs of this ModelWrapper instance.
+
+        - make_deepcopy : operates on a new (deep)copy of model.
+        - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
+        - use_preorder_traversal : if True, uses preorder traversal for subgraph transformation,
+          otherwise postorder traversal is used.
+        """
+        for node in self.model.graph.node:
+                transformed_subgraph_attrs = []
+                for idx, attr in enumerate(node.attribute):
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        # this is a subgraph, add it to the list
+                        subgraph = self.make_subgraph_modelwrapper(attr.g)
+                        # apply the transformation to the subgraph
+                        subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+                        # update the new subgraph in the attrubute
+                        transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
+                # replace the attributes in the node with the transformed subgraph attributes
+                for idx, new_attr in transformed_subgraph_attrs:
+                    # remove the old attribute
+                    node.attribute.pop(idx)
+                    # add the new attribute
+                    node.attribute.insert(idx, new_attr)
+
+    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
         transformed_model = self
         if make_deepcopy:
             transformed_model = copy.deepcopy(self)
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
+
+        if apply_to_subgraphs and use_preorder_traversal == False:
+            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+
         model_was_changed = True
         while model_was_changed:
             (transformed_model, model_was_changed) = transformation.apply(transformed_model)
         if cleanup:
             transformed_model.cleanup()
+
+        if apply_to_subgraphs and use_preorder_traversal:
+            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+
         return transformed_model
 
     def cleanup(self):
@@ -160,19 +196,8 @@ class ModelWrapper:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
         return transformed_model
 
-    def check_compatibility(self):
-        """Checks this model for QONNX compatibility:
-
-        * no embedded subgraphs
-
-        * all tensor shapes are specified, including activations
-
-        * all constants are initializers
-        """
-        # TODO check for no embedded subgraphs
-        # TODO check that all shapes are inferred
-        # TODO check that all constants are initializers
-        return True
+    def make_subgraph_modelwrapper(self, subgraph):
+        return ModelWrapper(util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import))
 
     def get_tensor_datatype(self, tensor_name):
         """Returns the QONNX DataType of tensor with given name."""
