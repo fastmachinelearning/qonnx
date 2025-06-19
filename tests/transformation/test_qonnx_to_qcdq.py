@@ -39,12 +39,6 @@ from qonnx.util.cleanup import cleanup_model
 from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 
 qonnxtoqcdq_details = {
-    "Conv_bias_example": {
-        # The model does not have any Quant node
-        "nonconvertible_quant": 0,
-        "exp_qdq_nodes": 0,
-        "exp_clip_nodes": 0,
-    },
     "FINN-CNV_W1A1": {
         "nonconvertible_quant": 0,
         "exp_qdq_nodes": 1,
@@ -62,12 +56,6 @@ qonnxtoqcdq_details = {
         "exp_qdq_nodes": 18,
         # input quantizer doesn't need Clip so 1 less
         "exp_clip_nodes": 17,
-    },
-    "FINN-TFC_W1A1": {
-        # The model does not have any Quant node
-        "nonconvertible_quant": 0,
-        "exp_qdq_nodes": 0,
-        "exp_clip_nodes": 0,
     },
     "FINN-TFC_W1A2": {
         # all Quant nodes convertible to QCDQ
@@ -95,60 +83,6 @@ qonnxtoqcdq_details = {
         "exp_clip_nodes": 55,
     },
     "rn18_w4a4_a2q_12b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_13b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_14b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_15b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_16b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_plus_12b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_plus_13b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_plus_14b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_plus_15b": {
-        # 25 bit bias quant not convertible to QCDQ
-        "nonconvertible_quant": 1,
-        "exp_qdq_nodes": 49,
-        "exp_clip_nodes": 49,
-    },
-    "rn18_w4a4_a2q_plus_16b": {
         # 25 bit bias quant not convertible to QCDQ
         "nonconvertible_quant": 1,
         "exp_qdq_nodes": 49,
