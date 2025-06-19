@@ -27,12 +27,78 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
+import onnx
 from onnx import TensorProto, helper
+from onnxscript import opset15 as op
+from onnxscript import script
 from pkgutil import get_data
 
 import qonnx.util.basic as util
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.infer_shapes import InferShapes
+
+
+def make_model_with_function():
+    # Define a simple ONNX function: MyAdd(x, y) = x + y
+    @script()
+    def MyAdd(x, y):
+        return op.Add(x, y)
+
+    # Create model inputs and outputs
+    X = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [1, 3])
+    Y = onnx.helper.make_tensor_value_info("Y", onnx.TensorProto.FLOAT, [1, 3])
+    W = onnx.helper.make_tensor_value_info("W", onnx.TensorProto.FLOAT, [1, 3])
+    Z = onnx.helper.make_tensor_value_info("Z", onnx.TensorProto.FLOAT, [1, 3])
+
+    # Use the function twice and add some standard ONNX nodes
+    node1 = onnx.helper.make_node(
+        "MyAdd",
+        ["X", "Y"],
+        ["A"],
+        domain="this",  # local function
+    )
+    node2 = onnx.helper.make_node("Relu", ["A"], ["B"])
+    node3 = onnx.helper.make_node(
+        "MyAdd",
+        ["B", "W"],
+        ["C"],
+        domain="this",  # local function
+    )
+    node4 = onnx.helper.make_node("Mul", ["C", "Y"], ["Z"])
+
+    graph = onnx.helper.make_graph(
+        [node1, node2, node3, node4],
+        "test_graph_with_function",
+        [X, Y, W],
+        [Z],
+    )
+    # Convert ONNXScript function to FunctionProto
+    function_proto = MyAdd.to_function_proto()
+
+    # Build the model
+    model = onnx.helper.make_model(
+        graph,
+        functions=[function_proto],
+        opset_imports=[onnx.helper.make_opsetid("", 15), onnx.helper.make_opsetid("this", 1)],
+        producer_name="onnxscript-test",
+    )
+    return model
+
+
+def test_infer_shapes_with_function():
+    model = make_model_with_function()
+    # Wrap with ModelWrapper
+    model_wrapper = ModelWrapper(model)
+    # Check that shape is not specified
+    assert not model_wrapper.check_all_tensor_shapes_specified()
+    # Infer shapes
+    model_wrapper.save("pre.onnx")
+    model_wrapper = model_wrapper.transform(InferShapes())
+    model_wrapper.save("post.onnx")
+
+    # Now shape should be specified
+    assert model_wrapper.check_all_tensor_shapes_specified()
+    assert model_wrapper.get_tensor_shape("Z") == [1, 3]
 
 
 def test_infer_shapes():
