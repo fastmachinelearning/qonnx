@@ -28,22 +28,39 @@
 
 import numpy as np
 from onnx import TensorProto, helper
-from warnings import warn
-
-from onnxscript.rewriter import pattern, rewrite
 from onnxscript import ir
+from onnxscript.rewriter import pattern, rewrite
+from warnings import warn
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.general import MovePadAttributeToTensor, RemoveUnusedTensors
 
+# TODO: operate on IntQuant when Quant -> IntQuant is added to cleanup steps
+# TODO: add transformation for Trunc to standard ops
+# TODO: add transformation for BipolarQuant to standard ops
+# TODO: add transformation for FloatQuant to standard ops
+
 
 # Target patterns
 def quant_pattern_brevitas(qonnx_op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mode):
-    return qonnx_op.Quant(x, scale, zero_point, bitwidth, signed=signed, narrow=narrow, _allow_other_attributes=True, _domain="onnx.brevitas")
+    return qonnx_op.Quant(
+        x, scale, zero_point, bitwidth, signed=signed, narrow=narrow, _allow_other_attributes=True, _domain="onnx.brevitas"
+    )
+
 
 def quant_pattern_qonnx(qonnx_op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mode):
-    return qonnx_op.Quant(x, scale, zero_point, bitwidth, signed=signed, narrow=narrow, _allow_other_attributes=True, _domain="qonnx.custom_op.general")
+    return qonnx_op.Quant(
+        x,
+        scale,
+        zero_point,
+        bitwidth,
+        signed=signed,
+        narrow=narrow,
+        _allow_other_attributes=True,
+        _domain="qonnx.custom_op.general",
+    )
+
 
 # Replacement pattern
 def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mode):
@@ -54,10 +71,15 @@ def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mo
     # Create the QuantizeLinear node
     scale_np = scale.const_value.numpy()
     scale_np_new = scale_np.squeeze()
+    # TODO add support for non-zero zero_point, taking different definitions into account:
+    # DequantizeLinear(QuantizeLinear(x)) uses scale * ((saturate((x / scale) + zero_point) - zero_point))
+    # Quant(x) uses  scale * (round(clip(x / scale + zero_point)) - zero_point)
     if scale_np_new.ndim == 1:
         qnt_axis = scale_np.shape.index(scale_np_new.shape[0])
         c_scale = helper.make_tensor("scale", scale.dtype, scale_np_new.shape, scale_np_new)
-        c_zero_point = helper.make_tensor("zero_point", new_dtype, scale_np_new.shape, np.zeros(scale_np_new.shape, dtype=np_dtype))
+        c_zero_point = helper.make_tensor(
+            "zero_point", new_dtype, scale_np_new.shape, np.zeros(scale_np_new.shape, dtype=np_dtype)
+        )
     else:
         qnt_axis = None
         c_scale = helper.make_tensor("scale", scale.dtype, (), [scale_np_new.item()])
@@ -71,17 +93,17 @@ def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mo
     if (signed.value and narrow.value) or (bw_val < 8):
         # Compute clipping values
         if signed.value:
-            max_val = 2 ** (bw_val-1) - 1
+            max_val = 2 ** (bw_val - 1) - 1
             if narrow.value:
-                min_val = -2 ** (bw_val-1) + 1
+                min_val = -(2 ** (bw_val - 1)) + 1
             else:
-                min_val = -2 ** (bw_val-1)
+                min_val = -(2 ** (bw_val - 1))
         else:
             min_val = 0
             if narrow.value:
-                max_val = 2 ** bw_val - 2
+                max_val = 2**bw_val - 2
             else:
-                max_val = 2 ** bw_val - 1
+                max_val = 2**bw_val - 1
 
         if isinstance(min_val, np.ndarray):
             min_val = min_val.astype(np_dtype)
@@ -104,6 +126,7 @@ def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mo
 
     # Create the DequantizeLinear node
     return op.DequantizeLinear(qnt, scale, zero_point, axis=qnt_axis)
+
 
 def is_valid_qcdq_transformation(context, x, scale, zero_point, bitwidth, signed, narrow, rounding_mode, **_) -> bool:
     """Condition to check if the Quant node can be replaced.
@@ -135,11 +158,12 @@ def is_valid_qcdq_transformation(context, x, scale, zero_point, bitwidth, signed
         return False
 
     # Check rounding mode
-    if rounding_mode is None:   # No rounding_mode specified, assume default to be `ROUND`
+    if rounding_mode is None:  # No rounding_mode specified, assume default to be `ROUND`
         return True
     if rounding_mode.value != "ROUND":
         return False
     return True
+
 
 class QuantToQCDQ(Transformation):
     """Replace QONNX Quant-style quantization nodes with QuantizeLinear
@@ -153,22 +177,12 @@ class QuantToQCDQ(Transformation):
     - the rounding_mode attribute must be ROUND
     BipolarQuant is not (yet) supported.
     """
+
     def __init__(self):
         super().__init__()
-        rewrite_rule_qcdq_brevitas = pattern.RewriteRule(
-            quant_pattern_brevitas,
-            qcdq_pattern,
-            is_valid_qcdq_transformation
-        )
-        rewrite_rule_qcdq_qonnx = pattern.RewriteRule(
-            quant_pattern_qonnx,
-            qcdq_pattern,
-            is_valid_qcdq_transformation
-        )
-        self._rewrite_rule_set = pattern.RewriteRuleSet([
-            rewrite_rule_qcdq_brevitas,
-            rewrite_rule_qcdq_qonnx
-        ], commute=True)
+        rewrite_rule_qcdq_brevitas = pattern.RewriteRule(quant_pattern_brevitas, qcdq_pattern, is_valid_qcdq_transformation)
+        rewrite_rule_qcdq_qonnx = pattern.RewriteRule(quant_pattern_qonnx, qcdq_pattern, is_valid_qcdq_transformation)
+        self._rewrite_rule_set = pattern.RewriteRuleSet([rewrite_rule_qcdq_brevitas, rewrite_rule_qcdq_qonnx], commute=True)
 
         self._preserve_qnt_optypes = ["Quant", "BipolarQuant", "QuantizeLinear", "DequantizeLinear"]
 
@@ -197,7 +211,10 @@ class QuantToQCDQ(Transformation):
 
             qdq_min_opset = 10
             if model.model.opset_import[0].version < qdq_min_opset:
-                warn(f"QCDQ QuantizeLinear requires ONNX opset >= {qdq_min_opset} but found {model.model.opset_import[0].version}")
+                warn(
+                    f"QCDQ QuantizeLinear requires ONNX opset >= {qdq_min_opset} but found"
+                    " {model.model.opset_import[0].version}"
+                )
                 warn(f"Forcing opset version {qdq_min_opset} upgrade to ensure valid ONNX")
                 model.model.opset_import[0].version = qdq_min_opset
                 # Ensure new Pad node requirements are respected
