@@ -79,7 +79,9 @@ class BaseDataType(ABC):
     def allowed(self, value):
         """Check whether given value is allowed for this DataType.
 
-        * value (float32): value to be checked"""
+        * value (float32 | np.ndarray): value to be checked
+
+        Returns a boolean numpy array of the same shape as `value`"""
         pass
 
     @abstractmethod
@@ -199,19 +201,19 @@ class ArbPrecFloatType(BaseDataType):
         bin_val = np.float32(value).view(np.uint32)
         exp = (bin_val & 0b01111111100000000000000000000000) >> fp32_mantissa_bitwidth
         mant = bin_val & 0b00000000011111111111111111111111
-        exp_biased = exp - fp32_exponent_bias  # bias the extracted raw exponent (assume not denormal)
-        mant_normalized = mant + int((2**fp32_mantissa_bitwidth) * (exp != 0))  # append implicit 1
+        exp_biased = np.array(exp).astype(int) - fp32_exponent_bias  # bias the extracted raw exponent (assume not denormal)
+        mant_normalized = mant + np.array((2**fp32_mantissa_bitwidth) * (exp != 0)).astype(int)  # append implicit 1
         # for this value to be representable as this ArbPrecFloatType:
         # the value must be within the representable range
-        range_ok = (value <= self.max()) and (value >= self.min())
+        range_ok = np.logical_and(value <= self.max(), value >= self.min())
         # the mantissa must be within representable range:
         # no set bits in the mantissa beyond the allowed number of bits (assume value is not denormal in fp32)
         # compute bits of precision lost to tapered precision if denormal, clamp to: 0 <= dnm_shift <= nrm_mantissa_bitwidth
-        dnm_shift = int(min(max(0, min_exponent - exp_biased), nrm_mantissa_bitwidth))
+        dnm_shift = np.array(np.minimum(np.maximum(0, min_exponent - exp_biased), nrm_mantissa_bitwidth)).astype(int)
         available_bits = nrm_mantissa_bitwidth - dnm_shift  # number of bits of precision available
-        mantissa_mask = "0" * available_bits + "1" * (fp32_nrm_mantissa_bitwidth - available_bits)
-        mantissa_ok = (mant_normalized & int(mantissa_mask, base=2)) == 0
-        return bool(mantissa_ok and range_ok)
+        mantissa_mask = (1 << (fp32_nrm_mantissa_bitwidth - available_bits)) - 1
+        mantissa_ok = (mant_normalized & mantissa_mask) == 0
+        return np.logical_and(mantissa_ok, range_ok)
 
     def is_integer(self):
         return False
@@ -286,7 +288,9 @@ class IntType(BaseDataType):
         return signed_max if self._signed else unsigned_max
 
     def allowed(self, value):
-        return (self.min() <= value) and (value <= self.max()) and float(value).is_integer()
+        value_is_integer = (np.round(value) == value)
+        value_is_bounded = np.logical_and(self.min() <= value, value <= self.max())
+        return np.logical_and(value_is_integer, value_is_bounded)
 
     def get_num_possible_values(self):
         return abs(self.min()) + abs(self.max()) + 1
@@ -334,7 +338,7 @@ class BipolarType(BaseDataType):
         return +1
 
     def allowed(self, value):
-        return value in [-1, +1]
+        return np.isin(value, [-1, +1])
 
     def get_num_possible_values(self):
         return 2
@@ -366,7 +370,7 @@ class TernaryType(BaseDataType):
         return +1
 
     def allowed(self, value):
-        return value in [-1, 0, +1]
+        return np.isin(value, [-1, 0, +1])
 
     def get_num_possible_values(self):
         return 3
