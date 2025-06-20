@@ -35,6 +35,7 @@ from qonnx.custom_op.general.intquant import IntQuant
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
+from qonnx.custom_op.general.quant import Quant
 from qonnx.custom_op.general.trunc import Trunc
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
