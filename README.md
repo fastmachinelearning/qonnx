@@ -11,10 +11,11 @@
 <img align="left" src="https://xilinx.github.io/finn/img/TFC_1W2A.onnx.png" alt="QONNX example" style="margin-right: 20px" width="200"/>
 
 
-QONNX (Quantized ONNX) introduces three new custom operators -- [`Quant`](docs/qonnx-custom-ops/quant_op.md), [`BipolarQuant`](docs/qonnx-custom-ops/bipolar_quant_op.md), and [`Trunc`](docs/qonnx-custom-ops/trunc_op.md) -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
-* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
+QONNX (Quantized ONNX) introduces several custom operators -- [`IntQuant`](docs/qonnx-custom-ops/intquant_op.md), [`FloatQuant`](docs/qonnx-custom-ops/floatquant_op.md), [`BipolarQuant`](docs/qonnx-custom-ops/bipolar_quant_op.md), and [`Trunc`](docs/qonnx-custom-ops/trunc_op.md) -- in order to represent arbitrary-precision integer and minifloat quantization in ONNX. This enables:
+* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other integer/fixed-point quantization.
+* Representation of minifloat quantization with configurable exponent and mantissa bits.
 * Quantization is an operator itself, and can be applied to any parameter or layer input.
-* Flexible choices for scaling factor and zero-point granularity.
+* Flexible choices for scaling factor and zero-point granularity, also enabling [OCP MX datatypes](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf).
 * Quantized values are carried using standard `float` datatypes to remain ONNX protobuf-compatible.
 
 This repository contains a set of Python utilities to work with QONNX models, including but not limited to:

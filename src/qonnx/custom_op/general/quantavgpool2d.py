@@ -32,8 +32,8 @@ from onnx import TensorProto, helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_op
 from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
+from qonnx.custom_op.registry import register_op
 from qonnx.util.basic import qonnx_make_model
 
 
