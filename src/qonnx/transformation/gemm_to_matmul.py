@@ -77,7 +77,7 @@ class GemmToMatMul(Transformation):
                     graph.value_info.append(inp_trans_out)
                     inp_trans_node = helper.make_node("Transpose", [n.input[0]], [inp_trans_out.name])
                     if hasattr(n, "metadata_props"):
-                       inp_trans_node.metadata_props.extend(n.metadata_props)
+                        inp_trans_node.metadata_props.extend(n.metadata_props)
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
                     dt = model.get_tensor_datatype(n.input[0])
@@ -101,7 +101,7 @@ class GemmToMatMul(Transformation):
                     graph.value_info.append(inp_trans_out)
                     inp_trans_node = helper.make_node("Transpose", [n.input[1]], [inp_trans_out.name])
                     if hasattr(n, "metadata_props"):
-                       inp_trans_node.metadata_props.extend(n.metadata_props)
+                        inp_trans_node.metadata_props.extend(n.metadata_props)
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
                     # Copy over the datatype

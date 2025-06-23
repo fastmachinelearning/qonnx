@@ -1,5 +1,5 @@
 import sys
-from onnx import helper, TensorProto
+from onnx import TensorProto, helper
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.registry import getCustomOp

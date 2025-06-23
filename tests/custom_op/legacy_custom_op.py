@@ -1,6 +1,7 @@
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.registry import register_op
 
+
 @register_op(domain="legacy_custom_op", op_type="LegacyAdd")
 class LegacyAdd(CustomOp):
     def get_nodeattr_types(self):

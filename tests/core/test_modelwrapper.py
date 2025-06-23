@@ -202,3 +202,31 @@ def test_modelwrapper_setting_unsetting_datatypes():
     model.set_tensor_datatype(test_tensor, DataType["BIPOLAR"])
     ret = model.get_tensor_datatype(test_tensor)
     assert ret == DataType["BIPOLAR"], "Tensor datatype should follow setting."
+
+
+def test_modelwrapper_set_tensor_shape_multiple_inputs():
+    # Create a model with two inputs
+    in1 = onnx.helper.make_tensor_value_info("in1", onnx.TensorProto.FLOAT, [1, 2])
+    in2 = onnx.helper.make_tensor_value_info("in2", onnx.TensorProto.FLOAT, [3, 4])
+    add_node = onnx.helper.make_node("Add", inputs=["in1", "in2"], outputs=["out"])
+    out = onnx.helper.make_tensor_value_info("out", onnx.TensorProto.FLOAT, [3, 4])
+
+    graph = onnx.helper.make_graph(
+        nodes=[add_node],
+        name="multi_input_graph",
+        inputs=[in1, in2],
+        outputs=[out],
+    )
+
+    onnx_model = qonnx_make_model(graph, producer_name="multi-input-model")
+    model = ModelWrapper(onnx_model)
+
+    # Set tensor shape for one of the inputs
+    new_shape = [5, 6]
+    model.set_tensor_shape("in1", new_shape)
+    assert model.get_tensor_shape("in1") == new_shape
+    # The other input shape should remain unchanged
+    assert model.get_tensor_shape("in2") == [3, 4]
+    # check that order of inputs is preserved
+    assert model.graph.input[0].name == "in1"
+    assert model.graph.input[1].name == "in2"
