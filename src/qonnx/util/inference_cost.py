@@ -114,11 +114,11 @@ def inference_cost(
             qnt_node.domain = "qonnx.custom_op.general"
         model = model.transform(InferShapes())
         model = model.transform(GiveUniqueParameterTensors())
-        model = model.transform(InferDataTypes())
+        model = model.transform(InferDataTypes(allow_scaledint_dtypes=True))
         model = model.transform(FoldConstants(exclude_op_types=[]))
         model = model.transform(RemoveUnusedTensors())
         model = model.transform(RemoveStaticGraphInputs())
-        model = model.transform(InferDataTypes())
+        model = model.transform(InferDataTypes(allow_scaledint_dtypes=True))
     model = model.transform(GiveUniqueNodeNames())
     model = model.transform(GiveReadableTensorNames())
     if output_onnx is not None:
