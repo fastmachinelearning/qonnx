@@ -1,4 +1,5 @@
-# Copyright (c) 2020 Xilinx, Inc.
+# Copyright (c) 2022 - 2025 Advanced Micro Devices, Inc.
+# Copyright (c) 2020 - 2022 Xilinx, Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -27,6 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import copy
+import inspect
 import onnx
 import onnx.helper as oh
 import onnx.numpy_helper as np_helper
@@ -38,7 +40,12 @@ import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
-from qonnx.transformation.general import RemoveStaticGraphInputs, RemoveUnusedTensors, SortGraph
+from qonnx.transformation.general import (
+    RemoveStaticGraphInputs,
+    RemoveUnusedTensors,
+    SortCommutativeInputsInitializerLast,
+    SortGraph,
+)
 
 
 class ModelWrapper:
@@ -119,27 +126,66 @@ class ModelWrapper:
         """Saves the wrapper ONNX ModelProto into a file with given name."""
         onnx.save(self._model_proto, filename)
 
-    def analysis(self, analysis_fxn):
+    def analysis(self, analysis_fxn, apply_to_subgraphs=False):
         """Runs given anaylsis_fxn on this model and return resulting dict."""
-        return analysis_fxn(self)
+        if apply_to_subgraphs == True:
+            assert "apply_to_subgraphs" in inspect.signature(analysis_fxn), "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
+            return analysis_fxn(self, apply_to_subgraphs)
+        else:
+            return analysis_fxn(self)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True):
+    def transform_subgraphs(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
+        """Applies given Transformation to all subgraphs of this ModelWrapper instance.
+
+        - make_deepcopy : operates on a new (deep)copy of model.
+        - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
+        - use_preorder_traversal : if True, uses preorder traversal for subgraph transformation,
+          otherwise postorder traversal is used.
+        """
+        for node in self.model.graph.node:
+                transformed_subgraph_attrs = []
+                for idx, attr in enumerate(node.attribute):
+                    if attr.type == onnx.AttributeProto.GRAPH:
+                        # this is a subgraph, add it to the list
+                        subgraph = self.make_subgraph_modelwrapper(attr.g)
+                        # apply the transformation to the subgraph
+                        subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+                        # update the new subgraph in the attrubute
+                        transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
+                # replace the attributes in the node with the transformed subgraph attributes
+                for idx, new_attr in transformed_subgraph_attrs:
+                    # remove the old attribute
+                    node.attribute.pop(idx)
+                    # add the new attribute
+                    node.attribute.insert(idx, new_attr)
+
+    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
         - cleanup : execute cleanup transformations before returning
+        - apply_to_subgraphs : if True, transformation is applied to all subgraphs of the model
         """
         transformed_model = self
         if make_deepcopy:
             transformed_model = copy.deepcopy(self)
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
+
+        if apply_to_subgraphs and use_preorder_traversal == False:
+            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+
         model_was_changed = True
         while model_was_changed:
             (transformed_model, model_was_changed) = transformation.apply(transformed_model)
         if cleanup:
             transformed_model.cleanup()
+
+        if apply_to_subgraphs and use_preorder_traversal:
+            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+
         return transformed_model
 
     def cleanup(self):
@@ -149,24 +195,14 @@ class ModelWrapper:
             RemoveUnusedTensors(),
             RemoveStaticGraphInputs(),
             SortGraph(),
+            SortCommutativeInputsInitializerLast(),
         ]
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
         return transformed_model
 
-    def check_compatibility(self):
-        """Checks this model for QONNX compatibility:
-
-        * no embedded subgraphs
-
-        * all tensor shapes are specified, including activations
-
-        * all constants are initializers
-        """
-        # TODO check for no embedded subgraphs
-        # TODO check that all shapes are inferred
-        # TODO check that all constants are initializers
-        return True
+    def make_subgraph_modelwrapper(self, subgraph):
+        return ModelWrapper(util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import))
 
     def get_tensor_datatype(self, tensor_name):
         """Returns the QONNX DataType of tensor with given name."""
@@ -177,8 +213,30 @@ class ModelWrapper:
             ret = util.get_by_name(ret.quant_parameter_tensor_names, "finn_datatype", "key")
             if ret is not None:
                 return DataType[ret.value]
-        # TODO maybe use native ONNX tensor type instead of assuming fp32?
-        return DataType["FLOAT32"]
+        onnx_dtype_to_qonnx_dtype = {
+            TensorProto.FLOAT: "FLOAT32",
+            TensorProto.FLOAT16: "FLOAT16",
+            # TODO: dtypes below need testing to ensure they do not break FINN,
+            # since it normally assumes float32 containers for these dtypes
+            # TensorProto.UINT8 : "UINT8",
+            # TensorProto.INT8 : "INT8",
+            # TensorProto.UINT16 : "UINT16",
+            # TensorProto.INT16 : "INT16",
+            # TensorProto.UINT32 : "UINT32",
+            # TensorProto.INT32 : "INT32",
+            # TensorProto.UINT64 : "UINT64",
+            # TensorProto.INT64 : "INT64",
+        }
+        tensor_vi = self.get_tensor_valueinfo(tensor_name)
+        if tensor_vi is None:
+            # some initialized tensors don't get ValueInfo even after shape inference
+            _, onnx_dtype = self.get_initializer(tensor_name, return_dtype=True)
+        else:
+            onnx_dtype = tensor_vi.type.tensor_type.elem_type
+        if onnx_dtype in onnx_dtype_to_qonnx_dtype.keys():
+            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]]
+        else:
+            return DataType["FLOAT32"]
 
     def set_tensor_datatype(self, tensor_name, datatype):
         """Sets the QONNX DataType of tensor with given name."""
@@ -263,16 +321,27 @@ class ModelWrapper:
             else:
                 dtype = old_vi.type.tensor_type.elem_type
         new_vi = oh.make_tensor_value_info(tensor_name, dtype, tensor_shape)
-        # find what container tHis tensor's ValueInfo lives in
+        # find what container this tensor's ValueInfo lives in
         # if not found anywhere, we assume it's a new value_info
         target_container = self.graph.value_info
         if util.get_by_name(self.graph.input, tensor_name) is not None:
             target_container = self.graph.input
+            # create list from inputs to find index
+            inputs = [x.name for x in self.graph.input]
+            # save index of input to preserve order
+            ind = inputs.index(tensor_name)
         if util.get_by_name(self.graph.output, tensor_name) is not None:
             target_container = self.graph.output
+            # create list from inputs to find index
+            outputs = [x.name for x in self.graph.output]
+            # save index of input to preserve order
+            ind = outputs.index(tensor_name)
         # remove from target container and add new
         util.remove_by_name(target_container, tensor_name)
-        target_container.append(new_vi)
+        if target_container == self.graph.value_info:
+            target_container.append(new_vi)
+        else:
+            target_container.insert(ind, new_vi)
 
     def set_initializer(self, tensor_name, tensor_value):
         """Sets the initializer value for tensor with given name."""
@@ -338,6 +407,13 @@ class ModelWrapper:
                 return (None, None)
             else:
                 return None
+
+    def del_initializer(self, initializer_name):
+        """Deletes an initializer from the model."""
+        graph = self._model_proto.graph
+        init = util.get_by_name(graph.initializer, initializer_name)
+        if not (init is None):
+            graph.initializer.remove(init)
 
     def find_producer(self, tensor_name):
         """Finds and returns the node that produces the tensor with given name."""
@@ -423,14 +499,24 @@ class ModelWrapper:
         """Checks if the given node is a fork, that is, the node has multiple
         direct successors"""
         direct_successors = self.find_direct_successors(node)
-        is_fork = False if direct_successors is None else (len(direct_successors) > 1)
+        # if the node output is also wired to a top-level output, it is still
+        # a fork with only 1 direct successor
+        if node.output[0] in [x.name for x in self.graph.output]:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 0)
+        else:
+            is_fork = False if direct_successors is None else (len(direct_successors) > 1)
         return is_fork
 
     def is_join_node(self, node):
         """Checks if the given node is a join, that is, the node has multiple
         direct predecessors"""
         direct_predecessors = self.find_direct_predecessors(node)
-        is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
+        # if the node input is also wired to a top-level input, it is still
+        # a fork with only 1 direct predecessor
+        if node.input[0] in [x.name for x in self.graph.input]:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 0)
+        else:
+            is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
         return is_join
 
     def get_all_tensor_names(self):
@@ -472,6 +558,9 @@ class ModelWrapper:
         # fill in the constants provided by the initializers (TensorProto to npy)
         for t in graph.initializer:
             execution_context[t.name] = np_helper.to_array(t)
+        # for nodes that use empty string as input (=default value), create a
+        # dummy entry in the context
+        execution_context[""] = None
         return execution_context
 
     def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
@@ -487,7 +576,9 @@ class ModelWrapper:
         # see https://github.com/fastmachinelearning/qonnx/issues/33
         for n in graph.node:
             for i in n.input:
-                ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
+                # skip tensor names with empty string (indicates defaults)
+                if i != "":
+                    ret = (self.get_tensor_shape(i, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
             for o in n.output:
                 ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret
@@ -505,7 +596,7 @@ class ModelWrapper:
     def get_metadata_prop(self, key):
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
-        metadata_prop = util.get_by_name(self.model.metadata_props, key, "key")
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
             return None
         else:
@@ -513,12 +604,12 @@ class ModelWrapper:
 
     def set_metadata_prop(self, key, value):
         """Sets metadata property with given key to the given value."""
-        metadata_prop = util.get_by_name(self.model.metadata_props, key, "key")
+        metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
             metadata_prop = onnx.StringStringEntryProto()
             metadata_prop.key = key
             metadata_prop.value = value
-            self.model.metadata_props.append(metadata_prop)
+            self.model.graph.metadata_props.append(metadata_prop)
         else:
             metadata_prop.value = value
 

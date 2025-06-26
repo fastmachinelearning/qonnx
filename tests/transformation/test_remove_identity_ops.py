@@ -34,13 +34,16 @@ from onnx import TensorProto, helper
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.transformation.general import SortGraph
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.remove import RemoveIdentityOps
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
-def insert_identity_op(model, op, as_first_node, approx):
+def insert_identity_op(model, op, as_first_node, approx, fork_after_id):
+    kwargs = {}
+    inp_ndims = 4 if as_first_node else 2
     if approx:
         zero_val = 0.000001
         one_val = 0.999999
@@ -51,28 +54,55 @@ def insert_identity_op(model, op, as_first_node, approx):
         val = np.asarray([zero_val], dtype=np.float32)
     elif op in ["Mul", "Div"]:
         val = np.asarray([one_val], dtype=np.float32)
+    elif op in ["Identity"]:
+        val = None
+    elif op == "Pad":
+        # opset 11 and above: padding specified as input and not attribute
+        val = np.asarray([0] * 2 * inp_ndims, dtype=np.int64)
+    elif op == "Dropout":
+        val = None
+        kwargs = {"ratio": 0.0}
     else:
         return
 
     graph = model.graph
-    if as_first_node:
-        identity_node = helper.make_node(op, ["inp", "value"], ["ident_out"])
-        graph.node.insert(0, identity_node)
-        graph.node[1].input[0] = "ident_out"
+    if val is None:
+        inplist = ["inp" if as_first_node else "div_out"]
     else:
-        identity_node = helper.make_node(op, ["div_out", "value"], ["ident_out"])
-        graph.node.insert(3, identity_node)
-        graph.node[-1].input[0] = "ident_out"
-    model.set_initializer("value", val)
+        model.set_initializer("value", val)
+        inplist = ["inp" if as_first_node else "div_out", "value"]
+    identity_node = helper.make_node(op, inplist, ["ident_out"], **kwargs)
+    old_2nd_node = graph.node[1]
+    old_last_node = graph.node[-1]
+    graph.node.append(identity_node)
+    if fork_after_id:
+        graph.node.append(helper.make_node("Mul", ["ident_out", "mul2"], ["mulbranch0_out"]))
+        model.set_initializer("mul2", np.asarray([2.0], dtype=np.float32))
+        graph.node.append(helper.make_node("Mul", ["ident_out", "mul3"], ["mulbranch1_out"]))
+        model.set_initializer("mul3", np.asarray([3.0], dtype=np.float32))
+        graph.node.append(helper.make_node("Add", ["mulbranch0_out", "mulbranch1_out"], ["idfork_out"]))
+        subgraph_out = "idfork_out"
+    else:
+        subgraph_out = "ident_out"
+
+    if as_first_node:
+        old_2nd_node.input[0] = subgraph_out
+    else:
+        old_last_node.input[0] = subgraph_out
+    model = model.transform(SortGraph())
 
     return model
 
 
 # identity operations to be inserted
-@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div"])
+@pytest.mark.parametrize("op", ["Add", "Sub", "Mul", "Div", "Identity", "Pad", "Dropout"])
 @pytest.mark.parametrize("approx", [False, True])
 @pytest.mark.parametrize("as_first_node", [False, True])
-def test_remove_identity_ops(op, as_first_node, approx):
+@pytest.mark.parametrize("fork_before_id", [False, True])
+@pytest.mark.parametrize("fork_after_id", [False, True])
+def test_remove_identity_ops(op, as_first_node, approx, fork_before_id, fork_after_id):
+    if approx and not (op in ["Add", "Sub", "Mul", "Div"]):
+        pytest.skip(f"approx=True not relevant for {op}")
     # set up onnx model
     inp = helper.make_tensor_value_info("inp", TensorProto.FLOAT, [1, 4, 1, 1])
     mul = helper.make_tensor_value_info("mul", TensorProto.FLOAT, [])
@@ -105,18 +135,21 @@ def test_remove_identity_ops(op, as_first_node, approx):
     model.set_initializer("shape", shape_values)
     model.set_initializer("div", div_values)
     model.set_initializer("matmul", matmul_values)
-    insert_identity_op(model, op, as_first_node, approx)
+    insert_identity_op(model, op, as_first_node, approx, fork_after_id)
+    model = model.transform(InferShapes())
     model = model.transform(InferShapes())
     model = model.transform(InferDataTypes())
     idict = {"inp": inp_values}
-    odict = oxe.execute_onnx(model, idict)
-    out_before = odict["outp"]
+    odict_before = oxe.execute_onnx(model, idict)
     num_of_nodes_before = len(model.graph.node)
-
+    if fork_before_id and not as_first_node:
+        divout_vi = model.get_tensor_valueinfo("div_out")
+        model.graph.output.append(divout_vi)
+        model.graph.value_info.remove(divout_vi)
     model = model.transform(RemoveIdentityOps())
     num_of_nodes_after = len(model.graph.node)
     assert num_of_nodes_before - 1 == num_of_nodes_after
 
-    odict = oxe.execute_onnx(model, idict)
-    out_after = odict["outp"]
-    assert np.isclose(out_before, out_after, atol=1e-3).all()
+    odict_after = oxe.execute_onnx(model, idict)
+    outputs_same = [np.isclose(odict_before[tname], odict_after[tname], atol=1e-3).all() for tname in odict_before.keys()]
+    assert all(outputs_same)

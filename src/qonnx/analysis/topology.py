@@ -56,7 +56,10 @@ def all_tensors_f32(model):
     annotations notwithstanding.
 
     Returns {"all_tensors_f32": Bool}."""
-    all_tensors = model.make_empty_exec_context().items()
+    exec_ctx = model.make_empty_exec_context()
+    # remove the special empty string entry in the context since it has no tensor
+    exec_ctx.pop("")
+    all_tensors = exec_ctx.items()
     non_f32_tensors = filter(lambda x: x[1].dtype != np.float32, all_tensors)
     return {"all_tensors_f32": len(list(non_f32_tensors)) == 0}
 

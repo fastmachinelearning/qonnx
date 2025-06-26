@@ -1,13 +1,15 @@
-### <a name="Quant"></a><a name="abs">**Quant**</a>
+### <a name="Quant"></a><a name="abs">**IntQuant**</a>
 
-Calculates the quantized values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
+Calculates the integer-quantized values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
 Additionally, takes three floats as input, which define the scale, zero-point and bit-width of the quantization,
 which may be scalars or tensors with number of dimensions equal to the input data tensor, for e.g. tensor-wise
 or channel-wise quantization.
 The attributes narrow and signed define how the bits of the quantization are interpreted, while the attribute
 rounding_mode defines how quantized values are rounded.
 
-Note: This operator does not work for binary or bipolar quantization, for this purpose the simpler BipolarQuant node exists.
+Notes:
+* This operator was previously named `Quant` but is renamed to `IntQuant` to distinguish it from `FloatQuant`. For a transition period, qonnx will transparently handle `Quant` as `IntQuant` for backwards compatibility reasons, but only `IntQuant` should be used for new models.
+* This operator does not work for binary or bipolar quantization, for this purpose the simpler BipolarQuant node exists.
 
 #### Version
 
@@ -21,7 +23,7 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dt><tt>narrow</tt> : int (default is 0)</dt>
 <dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
 <dt><tt>rounding_mode</tt> : string (default is "ROUND")</dt>
-<dd>Defines how rounding should be applied during quantization. Currently available modes are: "ROUND", "CEIL" and "FLOOR". Here "ROUND" implies a round-to-even operation. Lowercase variants for the rounding mode string are also supported: "round", "ceil", "floor".</dd>
+<dd>Defines how rounding should be applied during quantization. Avaiable options are ROUND, CEIL, FLOOR, UP, DOWN, HALF_UP, HALF_DOWN. The rounding modes are described in the table bellow. The names of rounding modes can be upper case or lower case.</dd>
 </dl>
 
 #### Inputs
@@ -46,9 +48,27 @@ This operator is not part of the ONNX standard and is not currently versioned.
 </dl>
 
 
+#### Rounding modes
+<details>
+<summary>rounding modes</summary>
+
+| **Number \ ROUNDING_MODE** | ROUND=HALF_EVEN | CEIL | FLOOR | UP | DOWN | HALF_UP | HALF_DOWN |
+|----------------------------|-----------------|------|-------|----|------|---------|-----------|
+| 5.5                        | 6               | 6    | 5     | 6  | 5    | 6       | 5         |
+| 2.5                        | 2               | 3    | 2     | 3  | 2    | 3       | 2         |
+| 1.6                        | 2               | 2    | 1     | 2  | 1    | 2       | 2         |
+| 1.1                        | 1               | 2    | 1     | 2  | 1    | 1       | 1         |
+| 1.0                        | 1               | 1    | 1     | 1  | 1    | 1       | 1         |
+| -1.0                       | -1              | -1   | -1    | -1 | -1   | -1      | -1        |
+| -1.1                       | -1              | -1   | -2    | -2 | -1   | -1      | -1        |
+| -1.6                       | -2              | -1   | -2    | -2 | -1   | -2      | -2        |
+| -2.5                       | -2              | -2   | -3    | -3 | -2   | -3      | -2        |
+| -5.5                       | -6              | -5   | -6    | -6 | -5   | -6      | -5        |
+</details>
+
 #### Examples
 <details>
-<summary>Quant</summary>
+<summary>IntQuant</summary>
 
 ```python
 from onnx import helper
@@ -65,7 +85,7 @@ rounding_mode = "ROUND"
 
 # Create node
 node = helper.make_node(
-    'Quant',
+    'IntQuant',
     domain='finn.custom_op.general',
     inputs=['x', 'scale', 'zeropt', 'bitwidth'],
     outputs=['y'],
@@ -79,7 +99,7 @@ node = helper.make_node(
 output_ref = quant(x, scale, zeropt, bitwidth, signed, narrow, rounding_mode)
 
 # Execute node and compare
-expect(node, inputs=[x, scale, zeropt, bitwidth], outputs=[output_ref], name='test_quant')
+expect(node, inputs=[x, scale, zeropt, bitwidth], outputs=[output_ref], name='test_intquant')
 
 ```
 
@@ -89,7 +109,7 @@ expect(node, inputs=[x, scale, zeropt, bitwidth], outputs=[output_ref], name='te
 #### Sample Implementation
 
 <details>
-<summary>Quant</summary>
+<summary>IntQuant</summary>
 
 ```python
 # SPDX-License-Identifier: Apache-2.0
@@ -179,7 +199,7 @@ def max_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
     return value
 
 def resolve_rounding_mode(mode_string):
-    """Resolve the rounding mode string of Quant and Trunc ops
+    """Resolve the rounding mode string of IntQuant and Trunc ops
     to the corresponding numpy functions."""
     if mode_string == "ROUND":
         return np.round
