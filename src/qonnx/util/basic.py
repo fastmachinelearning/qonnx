@@ -288,13 +288,9 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
             continue
         current_values = execution_context[tensor_name]
         updated_values = current_values
-        has_to_be_rounded = False
-        # TODO: vectorize with numpy
-        for value in np.nditer(current_values):
-            if not dtype.allowed(value):
-                has_to_be_rounded = True
-                break
-        if has_to_be_rounded:
+        is_allowed = dtype.allowed(current_values)
+        is_allowed = is_allowed.all() if isinstance(is_allowed, np.ndarray) else is_allowed
+        if not is_allowed:
             updated_values = np.round(current_values)
             warnings.warn(
                 "The values of tensor {} can't be represented "
@@ -306,15 +302,15 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
         if max_error <= get_execution_error_thresh():
             if check_values is True:
                 # check again if values can now be represented with set finn datatype
-                # TODO: vectorize with numpy
-                for value in np.nditer(updated_values):
-                    if not dtype.allowed(value):
-                        raise Exception(
-                            """Values can't be represented with set
-                                finn datatype ({}) for input {}""".format(
-                                dtype, tensor_name
-                            )
+                is_allowed = dtype.allowed(updated_values)
+                is_allowed = is_allowed.all() if isinstance(is_allowed, np.ndarray) else is_allowed
+                if not is_allowed:
+                    raise Exception(
+                        """Values can't be represented with set
+                            finn datatype ({}) for input {}""".format(
+                            dtype, tensor_name
                         )
+                    )
             execution_context[tensor_name] = updated_values
         else:
             raise Exception(
