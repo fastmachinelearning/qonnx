@@ -54,6 +54,33 @@ def _dims_to_layout(model, node, ndims):
                 else:
                     return DataLayout.UNKNOWN
             else:
+                # Also try to propagate input data layout for "FINN ops" (if number of dims matches)
+                input_ndims = len(model.get_tensor_shape(node.input[0]))
+                if input_ndims == ndims and (layout := model.get_tensor_layout(node.input[0])):
+                    # TODO: There are multi-input operations, why should the first
+                    #  determine the output layout?
+                    return layout
+                else:
+                    # Fallback: guess based on number of output dims
+                    if ndims == 4:
+                        return DataLayout.NHWC
+                    elif ndims == 3:
+                        return DataLayout.NWC
+                    elif ndims == 2:
+                        return DataLayout.NC
+                    else:
+                        return DataLayout.UNKNOWN
+        else:
+            # Check whether there is a layout annotation for the first input
+            # TODO: There are multi-input operations, why should the first
+            #  determine the output layout?
+            # TODO: Shouldn't we at least check that the number of dims matches?
+            if layout := model.get_tensor_layout(node.input[0]):
+                # If annotation present: propagate input layout to output
+                # TODO: this won't work for concat, squeeze/unsqueeze/reshape...
+                return layout
+            # Fallback to the same defaults as for the FINN-Ops above
+            else:
                 if ndims == 4:
                     return DataLayout.NHWC
                 elif ndims == 3:
@@ -62,10 +89,6 @@ def _dims_to_layout(model, node, ndims):
                     return DataLayout.NC
                 else:
                     return DataLayout.UNKNOWN
-        else:
-            # propagate input layout to output
-            # TODO this won't work for concat, squeeze/unsqueeze/reshape...
-            return model.get_tensor_layout(node.input[0])
 
 
 def _infer_node_data_layout(model, node):
