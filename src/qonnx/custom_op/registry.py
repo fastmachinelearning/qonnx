@@ -35,38 +35,80 @@ from qonnx.util.basic import get_preferred_onnx_opset
 # global registry mapping (domain, op_type) -> CustomOp subclass
 CUSTOM_OP_REGISTRY = {}
 
+# global registry for custom op domains
+_CUSTOM_DOMAINS = set()
 
-def register_op(domain, op_type):
-    """Decorator for registering CustomOp classes."""
+# global registry for custom op metadata
+_OP_METADATA = {}
+
+
+def register_custom_domain(domain):
+    """Register a domain as containing custom ops."""
+    _CUSTOM_DOMAINS.add(domain)
+
+
+def is_custom_op_domain(domain):
+    """Check if domain is registered for custom ops."""
+    return any(domain.startswith(d) for d in _CUSTOM_DOMAINS)
+
+
+def hasCustomOp(domain, op_type):
+    """Check if a custom op exists without creating an instance.
+    
+    Args:
+        domain: The domain of the custom op
+        op_type: The op_type of the custom op
+        
+    Returns:
+        bool: True if the op is registered, False otherwise
+    """
+    return (domain, op_type) in CUSTOM_OP_REGISTRY
+
+
+def get_ops_in_domain(domain):
+    """Get all registered ops in a domain.
+    
+    Args:
+        domain: The domain to query
+        
+    Returns:
+        List[Tuple[str, Type[CustomOp]]]: List of (op_type, class) tuples
+    """
+    return [(op_type, cls) for (d, op_type), cls in CUSTOM_OP_REGISTRY.items() 
+            if d == domain]
+
+
+def register_op(domain, op_type, metadata=None):
+    """Decorator for registering CustomOp classes.
+    
+    Args:
+        domain: The domain for the custom op
+        op_type: The op_type for the custom op
+        metadata: Optional dict of metadata about the op (backend, version, etc.)
+    """
 
     def decorator(cls):
+        # Auto-register the domain when an op is registered
+        register_custom_domain(domain)
         CUSTOM_OP_REGISTRY[(domain, op_type)] = cls
+        if metadata is not None:
+            _OP_METADATA[(domain, op_type)] = metadata
         return cls
 
     return decorator
 
 
-def _load_entry_points():
-    """Load custom op modules registered via entry points."""
-
-    try:
-        eps = metadata.entry_points()
-        # compatibility between Python versions
-        if hasattr(eps, "select"):
-            eps = eps.select(group="qonnx_custom_ops")
-        else:
-            eps = eps.get("qonnx_custom_ops", [])
-        for ep in eps:
-            try:
-                ep.load()
-            except Exception as e:  # pragma: no cover - import failure warning
-                warnings.warn(f"Failed to load custom op entry point {ep.name}: {e}")
-    except Exception as e:  # pragma: no cover - metadata failure warning
-        warnings.warn(f"Failed to query custom op entry points: {e}")
-
-
-# load entry points on module import
-_load_entry_points()
+def get_op_metadata(domain, op_type):
+    """Get metadata for a registered custom op.
+    
+    Args:
+        domain: The domain of the custom op
+        op_type: The op_type of the custom op
+        
+    Returns:
+        dict: The metadata dict if available, None otherwise
+    """
+    return _OP_METADATA.get((domain, op_type))
 
 
 def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
