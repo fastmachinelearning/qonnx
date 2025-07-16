@@ -33,11 +33,11 @@ from onnx import TensorProto, helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 from qonnx.util.basic import qonnx_make_model
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="QuantAvgPool2d")
+@register_custom_op
 class QuantAvgPool2d(CustomOp):
     """CustomOp that corresponds to the quantized average pooling
     layer from Brevitas"""

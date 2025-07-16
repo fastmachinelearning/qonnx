@@ -47,9 +47,9 @@ QONNX uses many custom operations (op_type in ONNX NodeProto) that are not defin
 
 Custom ops can be registered automatically via Python entry points using the
 ``qonnx_custom_ops`` group. Each operator class should be decorated with
-``@register_op(domain="...", op_type="...")`` from
-``qonnx.custom_op.registry``. Packages installed with such an entry point will
-be discovered on import and their ops made available through
+``@register_custom_op`` from ``qonnx.custom_op.registry``, which automatically
+infers the domain from the module path. Packages installed with such an entry
+point will be discovered on import and their ops made available through
 ``getCustomOp``.
 
 

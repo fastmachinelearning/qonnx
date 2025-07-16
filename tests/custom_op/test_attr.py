@@ -31,10 +31,10 @@ import onnx.parser as oprs
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import getCustomOp, register_op
+from qonnx.custom_op.registry import getCustomOp, register_custom_op
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="AttrTestOp")
+@register_custom_op
 class AttrTestOp(CustomOp):
     def get_nodeattr_types(self):
         my_attrs = {"tensor_attr": ("t", True, np.asarray([])), "strings_attr": ("strings", True, [""])}

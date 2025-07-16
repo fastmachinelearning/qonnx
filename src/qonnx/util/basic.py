@@ -62,10 +62,10 @@ def qonnx_make_model(graph_proto, **kwargs):
     return make_model(graph_proto, **kwargs)
 
 
-def is_finn_op(op_type):
-    "Return whether given op_type string is a QONNX or FINN custom op"
+def is_finn_op(domain):
+    "Return whether given domain string is a QONNX or FINN custom op domain"
     from qonnx.custom_op.registry import is_custom_op_domain
-    return is_custom_op_domain(op_type)
+    return is_custom_op_domain(domain)
 
 
 def get_num_default_workers():

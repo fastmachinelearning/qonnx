@@ -31,7 +31,7 @@ import onnx.helper as helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 
 
 def multithreshold(v, thresholds, out_scale=None, out_bias=None):
@@ -85,7 +85,7 @@ def multithreshold(v, thresholds, out_scale=None, out_bias=None):
     return out_scale * ret.reshape(v.shape) + out_bias
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="MultiThreshold")
+@register_custom_op
 class MultiThreshold(CustomOp):
     """Class that corresponds to a multithresholding node."""
 

@@ -31,7 +31,7 @@ import numpy as np
 import qonnx.util.basic as util
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 
 # adapted from A. Karpathy's CS231 im2col code
 # utilities to generate a patch matrix from a multichannel image
@@ -141,7 +141,7 @@ def im2col_indices_nchw(
 # oh/ow and kh/kw will also be 1 in this case
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="Im2Col")
+@register_custom_op
 class Im2Col(CustomOp):
     def get_nodeattr_types(self):
         return {

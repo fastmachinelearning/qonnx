@@ -33,7 +33,7 @@ from onnx import TensorProto, helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.quant import resolve_rounding_mode
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 
 
 def compute_default_exponent_bias(exponent_bitwidth):
@@ -121,7 +121,7 @@ def float_quant(
     return x_q * scale  # , self.saturating, self.inf_values, self.nan_values
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="FloatQuant")
+@register_custom_op
 class FloatQuant(CustomOp):
     """Floating point quantization operation for QONNX.
 

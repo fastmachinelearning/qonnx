@@ -33,7 +33,7 @@ from onnx import TensorProto, helper
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 from qonnx.util.basic import qonnx_make_model
 
 
@@ -45,7 +45,7 @@ def compute_pool_output_dim(ifm_dim, k, stride, pad=0, ceil_mode=0):
         return int(np.floor(((ifm_dim + 2 * pad - k) / stride) + 1))
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="MaxPoolNHWC")
+@register_custom_op
 class MaxPoolNHWC(CustomOp):
     # a MaxPool node, but using the NHWC data layout
 

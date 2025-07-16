@@ -30,10 +30,10 @@ import numpy as np
 from onnx import TensorProto, helper
 
 from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 
 
-@register_op(domain="qonnx.custom_op.channels_last", op_type="BatchNormalization")
+@register_custom_op
 class BatchNormalization(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:

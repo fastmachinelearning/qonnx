@@ -29,10 +29,10 @@
 from qonnx.custom_op.general.intquant import IntQuant
 from qonnx.custom_op.general.intquant import int_quant as quant
 from qonnx.custom_op.general.intquant import max_int, min_int, resolve_rounding_mode
-from qonnx.custom_op.registry import register_op
+from qonnx.custom_op.registry import register_custom_op
 
 # Create alias and register it separately for "Quant" op_type
-@register_op(domain="qonnx.custom_op.general", op_type="Quant")
+@register_custom_op
 class Quant(IntQuant):
     """Alias for IntQuant to support legacy \"Quant\" op_type."""
     pass
