@@ -145,6 +145,10 @@ class MultiThreshold(CustomOp):
         # TODO: Seems like a rather sketchy solution to support arbitrary data
         #  layouts. This does not even validate the assumption of channel last
         #  layout.
+        if v.ndim == 3:
+            orig_shape = v.shape
+            v = np.expand_dims(v, axis=0)
+
         if v.ndim not in {2, 4}:
             # Remember the original shape to be restored later
             orig_shape = v.shape
