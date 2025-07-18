@@ -31,7 +31,6 @@ import onnx.helper as helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_op
 
 
 def xnorpopcountmatmul(inp0, inp1):
@@ -61,7 +60,6 @@ def xnorpopcountmatmul(inp0, inp1):
     return (out + K) * 0.5
 
 
-@register_op(domain="qonnx.custom_op.general", op_type="XnorPopcountMatMul")
 class XnorPopcountMatMul(CustomOp):
     """Class that corresponds to a XNOR-popcount matrix
     multiplication node."""
