@@ -33,7 +33,6 @@ import string
 import warnings
 
 from qonnx.core.datatype import DataType
-from qonnx.custom_op.registry import get_ops_in_domain
 
 # TODO solve by moving onnx-dependent fxns to onnx.py
 # finn-examples uses parts of qonnx without having
@@ -75,6 +74,8 @@ def is_finn_op(domain):
         return False
     
     # Validate that the domain actually exists and has CustomOps
+    # Lazy import to avoid circular dependency
+    from qonnx.custom_op.registry import get_ops_in_domain
     return len(get_ops_in_domain(domain)) > 0
 
 
