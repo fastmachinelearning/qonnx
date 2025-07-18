@@ -29,10 +29,8 @@
 from onnx import helper
 
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_custom_op
 
 
-@register_custom_op
 class DebugMarker(CustomOp):
     def get_nodeattr_types(self):
         return {"export_debug_name": ("s", True, "")}

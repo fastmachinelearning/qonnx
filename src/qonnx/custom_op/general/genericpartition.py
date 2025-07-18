@@ -29,10 +29,8 @@
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_custom_op
 
 
-@register_custom_op
 class GenericPartition(CustomOp):
     """Class that corresponds to the meta/container node GenericPartition
     which is a placeholder for a group of nodes that have been separated

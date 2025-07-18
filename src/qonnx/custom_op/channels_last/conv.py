@@ -31,10 +31,8 @@ from onnx import TensorProto, helper
 
 from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
 from qonnx.custom_op.general.im2col import compute_conv_output_dim
-from qonnx.custom_op.registry import register_custom_op
 
 
-@register_custom_op
 class Conv(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:

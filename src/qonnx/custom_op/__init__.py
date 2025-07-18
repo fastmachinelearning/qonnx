@@ -26,15 +26,5 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from qonnx.custom_op.registry import register_domain
-
-# Register QONNX domains (module path defaults to domain name)
-register_domain("qonnx.custom_op.general")
-register_domain("qonnx.custom_op.channels_last")
-
-# Register parent domain for hierarchy checking
-register_domain("qonnx.custom_op")
-
-# Special case: Brevitas compatibility domain 
-# (QONNX handles Brevitas ops for backward compatibility)
-register_domain("onnx.brevitas")
+# Domain aliases are automatically handled by the registry
+# The onnx.brevitas -> qonnx.custom_op.general mapping is built into the registry

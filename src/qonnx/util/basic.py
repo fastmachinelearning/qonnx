@@ -33,6 +33,7 @@ import string
 import warnings
 
 from qonnx.core.datatype import DataType
+from qonnx.custom_op.registry import get_ops_in_domain
 
 # TODO solve by moving onnx-dependent fxns to onnx.py
 # finn-examples uses parts of qonnx without having
@@ -63,9 +64,18 @@ def qonnx_make_model(graph_proto, **kwargs):
 
 
 def is_finn_op(domain):
-    "Return whether given domain string is a QONNX or FINN custom op domain"
-    from qonnx.custom_op.registry import is_custom_op_domain
-    return is_custom_op_domain(domain)
+    """Return whether given domain string is a QONNX or FINN custom op domain.
+    
+    Validates that:
+    1. The domain starts with known custom op prefixes (qonnx., finn., onnx.brevitas)
+    2. The domain exists and contains at least one CustomOp
+    """
+    # Check if domain has known custom op prefix
+    if not domain.startswith(("qonnx.", "finn.", "onnx.brevitas")):
+        return False
+    
+    # Validate that the domain actually exists and has CustomOps
+    return len(get_ops_in_domain(domain)) > 0
 
 
 def get_num_default_workers():

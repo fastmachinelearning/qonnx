@@ -31,10 +31,9 @@ import onnx.parser as oprs
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import getCustomOp, register_custom_op
+from qonnx.custom_op.registry import getCustomOp, add_op_to_domain
 
 
-@register_custom_op
 class AttrTestOp(CustomOp):
     def get_nodeattr_types(self):
         my_attrs = {"tensor_attr": ("t", True, np.asarray([])), "strings_attr": ("strings", True, [""])}
@@ -60,6 +59,9 @@ class AttrTestOp(CustomOp):
 
 
 def test_attr():
+    # Add the test op to the domain
+    add_op_to_domain("qonnx.custom_op.general", "AttrTestOp", AttrTestOp)
+    
     ishp = (1, 10)
     wshp = (1, 3)
     oshp = wshp
@@ -86,6 +88,8 @@ def test_attr():
     """
     model = oprs.parse_model(input)
     model = ModelWrapper(model)
+    
+    # Now getCustomOp should find it through the manual registry
     inst = getCustomOp(model.graph.node[0])
 
     w_prod = inst.get_nodeattr("tensor_attr")

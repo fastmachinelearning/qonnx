@@ -32,7 +32,6 @@ import onnx.helper as helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.quant import resolve_rounding_mode
-from qonnx.custom_op.registry import register_custom_op
 
 
 def trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode):
@@ -59,7 +58,6 @@ def trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding
     return y
 
 
-@register_custom_op
 class Trunc(CustomOp):
     """Generic truncation operation for QONNX. Takes four inputs:
     - input tensor to truncate

@@ -31,7 +31,6 @@ from onnx import TensorProto, helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import register_custom_op
 
 
 def min_int(signed: bool, narrow_range: bool, bit_width: int) -> int:
@@ -166,7 +165,6 @@ def resolve_rounding_mode(mode_string):
         raise ValueError(f"Could not resolve rounding mode called: {normalized_mode_string}")
 
 
-@register_custom_op
 class IntQuant(CustomOp):
     """Generic quantization operation for QONNX. Takes four inputs:
     - input tensor to quantize
