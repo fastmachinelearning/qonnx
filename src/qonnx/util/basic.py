@@ -63,14 +63,14 @@ def qonnx_make_model(graph_proto, **kwargs):
 
 
 def is_finn_op(domain):
-    """Return whether given domain string is a QONNX or FINN custom op domain.
+    """Return whether given domain string is a QONNX, FINN, or Brainsmith custom op domain.
     
     Validates that:
-    1. The domain starts with known custom op prefixes (qonnx., finn., onnx.brevitas)
+    1. The domain starts with known custom op prefixes (qonnx., finn., onnx.brevitas, brainsmith.)
     2. The domain exists and contains at least one CustomOp
     """
     # Check if domain has known custom op prefix
-    if not domain.startswith(("qonnx.", "finn.", "onnx.brevitas")):
+    if not domain.startswith(("qonnx.", "finn.", "onnx.brevitas", "brainsmith.")):
         return False
     
     # Validate that the domain actually exists and has CustomOps
