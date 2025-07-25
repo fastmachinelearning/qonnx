@@ -381,7 +381,7 @@ def test_fixedpt_quantize_from_dict(test_case):
     fxp_transform = FixedPointQuantizeParamsFromDict(test_details["quant_dict"], rounding_mode=test_details["rounding_mode"])
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
-    os.unlink(dl_file)
+
     for tname in test_details["quant_dict"].keys():
         tdtype = DataType[test_details["quant_dict"][tname]]
         tdata = model.get_initializer(tname)
@@ -398,6 +398,8 @@ def test_fixedpt_quantize_from_dict(test_case):
         if test_details["rounding_mode"] == "ROUND":
             allowed_max_error /= 2
         assert fxp_transform.max_err[tname] <= allowed_max_error
+
+    os.unlink(dl_file)
 
 fixedpt_details = {
     "FINN-CNV_W2A2_round_0": {
@@ -476,7 +478,6 @@ def test_fixedpt_quantize(test_case):
     tdtype = DataType[tdtype]
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
-    os.unlink(dl_file)
 
     # Check if all the valid tensors are traversed by the transform
     assert set(test_details["quant_tensors"]) == set(fxp_transform.max_err.keys())
@@ -494,3 +495,5 @@ def test_fixedpt_quantize(test_case):
 
         # Check if the maximum error is within the LSB bound of the datatype
         assert fxp_transform.max_err[tname] <= allowed_max_error
+
+    os.unlink(dl_file)
