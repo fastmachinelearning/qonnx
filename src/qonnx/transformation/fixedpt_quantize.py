@@ -62,9 +62,6 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 if isinstance(tdtype, str):
                     tdtype = DataType[tdtype]
                 current_dtype = model.get_tensor_datatype(tname)
-                if current_dtype == tdtype:
-                    self.max_err[tname] = 0
-                    continue
                 if current_dtype.is_fixed_point():
                     warn(f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. Recasting to {tdtype.get_canonical_name()}")
 
