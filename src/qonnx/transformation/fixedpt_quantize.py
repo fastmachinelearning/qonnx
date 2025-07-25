@@ -104,29 +104,18 @@ class FixedPointQuantizeParams(Transformation):
             self.fixedpt_dtype = fixedpt_dtype
         self.op_filter = op_filter
         self.max_err = {}
-        self.round_func = resolve_rounding_mode(rounding_mode)
+        self.rounding_mode = rounding_mode
 
     def apply(self, model: ModelWrapper):
         ops = [op for op in model.graph.node if self.op_filter(op)]
+        fixedpt_dict = {}
         for op in ops:
             for inp_name in op.input:
-                if (in1_t := model.get_initializer(inp_name)) is not None:
-                    current_dtype = model.get_tensor_datatype(inp_name)
-                    if current_dtype == self.fixedpt_dtype:
-                        self.max_err[inp_name] = 0
-                        continue
-                    if current_dtype.is_fixed_point():
-                        warn(f"Tensor {inp_name} is already a {current_dtype.get_canonical_name()} type. Recasting to {self.fixedpt_dtype.get_canonical_name()}")
+                if (model.get_initializer(inp_name)) is not None:
+                    fixedpt_dict[inp_name] = self.fixedpt_dtype
 
-                    in1_t_new = self.round_func(in1_t.astype(np.float32) / self.fixedpt_dtype.scale_factor()) * self.fixedpt_dtype.scale_factor()
-                    if (in1_t_new.max() > self.fixedpt_dtype.max()) or (in1_t_new.min() < self.fixedpt_dtype.min()):
-                        warn(
-                            f"Range of {inp_name} [{in1_t_new.min():.3f}, {in1_t_new.max():.3f}] greater than"
-                            f"{self.fixedpt_dtype.get_canonical_name()} [{self.fixedpt_dtype.min():.3f}, {self.fixedpt_dtype:.max():.3f}], clipping.")
-                        in1_t_new = np.clip(in1_t_new, self.fixedpt_dtype.min(), self.fixedpt_dtype.max())
-                    model.set_initializer(inp_name, in1_t_new)
-                    model.set_tensor_datatype(inp_name, self.fixedpt_dtype)
-
-                    self.max_err[inp_name] = np.linalg.norm(in1_t.flatten() - in1_t_new.flatten(), ord=np.inf)
+        fxpdict_transform = FixedPointQuantizeParamsFromDict(fixedpt_dict, self.rounding_mode)
+        model = model.transform(fxpdict_transform)
+        self.max_err = fxpdict_transform.max_err
 
         return (model, False)
