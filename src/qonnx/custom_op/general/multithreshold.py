@@ -33,55 +33,63 @@ from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 
 
-def multithreshold(v, thresholds, out_scale=None, out_bias=None):
+def multithreshold(v, thresholds, out_scale=None, out_bias=None, channels_last=False):
     """Given a set of threshold values t={t_0, t_1 ... t_n} the successive
     thresholding maps any real number x to an integer in the interval [0, n],
     where the returned integer is the number of thresholds x is greater than
     or equal to.
 
     The output tensor will be scaled by out_scale and biased by out_bias."""
-    # the inputs are expected to be in the shape (N,C,H,W) or (N, C)
-    # the MultiThreshold node supports a data_layout attribute that can be set
-    # to 'NHWC' to support (N,H,W,C) data layout mode for in-out as well
-    # N : Batch size
-    # C : Number of channels
-    # H : Heigth of the input images
-    # W : Width of the input images
-    #
-    # the thresholds are expected to be in the shape (C, B)
+    # if channels_last=False:
+    # the inputs are expected to be in the shape (N,C,_) where:
+    #  C is the number of channels
+    #  _ represents any (including zero) number of spatial dims
+    # if channels_last=True, expected input shape is (N,_,C)
+    # the thresholds are expected to be in the shape (C, B) where
     # C : Number of channels (must be the same value as C in input tensor
     #     or 1 if all channels use the same threshold value)
     # B : Desired activation steps => i.e. for 4-bit activation,
-    #     B=7 (2^(n)-1 and n=4)
+    #     B=7 (2^(n)-1 and n=4), but can also be fewer
     # the output tensor will be scaled by out_scale and biased by out_bias
-    # assert threshold shape
+    # assert threshold shape - threshold channels must be either equal
+    # to input channels, or be a single global scalar
     is_global_threshold = thresholds.shape[0] == 1
+    channel_axis = -1 if channels_last else 1
     assert (
-        v.shape[1] == thresholds.shape[0]
+        v.shape[channel_axis] == thresholds.shape[0]
     ) or is_global_threshold, """"Threshold
     shape incorrect"""
-    # save the required shape sizes for the loops (N, C and B)
-    num_batch = v.shape[0]
-    num_channel = v.shape[1]
-    num_act = thresholds.shape[1]
-    # reshape inputs to enable channel-wise reading
-    vr = v.reshape((v.shape[0], v.shape[1], -1))
-    # initiate output tensor
-    ret = np.zeros_like(vr)
-    # iterate over thresholds channel-wise
-    for t in range(num_channel):
-        channel_thresh = thresholds[0] if is_global_threshold else thresholds[t]
-        # iterate over batches
-        for b in range(num_batch):
-            # iterate over the different thresholds for one channel
-            for a in range(num_act):
-                ret[b][t] += (vr[b][t] >= channel_thresh[a]).astype(int)
+    if not channels_last:
+        # starting assumption: input tensor is in NC_ layout
+        # (where _ can be any number of spatial dims)
+        # get the input tensor into right shape to use numpy broadcasting
+        # move the channels axis to the last position
+        # NC_ -> N_C
+        vm = np.moveaxis(v, source=1, destination=-1)
+    else:
+        vm = v
+    # add a dummy dimension at the end of the input tensor
+    # (for broadcasting against the thresholds)
+    # N_C -> N_C1
+    vm = np.expand_dims(vm, axis=-1)
+    # now perform the comparison against thresholds
+    # (N_C1 >= CT) -> N_CT
+    cmp = vm >= thresholds
+    # replace last axis by count of nonzero values (True)
+    # N_CT -> N_C
+    # note the .astype cast to ensure type remains the same
+    # TODO enforce ints instead?
+    ret = np.count_nonzero(cmp, axis=-1).astype(v.dtype)
+    if not channels_last:
+        # move the channels axis back to index 1
+        ret = np.moveaxis(ret, source=-1, destination=1)
+    assert ret.shape == v.shape, "Shape changed during thresholding!"
 
     if out_scale is None:
         out_scale = 1.0
     if out_bias is None:
         out_bias = 0.0
-    return out_scale * ret.reshape(v.shape) + out_bias
+    return out_scale * ret + out_bias
 
 
 class MultiThreshold(CustomOp):
@@ -92,7 +100,7 @@ class MultiThreshold(CustomOp):
             "out_dtype": ("s", True, ""),
             "out_scale": ("f", False, 1.0),
             "out_bias": ("f", False, 0.0),
-            "data_layout": ("s", False, "NCHW", {"NCHW", "NHWC"}),
+            "data_layout": ("s", False, "NCHW"),
         }
 
     def make_shape_compatible_op(self, model):
@@ -124,51 +132,11 @@ class MultiThreshold(CustomOp):
         out_bias = self.get_nodeattr("out_bias")
         # transpose input if NHWC data layout is chosen
         data_layout = self.get_nodeattr("data_layout")
-        if data_layout == "NHWC":
-            if v.ndim == 4:
-                # NHWC -> NCHW
-                v = np.transpose(v, (0, 3, 1, 2))
-            elif v.ndim == 2:
-                # no HW dimension means NHWC and NCHW layouts are equivalent
-                pass
-            else:
-                raise Exception("Unknown data_layout and input ndim" " combination for MultiThreshold.")
-
-        # Remember whether the shape has been modified to handle 1d or 3d data
-        # layouts
-        orig_shape = None
-        # If the input tensor has dimensions not covered by the NC or NCWH data
-        # layouts, the shape needs to be adapted such that it can be handled by
-        # multithreshold.
-        # TODO: Seems like a rather sketchy solution to support arbitrary data
-        #  layouts. This does not even validate the assumption of channel last
-        #  layout.
-        if v.ndim not in {2, 4}:
-            # Remember the original shape to be restored later
-            orig_shape = v.shape
-            # Assume last dimension to be the channel dimension C and reshape
-            # into NC layout which is supported by multithreshold
-            v = v.reshape((-1, v.shape[-1]))
-
+        channels_last = True if data_layout[-1] == "C" else False
         # calculate output
-        output = multithreshold(v, thresholds, out_scale, out_bias)
-        # setting context according to output
-        if data_layout == "NHWC":
-            if output.ndim == 4:
-                # NCHW -> NHWC
-                output = np.transpose(output, (0, 2, 3, 1))
-            elif output.ndim == 2:
-                # no HW dimension means NHWC and NCHW layouts are equivalent
-                pass
-            else:
-                raise Exception("Unknown data_layout and output ndim" " combination for MultiThreshold.")
-
-        # If the shape has been modified to support arbitrary layouts, restore
-        # the original shape
-        # TODO: Part of the rather sketchy solution above.
-        if orig_shape is not None:
-            output = output.reshape(orig_shape)
-
+        orig_shape = v.shape
+        output = multithreshold(v, thresholds, out_scale, out_bias, channels_last)
+        assert output.shape == orig_shape, "Shape changed during thresholding!"
         context[node.output[0]] = output
 
     def verify_node(self):
