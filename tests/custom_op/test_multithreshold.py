@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pytest
+
 import numpy as np
 import time
 
@@ -294,6 +296,47 @@ def test_multithreshold():
     results_scaled = multithreshold(inputs, thresholds, 2.0, -1.0)
     outputs_scaled = 2.0 * outputs - 1.0
     assert (results_scaled == outputs_scaled).all()
+
+
+@pytest.mark.parametrize("input_rank", [2, 3, 4])
+@pytest.mark.parametrize("num_channels", [1, 3])
+@pytest.mark.parametrize("num_steps", [1, 4, 7])
+@pytest.mark.parametrize("threshold_granularity", ["per_channel", "global"])
+@pytest.mark.parametrize("use_scale_bias", [False, True])
+def test_multithreshold_parametrized(input_rank, num_channels, num_steps, threshold_granularity, use_scale_bias):
+    np.random.seed(0)
+    N = 2
+
+    # Determine shape
+    shape = [N, num_channels]
+    spatial = []
+    if input_rank == 3:
+        spatial = [5]
+    elif input_rank == 4:
+        spatial = [3, 3]
+    shape += spatial
+
+    # Generate random input data
+    v = np.random.uniform(-3, 5, size=shape).astype(np.float32)
+
+    # Generate thresholds
+    if threshold_granularity == "per_channel":
+        thresholds = np.sort(np.random.uniform(-2, 4, size=(num_channels, num_steps)).astype(np.float32), axis=1)
+    else:  # global
+        thresholds = np.sort(np.random.uniform(-2, 4, size=(1, num_steps)).astype(np.float32), axis=1)
+
+    # Generate scale and bias
+    if use_scale_bias:
+        out_scale = np.random.uniform(0.5, 2.0)
+        out_bias = np.random.uniform(-1.0, 1.0)
+    else:
+        out_scale = None
+        out_bias = None
+
+    ref = multithreshold_elementwise(v, thresholds, out_scale, out_bias)
+    result = multithreshold(v, thresholds, out_scale, out_bias)
+
+    np.testing.assert_allclose(result, ref, rtol=1e-6, atol=1e-6)
 
 
 def multithreshold_performance():
