@@ -40,48 +40,47 @@ def multithreshold(v, thresholds, out_scale=None, out_bias=None):
     or equal to.
 
     The output tensor will be scaled by out_scale and biased by out_bias."""
-    # the inputs are expected to be in the shape (N,C,H,W) or (N, C)
-    # the MultiThreshold node supports a data_layout attribute that can be set
-    # to 'NHWC' to support (N,H,W,C) data layout mode for in-out as well
-    # N : Batch size
-    # C : Number of channels
-    # H : Heigth of the input images
-    # W : Width of the input images
-    #
-    # the thresholds are expected to be in the shape (C, B)
+    # the inputs are expected to be in the shape (N,C,_) where:
+    #  C is the number of channels
+    #  _ represents any (including zero) number of spatial dims
+    # the thresholds are expected to be in the shape (C, B) where
     # C : Number of channels (must be the same value as C in input tensor
     #     or 1 if all channels use the same threshold value)
     # B : Desired activation steps => i.e. for 4-bit activation,
-    #     B=7 (2^(n)-1 and n=4)
+    #     B=7 (2^(n)-1 and n=4), but can also be fewer
     # the output tensor will be scaled by out_scale and biased by out_bias
-    # assert threshold shape
+    # assert threshold shape - threshold channels must be either equal
+    # to input channels, or be a single global scalar
     is_global_threshold = thresholds.shape[0] == 1
     assert (
         v.shape[1] == thresholds.shape[0]
     ) or is_global_threshold, """"Threshold
     shape incorrect"""
-    # save the required shape sizes for the loops (N, C and B)
-    num_batch = v.shape[0]
-    num_channel = v.shape[1]
-    num_act = thresholds.shape[1]
-    # reshape inputs to enable channel-wise reading
-    vr = v.reshape((v.shape[0], v.shape[1], -1))
-    # initiate output tensor
-    ret = np.zeros_like(vr)
-    # iterate over thresholds channel-wise
-    for t in range(num_channel):
-        channel_thresh = thresholds[0] if is_global_threshold else thresholds[t]
-        # iterate over batches
-        for b in range(num_batch):
-            # iterate over the different thresholds for one channel
-            for a in range(num_act):
-                ret[b][t] += (vr[b][t] >= channel_thresh[a]).astype(int)
+    # starting assumption: input tensor is in NC_ layout
+    # (where _ can be any number of spatial dims)
+    # get the input tensor into right shape to use numpy broadcasting
+    # move the channels axis to the last position
+    # NC_ -> N_C
+    vm = np.moveaxis(v, source=1, destination=-1)
+    # add a dummy dimension at the end of the input tensor
+    # (for broadcasting against the thresholds)
+    # N_C -> N_C1
+    vm = np.expand_dims(vm, axis=-1)
+    # now perform the comparison against thresholds
+    # (N_C1 >= CT) -> N_CT
+    cmp = vm >= thresholds
+    # replace last axis by count of nonzero values (True)
+    # N_CT -> N_C
+    ret = np.count_nonzero(cmp, axis=-1)
+    # finally, move the channels axis back to index 1
+    ret = np.moveaxis(ret, source=-1, destination=1)
+    assert ret.shape == v.shape, "Shape changed during thresholding!"
 
     if out_scale is None:
         out_scale = 1.0
     if out_bias is None:
         out_bias = 0.0
-    return out_scale * ret.reshape(v.shape) + out_bias
+    return out_scale * ret + out_bias
 
 
 class MultiThreshold(CustomOp):
