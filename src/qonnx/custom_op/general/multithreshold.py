@@ -77,7 +77,9 @@ def multithreshold(v, thresholds, out_scale=None, out_bias=None, channels_last=F
     cmp = vm >= thresholds
     # replace last axis by count of nonzero values (True)
     # N_CT -> N_C
-    ret = np.count_nonzero(cmp, axis=-1)
+    # note the .astype cast to ensure type remains the same
+    # TODO enforce ints instead?
+    ret = np.count_nonzero(cmp, axis=-1).astype(v.dtype)
     if not channels_last:
         # move the channels axis back to index 1
         ret = np.moveaxis(ret, source=-1, destination=1)
