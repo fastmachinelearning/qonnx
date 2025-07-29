@@ -299,8 +299,8 @@ def test_multithreshold():
 def multithreshold_performance():
     # performance and random test
     np.random.seed(0)
-    inputs = np.random.random((1, 256, 64, 64))
-    thresholds = (np.array([[1, 2, 3, 4, 5, 6]]) - 0.5) / 6
+    inputs = np.random.random((128, 1024, 1))
+    thresholds = (np.array([list(range(254))]) - 0.5) / 6
     before = time.time()
     vec_results = multithreshold(inputs, thresholds)
     after = time.time()
