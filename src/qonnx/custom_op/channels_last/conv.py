@@ -67,7 +67,10 @@ class Conv(ChannelsLastWrappedOp):
         ndim = len(ishape)
         assert ndim == 3 or ndim == 4, "ChannelsLast Conv currently only supports 3D and 4D input tensors."
 
-        kernel_shape = self.get_nodeattr("kernel_shape")
+        try:
+            kernel_shape = self.get_nodeattr("kernel_shape")
+        except Exception:
+            kernel_shape = model.get_tensor_shape(self.onnx_node.input[1])[1:-1]
         strides = self.get_nodeattr("strides")
         dilations = self.get_nodeattr("dilations")
         # Get the input shape from the previous tensor
