@@ -26,9 +26,201 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import pytest
+
 import numpy as np
+import time
 
 from qonnx.custom_op.general.multithreshold import multithreshold
+
+inputs = np.ndarray(
+    shape=(6, 3, 2, 2),
+    buffer=np.array(
+        [
+            4.8,
+            3.2,
+            1.2,
+            4.9,
+            7.8,
+            2.4,
+            3.1,
+            4.7,
+            6.2,
+            5.1,
+            4.9,
+            2.2,
+            6.2,
+            0.0,
+            0.8,
+            4.7,
+            0.2,
+            5.6,
+            8.9,
+            9.2,
+            9.1,
+            4.0,
+            3.3,
+            4.9,
+            2.3,
+            1.7,
+            1.3,
+            2.2,
+            4.6,
+            3.4,
+            3.7,
+            9.8,
+            4.7,
+            4.9,
+            2.8,
+            2.7,
+            8.3,
+            6.7,
+            4.2,
+            7.1,
+            2.8,
+            3.1,
+            0.8,
+            0.6,
+            4.4,
+            2.7,
+            6.3,
+            6.1,
+            1.4,
+            5.3,
+            2.3,
+            1.9,
+            4.7,
+            8.1,
+            9.3,
+            3.7,
+            2.7,
+            5.1,
+            4.2,
+            1.8,
+            4.1,
+            7.3,
+            7.1,
+            0.4,
+            0.2,
+            1.3,
+            4.3,
+            8.9,
+            1.4,
+            1.6,
+            8.3,
+            9.4,
+        ]
+    ),
+)
+
+thresholds = np.ndarray(
+    shape=(3, 7),
+    buffer=np.array(
+        [
+            0.8,
+            1.4,
+            1.7,
+            3.5,
+            5.2,
+            6.8,
+            8.2,
+            0.2,
+            2.2,
+            3.5,
+            4.5,
+            6.6,
+            8.6,
+            9.2,
+            1.3,
+            4.1,
+            4.5,
+            6.5,
+            7.8,
+            8.1,
+            8.9,
+        ]
+    ),
+)
+
+outputs = np.ndarray(
+    shape=(6, 3, 2, 2),
+    buffer=np.array(
+        [
+            4.0,
+            3.0,
+            1.0,
+            4.0,
+            5.0,
+            2.0,
+            2.0,
+            4.0,
+            3.0,
+            3.0,
+            3.0,
+            1.0,
+            5.0,
+            0.0,
+            1.0,
+            4.0,
+            1.0,
+            4.0,
+            6.0,
+            7.0,
+            7.0,
+            1.0,
+            1.0,
+            3.0,
+            3.0,
+            3.0,
+            1.0,
+            3.0,
+            4.0,
+            2.0,
+            3.0,
+            7.0,
+            3.0,
+            3.0,
+            1.0,
+            1.0,
+            7.0,
+            5.0,
+            4.0,
+            6.0,
+            2.0,
+            2.0,
+            1.0,
+            1.0,
+            2.0,
+            1.0,
+            3.0,
+            3.0,
+            2.0,
+            5.0,
+            3.0,
+            3.0,
+            4.0,
+            5.0,
+            7.0,
+            3.0,
+            1.0,
+            3.0,
+            2.0,
+            1.0,
+            4.0,
+            6.0,
+            6.0,
+            0.0,
+            1.0,
+            1.0,
+            3.0,
+            6.0,
+            1.0,
+            1.0,
+            6.0,
+            7.0,
+        ]
+    ),
+)
 
 
 def compare(x, y):
@@ -98,195 +290,6 @@ def multithreshold_elementwise(v, thresholds, out_scale=None, out_bias=None):
 
 
 def test_multithreshold():
-    inputs = np.ndarray(
-        shape=(6, 3, 2, 2),
-        buffer=np.array(
-            [
-                4.8,
-                3.2,
-                1.2,
-                4.9,
-                7.8,
-                2.4,
-                3.1,
-                4.7,
-                6.2,
-                5.1,
-                4.9,
-                2.2,
-                6.2,
-                0.0,
-                0.8,
-                4.7,
-                0.2,
-                5.6,
-                8.9,
-                9.2,
-                9.1,
-                4.0,
-                3.3,
-                4.9,
-                2.3,
-                1.7,
-                1.3,
-                2.2,
-                4.6,
-                3.4,
-                3.7,
-                9.8,
-                4.7,
-                4.9,
-                2.8,
-                2.7,
-                8.3,
-                6.7,
-                4.2,
-                7.1,
-                2.8,
-                3.1,
-                0.8,
-                0.6,
-                4.4,
-                2.7,
-                6.3,
-                6.1,
-                1.4,
-                5.3,
-                2.3,
-                1.9,
-                4.7,
-                8.1,
-                9.3,
-                3.7,
-                2.7,
-                5.1,
-                4.2,
-                1.8,
-                4.1,
-                7.3,
-                7.1,
-                0.4,
-                0.2,
-                1.3,
-                4.3,
-                8.9,
-                1.4,
-                1.6,
-                8.3,
-                9.4,
-            ]
-        ),
-    )
-
-    thresholds = np.ndarray(
-        shape=(3, 7),
-        buffer=np.array(
-            [
-                0.8,
-                1.4,
-                1.7,
-                3.5,
-                5.2,
-                6.8,
-                8.2,
-                0.2,
-                2.2,
-                3.5,
-                4.5,
-                6.6,
-                8.6,
-                9.2,
-                1.3,
-                4.1,
-                4.5,
-                6.5,
-                7.8,
-                8.1,
-                8.9,
-            ]
-        ),
-    )
-
-    outputs = np.ndarray(
-        shape=(6, 3, 2, 2),
-        buffer=np.array(
-            [
-                4.0,
-                3.0,
-                1.0,
-                4.0,
-                5.0,
-                2.0,
-                2.0,
-                4.0,
-                3.0,
-                3.0,
-                3.0,
-                1.0,
-                5.0,
-                0.0,
-                1.0,
-                4.0,
-                1.0,
-                4.0,
-                6.0,
-                7.0,
-                7.0,
-                1.0,
-                1.0,
-                3.0,
-                3.0,
-                3.0,
-                1.0,
-                3.0,
-                4.0,
-                2.0,
-                3.0,
-                7.0,
-                3.0,
-                3.0,
-                1.0,
-                1.0,
-                7.0,
-                5.0,
-                4.0,
-                6.0,
-                2.0,
-                2.0,
-                1.0,
-                1.0,
-                2.0,
-                1.0,
-                3.0,
-                3.0,
-                2.0,
-                5.0,
-                3.0,
-                3.0,
-                4.0,
-                5.0,
-                7.0,
-                3.0,
-                1.0,
-                3.0,
-                2.0,
-                1.0,
-                4.0,
-                6.0,
-                6.0,
-                0.0,
-                1.0,
-                1.0,
-                3.0,
-                6.0,
-                1.0,
-                1.0,
-                6.0,
-                7.0,
-            ]
-        ),
-    )
-
     results = multithreshold(inputs, thresholds)
     assert (results == outputs).all()
 
@@ -294,18 +297,69 @@ def test_multithreshold():
     outputs_scaled = 2.0 * outputs - 1.0
     assert (results_scaled == outputs_scaled).all()
 
+
+@pytest.mark.parametrize("input_rank", [2, 3, 4])
+@pytest.mark.parametrize("num_channels", [1, 3])
+@pytest.mark.parametrize("num_steps", [1, 4, 7])
+@pytest.mark.parametrize("threshold_granularity", ["per_channel", "global"])
+@pytest.mark.parametrize("use_scale_bias", [False, True])
+def test_multithreshold_parametrized(input_rank, num_channels, num_steps, threshold_granularity, use_scale_bias):
+    np.random.seed(0)
+    N = 2
+
+    # Determine shape
+    shape = [N, num_channels]
+    spatial = []
+    if input_rank == 3:
+        spatial = [5]
+    elif input_rank == 4:
+        spatial = [3, 3]
+    shape += spatial
+
+    # Generate random input data
+    v = np.random.uniform(-3, 5, size=shape).astype(np.float32)
+
+    # Generate thresholds
+    if threshold_granularity == "per_channel":
+        thresholds = np.sort(np.random.uniform(-2, 4, size=(num_channels, num_steps)).astype(np.float32), axis=1)
+    else:  # global
+        thresholds = np.sort(np.random.uniform(-2, 4, size=(1, num_steps)).astype(np.float32), axis=1)
+
+    # Generate scale and bias
+    if use_scale_bias:
+        out_scale = np.random.uniform(0.5, 2.0)
+        out_bias = np.random.uniform(-1.0, 1.0)
+    else:
+        out_scale = None
+        out_bias = None
+
+    ref = multithreshold_elementwise(v, thresholds, out_scale, out_bias)
+    result = multithreshold(v, thresholds, out_scale, out_bias)
+
+    np.testing.assert_allclose(result, ref, rtol=1e-6, atol=1e-6)
+
+
+def multithreshold_performance():
     # performance and random test
     np.random.seed(0)
-    inputs = np.random.random((1, 256, 64, 64))
-    thresholds = (np.array([[1, 2, 3, 4, 5, 6]]) - 0.5) / 6
+    inputs = np.random.random((128, 1024, 1))
+    thresholds = (np.array([list(range(254))]) - 0.5) / 6
+    before = time.time()
     vec_results = multithreshold(inputs, thresholds)
+    after = time.time()
+    vector_runtime = after - before
+
+    before = time.time()
     nonvec_results = multithreshold_elementwise(inputs, thresholds)
+    after = time.time()
+    non_vector_runtime = after - before
 
     assert (vec_results == nonvec_results).all()
+    return vector_runtime, non_vector_runtime
 
 
 if __name__ == "__main__":
-    vector_runtime, non_vector_runtime = test_multithreshold()
+    vector_runtime, non_vector_runtime = multithreshold_performance()
 
     print("Runtime non-vectorized: ", non_vector_runtime, "s")
     print("Runtime vectorized: ", vector_runtime, "s")
