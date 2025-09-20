@@ -117,3 +117,7 @@ def test_batchnorm_to_affine_epsilon(epsilon):
     output_lowered = output_dict[output_node_name]
 
     assert (output_original == output_lowered).all()
+
+    op_types = list(map(lambda x: x.op_type, model_lowered.graph.node))
+    assert "BatchNormalization" not in op_types
+
