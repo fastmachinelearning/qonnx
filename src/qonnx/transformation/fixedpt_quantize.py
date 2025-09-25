@@ -29,10 +29,10 @@
 import numpy as np
 from warnings import warn
 
-from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.base import Transformation
-from qonnx.custom_op.general.intquant import resolve_rounding_mode
 from qonnx.core.datatype import DataType
+from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.custom_op.general.intquant import resolve_rounding_mode
+from qonnx.transformation.base import Transformation
 
 
 def default_op_filter(op):
@@ -44,10 +44,12 @@ class FixedPointQuantizeParamsFromDict(Transformation):
     Quantize model parameters to a given fixed-point representation.
     The self.max_err dictionary stores the maximum error for each quantized input after calling.
     Parameters:
-        fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point data type or its canonical name
+        fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point
+                      data type or its canonical name
         rounding_mode: Rounding mode used for conversion into fixed point.
                        Default is "ROUND",
-                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN", "HALF_UP", "HALF_DOWN"]
+                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
+                       "HALF_UP", "HALF_DOWN"]
     """
 
     def __init__(self, fixedpt_dict, rounding_mode="ROUND"):
@@ -63,13 +65,17 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                     tdtype = DataType[tdtype]
                 current_dtype = model.get_tensor_datatype(tname)
                 if current_dtype.is_fixed_point():
-                    warn(f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. Recasting to {tdtype.get_canonical_name()}")
+                    warn(
+                        f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. "
+                        "Recasting to {tdtype.get_canonical_name()}"
+                    )
 
                 in1_t_new = self.round_func(in1_t.astype(np.float32) / tdtype.scale_factor()) * tdtype.scale_factor()
                 if (in1_t_new.max() > tdtype.max()) or (in1_t_new.min() < tdtype.min()):
                     warn(
                         f"Range of {tname} [{in1_t_new.min():.3f}, {in1_t_new.max():.3f}] greater than"
-                        f"{tdtype.get_canonical_name()} [{tdtype.min():.3f}, {tdtype:.max():.3f}], clipping.")
+                        f"{tdtype.get_canonical_name()} [{tdtype.min():.3f}, {tdtype:.max():.3f}], clipping."
+                    )
                     in1_t_new = np.clip(in1_t_new, tdtype.min(), tdtype.max())
                 model.set_tensor_datatype(tname, tdtype)
                 model.set_initializer(tname, in1_t_new)
@@ -77,6 +83,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 self.max_err[tname] = np.linalg.norm(in1_t.flatten() - in1_t_new.flatten(), ord=np.inf)
 
         return (model, False)
+
 
 class FixedPointQuantizeParams(Transformation):
     """
@@ -93,6 +100,7 @@ class FixedPointQuantizeParams(Transformation):
                        Default is "ROUND",
                        possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN", "HALF_UP", "HALF_DOWN"]
     """
+
     def __init__(self, fixedpt_dtype, op_filter=default_op_filter, rounding_mode="ROUND"):
         super().__init__()
         if isinstance(fixedpt_dtype, str):

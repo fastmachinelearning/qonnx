@@ -167,6 +167,7 @@ if __name__ == "__main__":
     # plt.plot(sizes,times,"--o")
     # plt.grid(True)
 
+
 def test_sort_graph_node_only_connected_to_graphio():
     """
     Test that SortGraph does not remove nodes that are only connected to graph inputs/outputs.

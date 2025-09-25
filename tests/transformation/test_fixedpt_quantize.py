@@ -28,15 +28,13 @@
 
 import pytest
 
-import numpy as np
 import os
 
+from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.fixedpt_quantize import FixedPointQuantizeParams, FixedPointQuantizeParamsFromDict
-from qonnx.core.datatype import DataType
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.test import download_model
-
 
 fixedpt_dict_details = {
     "Conv_bias_example_round": {
@@ -47,9 +45,9 @@ fixedpt_dict_details = {
             "Conv_1_param0": "FIXED<8,1>",
             "Conv_1_param1": "FIXED<8,1>",
             "Gemm_0_param0": "FIXED<12,1>",
-            "Gemm_0_param1": "FIXED<12,1>"
+            "Gemm_0_param1": "FIXED<12,1>",
         },
-        "rounding_mode": "ROUND"
+        "rounding_mode": "ROUND",
     },
     "Conv_bias_example_floor": {
         "test_model": "Conv_bias_example",
@@ -59,9 +57,9 @@ fixedpt_dict_details = {
             "Conv_1_param0": "FIXED<8,1>",
             "Conv_1_param1": "FIXED<8,1>",
             "Gemm_0_param0": "FIXED<12,1>",
-            "Gemm_0_param1": "FIXED<12,1>"
+            "Gemm_0_param1": "FIXED<12,1>",
         },
-        "rounding_mode": "FLOOR"
+        "rounding_mode": "FLOOR",
     },
     "FINN-CNV_W2A2_round": {
         "test_model": "FINN-CNV_W2A2",
@@ -97,9 +95,9 @@ fixedpt_dict_details = {
             "BatchNormalization_7_param0": "FIXED<9,4>",
             "BatchNormalization_7_param1": "FIXED<10,3>",
             "BatchNormalization_7_param2": "FIXED<12,8>",
-            "BatchNormalization_7_param3": "FIXED<14,13>"
+            "BatchNormalization_7_param3": "FIXED<14,13>",
         },
-        "rounding_mode": "ROUND"
+        "rounding_mode": "ROUND",
     },
     "FINN-CNV_W2A2_floor": {
         "test_model": "FINN-CNV_W2A2",
@@ -135,9 +133,9 @@ fixedpt_dict_details = {
             "BatchNormalization_7_param0": "FIXED<9,4>",
             "BatchNormalization_7_param1": "FIXED<10,3>",
             "BatchNormalization_7_param2": "FIXED<12,8>",
-            "BatchNormalization_7_param3": "FIXED<14,13>"
+            "BatchNormalization_7_param3": "FIXED<14,13>",
         },
-        "rounding_mode": "FLOOR"
+        "rounding_mode": "FLOOR",
     },
     "MobileNetv1-w4a4_round": {
         "test_model": "MobileNetv1-w4a4",
@@ -249,9 +247,9 @@ fixedpt_dict_details = {
             "BatchNormalization_26_param0": "FIXED<10,3>",
             "BatchNormalization_26_param1": "FIXED<5,2>",
             "BatchNormalization_26_param2": "FIXED<4,2>",
-            "BatchNormalization_26_param3": "FIXED<11,1>"
+            "BatchNormalization_26_param3": "FIXED<11,1>",
         },
-        "rounding_mode": "ROUND"
+        "rounding_mode": "ROUND",
     },
     "MobileNetv1-w4a4_floor": {
         "test_model": "MobileNetv1-w4a4",
@@ -363,10 +361,10 @@ fixedpt_dict_details = {
             "BatchNormalization_26_param0": "FIXED<10,3>",
             "BatchNormalization_26_param1": "FIXED<5,2>",
             "BatchNormalization_26_param2": "FIXED<4,2>",
-            "BatchNormalization_26_param3": "FIXED<11,1>"
+            "BatchNormalization_26_param3": "FIXED<11,1>",
         },
-        "rounding_mode": "FLOOR"
-    }
+        "rounding_mode": "FLOOR",
+    },
 }
 
 
@@ -401,67 +399,44 @@ def test_fixedpt_quantize_from_dict(test_case):
 
     os.unlink(dl_file)
 
+
 fixedpt_details = {
     "FINN-CNV_W2A2_round_0": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<8,3>",
         "rounding_mode": "ROUND",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
     },
     "FINN-CNV_W2A2_floor_0": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<8,3>",
         "rounding_mode": "FLOOR",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
     },
     "FINN-CNV_W2A2_round_1": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<4,3>",
         "rounding_mode": "ROUND",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
     },
     "FINN-CNV_W2A2_floor_1": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<4,3>",
         "rounding_mode": "FLOOR",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
     },
     "FINN-CNV_W2A2_round_2": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<12,3>",
         "rounding_mode": "ROUND",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
     },
     "FINN-CNV_W2A2_floor_2": {
         "test_model": "FINN-CNV_W2A2",
         "dtype": "FIXED<12,3>",
         "rounding_mode": "FLOOR",
-        "quant_tensors": [
-            "Mul_0_param0",
-            "Mul_1_param0",
-            "Add_0_param0"
-        ]
-    }
+        "quant_tensors": ["Mul_0_param0", "Mul_1_param0", "Add_0_param0"],
+    },
 }
 
 
