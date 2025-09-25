@@ -41,7 +41,15 @@ def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_ex
     try:
         opset_module = importlib.import_module(domain)
         assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
-        inst_wrapper = opset_module.custom_op[op_type]
+        op_type_with_version = op_type + "_v" + str(onnx_opset_version)
+        # TODO version handling: use highest available version smaller than requested version
+        # when the exact match is not found
+        if op_type_with_version in opset_module.custom_op:
+            # priority: if it exists, load the versioned CustomOp wrapper
+            inst_wrapper = opset_module.custom_op[op_type_with_version]
+        else:
+            # otherwise use the default (non-suffixed) CustomOp wrapper
+            inst_wrapper = opset_module.custom_op[op_type]
         inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
         return inst
     except ModuleNotFoundError:
