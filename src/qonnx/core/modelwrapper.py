@@ -738,3 +738,7 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
+
+    def get_opset_imports(self):
+        """Returns a list of imported opsets as (domain, version) tuples."""
+        return [(opset.domain, opset.version) for opset in self._model_proto.opset_import]

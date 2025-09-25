@@ -68,6 +68,7 @@ def test_modelwrapper():
     inp_sparsity = {"dw": {"kernel_shape": [3, 3]}}
     model.set_tensor_sparsity(first_conv_iname, inp_sparsity)
     assert model.get_tensor_sparsity(first_conv_iname) == inp_sparsity
+    assert model.get_opset_imports() == [("", 8)]
 
 
 def test_modelwrapper_set_get_rm_initializer():
