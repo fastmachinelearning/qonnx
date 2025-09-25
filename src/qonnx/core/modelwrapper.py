@@ -740,5 +740,5 @@ class ModelWrapper:
             qnt_annotations.append(qa)
 
     def get_opset_imports(self):
-        """Returns a list of imported opsets as (domain, version) tuples."""
-        return [(opset.domain, opset.version) for opset in self._model_proto.opset_import]
+        """Returns a list of imported opsets as a {domain, version} dictionary."""
+        return {opset.domain: opset.version for opset in self._model_proto.opset_import}
