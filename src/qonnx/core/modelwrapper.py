@@ -39,6 +39,7 @@ from onnx import TensorProto
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
+from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
@@ -741,3 +742,10 @@ class ModelWrapper:
     def get_opset_imports(self):
         """Returns a list of imported opsets as a {domain, version} dictionary."""
         return {opset.domain: opset.version for opset in self._model_proto.opset_import}
+
+    def get_customop_wrapper(self, node):
+        """Return CustomOp instance for given node, respecting the
+        imported opset version in the model protobuf."""
+        opset_imports = self.get_opset_imports()
+        opset_import = opset_imports[node.domain]
+        return getCustomOp(node, onnx_opset_version=opset_import)
