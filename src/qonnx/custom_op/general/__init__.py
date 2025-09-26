@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Importing registers CustomOps in qonnx.custom_op.general domain
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
 from qonnx.custom_op.general.floatquant import FloatQuant
@@ -38,21 +39,6 @@ from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.quant import Quant
 from qonnx.custom_op.general.trunc import Trunc
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
-
-__all__ = [
-    "DebugMarker",
-    "QuantAvgPool2d",
-    "MaxPoolNHWC",
-    "GenericPartition",
-    "MultiThreshold",
-    "XnorPopcountMatMul",
-    "Im2Col",
-    "IntQuant",
-    "Quant",
-    "Trunc",
-    "BipolarQuant",
-    "FloatQuant",
-]
 
 # Legacy dictionary for backward compatibility
 custom_op = {
