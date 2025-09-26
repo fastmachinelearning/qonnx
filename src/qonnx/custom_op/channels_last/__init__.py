@@ -2,8 +2,11 @@ from qonnx.custom_op.channels_last.batch_normalization import BatchNormalization
 from qonnx.custom_op.channels_last.conv import Conv
 from qonnx.custom_op.channels_last.max_pool import MaxPool
 
-custom_op = dict()
+__all__ = ["Conv", "MaxPool", "BatchNormalization"]
 
-custom_op["Conv"] = Conv
-custom_op["MaxPool"] = MaxPool
-custom_op["BatchNormalization"] = BatchNormalization
+# Legacy dictionary for backward compatibility
+custom_op = {
+    "Conv": Conv,
+    "MaxPool": MaxPool,
+    "BatchNormalization": BatchNormalization,
+}
