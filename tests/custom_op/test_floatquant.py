@@ -30,6 +30,7 @@
 import io
 import mock
 import numpy as np
+import torch
 from brevitas.core.function_wrapper.clamp import FloatClamp, TensorClamp
 from brevitas.core.function_wrapper.misc import Identity
 from brevitas.core.quant.float import FloatQuant as BrevitasFloatQuant
@@ -120,7 +121,7 @@ def brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, e
         signed=signed,
         float_clamp_impl=float_clamp,
     )
-    expected_out, *_ = float_quant(x)
+    expected_out, *_ = float_quant(torch.Tensor(x))
     return expected_out
 
 
