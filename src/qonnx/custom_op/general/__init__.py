@@ -52,3 +52,16 @@ custom_op["Quant"] = IntQuant
 custom_op["Trunc"] = Trunc
 custom_op["BipolarQuant"] = BipolarQuant
 custom_op["FloatQuant"] = FloatQuant
+
+custom_op["DebugMarker_v1"] = DebugMarker
+custom_op["QuantAvgPool2d_v1"] = QuantAvgPool2d
+custom_op["MaxPoolNHWC_v1"] = MaxPoolNHWC
+custom_op["GenericPartition_v1"] = GenericPartition
+custom_op["MultiThreshold_v1"] = MultiThreshold
+custom_op["XnorPopcountMatMul_v1"] = XnorPopcountMatMul
+custom_op["Im2Col_v1"] = Im2Col
+custom_op["IntQuant_v1"] = IntQuant
+custom_op["Quant_v1"] = IntQuant
+custom_op["Trunc_v1"] = Trunc
+custom_op["BipolarQuant_v1"] = BipolarQuant
+custom_op["FloatQuant_v1"] = FloatQuant
