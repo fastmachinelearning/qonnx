@@ -28,11 +28,12 @@
 
 import importlib
 
-from qonnx.util.basic import get_preferred_onnx_opset
 
-
-def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
-    "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
+def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
+    "Return a QONNX CustomOp wrapper for the given ONNX node and given opset version,"
+    "if it exists. If opset version is None, the default handler for the op type will be used. "
+    "If version is specified but the exact version match isn't available, the highest available version "
+    "smaller than the requested version will be used."
     op_type = node.op_type
     domain = node.domain
     if brevitas_exception:
@@ -41,18 +42,30 @@ def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_ex
     try:
         opset_module = importlib.import_module(domain)
         assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
-        op_type_with_version = op_type + "_v" + str(onnx_opset_version)
-        # TODO version handling: use highest available version smaller than requested version
-        # when the exact match is not found
-        if op_type_with_version in opset_module.custom_op:
-            # priority: if it exists, load the versioned CustomOp wrapper
-            inst_wrapper = opset_module.custom_op[op_type_with_version]
-        else:
-            # otherwise use the default (non-suffixed) CustomOp wrapper
+        if onnx_opset_version is None:
             inst_wrapper = opset_module.custom_op[op_type]
+        else:
+            op_type_with_version = op_type + "_v" + str(onnx_opset_version)
+            if op_type_with_version in opset_module.custom_op:
+                # priority: if it exists, load the versioned CustomOp wrapper
+                inst_wrapper = opset_module.custom_op[op_type_with_version]
+            else:
+                # when the exact version match is not found
+                # version handling: use highest available version smaller than requested version
+                available_versions = [
+                    int(k.split("_v")[-1]) for k in opset_module.custom_op.keys() if k.startswith(op_type + "_v")
+                ]
+                suitable_versions = [v for v in available_versions if v <= onnx_opset_version]
+                if suitable_versions:
+                    highest_version = max(suitable_versions)
+                    inst_wrapper = opset_module.custom_op[f"{op_type}_v{highest_version}"]
+                else:
+                    raise Exception(
+                        "Op %s version %s not found in custom opset %s" % (op_type, str(onnx_opset_version), domain)
+                    )
         inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
         return inst
     except ModuleNotFoundError:
         raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)
     except KeyError:
-        raise Exception("Op %s not found in custom opset %s" % (op_type, domain))
+        raise Exception("Op %s version %s not found in custom opset %s" % (op_type, str(onnx_opset_version), domain))
