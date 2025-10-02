@@ -471,4 +471,7 @@ def test_fixedpt_quantize(test_case):
         # Check if the maximum error is within the LSB bound of the datatype
         assert fxp_transform.max_err[tname] <= allowed_max_error
 
-    os.unlink(dl_file)
+    try:
+        os.unlink(dl_file)
+    except FileNotFoundError:
+        pass
