@@ -743,7 +743,7 @@ class ModelWrapper:
         """Returns a list of imported opsets as a {domain, version} dictionary."""
         return {opset.domain: opset.version for opset in self._model_proto.opset_import}
 
-    def get_customop_wrapper(self, node, fallback_customop_version=1):
+    def get_customop_wrapper(self, node, fallback_customop_version=util.get_preferred_qonnx_opset()):
         """Return CustomOp instance for given node, respecting the
         imported opset version in the model protobuf. If the node's domain
         is not found in the model's opset imports, fallback_customop_version
