@@ -45,7 +45,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
     The self.max_err dictionary stores the maximum error for each quantized input after calling.
     Parameters:
         fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point
-                      data type or its canonical name
+                       data type or its canonical name
         rounding_mode: Rounding mode used for conversion into fixed point.
                        Default is "ROUND",
                        possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
@@ -67,7 +67,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 if current_dtype.is_fixed_point():
                     warn(
                         f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. "
-                        "Recasting to {tdtype.get_canonical_name()}"
+                        f"Recasting to {tdtype.get_canonical_name()}"
                     )
 
                 in1_t_new = self.round_func(in1_t.astype(np.float32) / tdtype.scale_factor()) * tdtype.scale_factor()

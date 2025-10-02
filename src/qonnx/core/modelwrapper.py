@@ -183,7 +183,7 @@ class ModelWrapper:
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
 
-        if apply_to_subgraphs and (use_preorder_traversal is False):
+        if apply_to_subgraphs and not use_preorder_traversal:
             transformed_model.transform_subgraphs(
                 transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
             )
