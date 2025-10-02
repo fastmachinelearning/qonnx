@@ -92,7 +92,10 @@ def make_vertest_model(vertest_ver):
 
 
 def test_customop_version():
+    # unspecified version defaults to v1 implementation
     general.custom_op["VerTestOp"] = VerTestOp_v1
+    # v1 version is also explicitly registered
+    general.custom_op["VerTestOp_v1"] = VerTestOp_v1
     general.custom_op["VerTestOp_v2"] = VerTestOp_v2
     general.custom_op["VerTestOp_v3"] = VerTestOp_v3
     for ver in [1, 2, 3]:
@@ -104,3 +107,7 @@ def test_customop_version():
         # fetching of op version
         inst = model.get_customop_wrapper(model.graph.node[0])
         assert inst.get_nodeattr(f"v{ver}_attr") == ver
+    # unspecified version getCustomOp should default to v1 handler
+    # (even though the node is actually v3 in this case)
+    inst = getCustomOp(model.graph.node[0])
+    assert isinstance(inst, VerTestOp_v1)
