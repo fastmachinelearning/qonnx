@@ -1,12 +1,13 @@
 import pytest
+
+import onnx
 from collections import Counter
+from onnx import helper
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
+from qonnx.util.basic import get_by_name, qonnx_make_model
 
-from qonnx.util.basic import qonnx_make_model, get_by_name
-import onnx
-from onnx import helper
 
 # Helper to recursively build a graph with subgraphs attached to nodes
 def make_graph(tree):
@@ -49,6 +50,7 @@ def make_graph(tree):
 
     return graph
 
+
 def make_subgraph_model(tree):
     """
     Build a ModelWrapper with a graph structure based on the provided tree.
@@ -73,7 +75,9 @@ class DummyTransform(Transformation):
         dummy_name_in = f"{graph_name}_dummy_in"
         dummy_name_out = f"{graph_name}_dummy_out"
         model_wrapper.model.graph.input.append(helper.make_tensor_value_info(dummy_name_in, onnx.TensorProto.FLOAT, [4, 4]))
-        model_wrapper.model.graph.output.append(helper.make_tensor_value_info(dummy_name_out, onnx.TensorProto.FLOAT, [4, 4]))
+        model_wrapper.model.graph.output.append(
+            helper.make_tensor_value_info(dummy_name_out, onnx.TensorProto.FLOAT, [4, 4])
+        )
         model_wrapper.model.graph.node.append(
             helper.make_node(
                 "DummyNode",  # dummy op_type
@@ -85,14 +89,17 @@ class DummyTransform(Transformation):
 
         # collect the name of the graph being transformed to check how many times each graph was visited
         self.visited.append(graph_name)
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         return model_wrapper, False
+
 
 class NestedTransform(Transformation):
     def __init__(self):
         self.dummy_transform = DummyTransform()
+
     def apply(self, model_wrapper):
         return model_wrapper.transform(self.dummy_transform), False
+
 
 def get_subgraph_names(tree):
     """
@@ -115,9 +122,10 @@ def check_all_visted_once(tree, transform):
     """
     Check that all subgraphs in the tree structure were visited exactly once.
     """
-    visited  = transform.visited
+    visited = transform.visited
     expected = get_subgraph_names(tree)
     assert Counter(visited) == Counter(expected), f"Visited: {visited}, Expected: {expected}"
+
 
 def check_visit_order(tree, transform, order):
     """
@@ -126,6 +134,7 @@ def check_visit_order(tree, transform, order):
     visited = transform.visited
     expected = order(tree)
     assert visited == expected, f"Visited: {visited}, Expected: {expected}"
+
 
 def check_all_subgraphs_transformed(graph):
     """
@@ -149,20 +158,20 @@ def check_all_subgraphs_transformed(graph):
         else:
             return metadata_prop.value
 
-    assert(get_metadata_props(graph, graph.name) == "visited"), f"Metadata for {graph.name} not set correctly"
-    assert(get_metadata_props(graph, "opset_id") == "10"), "Metadata for opset_id not set correctly"
+    assert get_metadata_props(graph, graph.name) == "visited", f"Metadata for {graph.name} not set correctly"
+    assert get_metadata_props(graph, "opset_id") == "10", "Metadata for opset_id not set correctly"
     # recursively check all subgraphs
     for node in graph.node:
-         for attr in node.attribute:
+        for attr in node.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
                 check_all_subgraphs_transformed(attr.g)
 
+
 @pytest.mark.parametrize("cleanup", [False, True])
 @pytest.mark.parametrize("make_deepcopy", [False, True])
-@pytest.mark.parametrize("tree, apply_to_subgraphs",
-                         [(("top", []), True),
-                          (("top", []), False),
-                          (("top", [("sub1", [])]), False)])
+@pytest.mark.parametrize(
+    "tree, apply_to_subgraphs", [(("top", []), True), (("top", []), False), (("top", [("sub1", [])]), False)]
+)
 def test_no_traversal(tree, cleanup, make_deepcopy, apply_to_subgraphs):
     # Check that the top-level model is transformed exactly once when there are no subgraphs.
     # Check that the top-level model is transformed exactly once when there are subgraphs, but apply_to_subgraphs is False.
@@ -174,6 +183,7 @@ def test_no_traversal(tree, cleanup, make_deepcopy, apply_to_subgraphs):
 
     assert transform.visited == ["top"]
     assert t_model.get_metadata_prop("top") == "visited"
+
 
 def build_preorder_traversal(tree):
     """
@@ -190,6 +200,7 @@ def build_preorder_traversal(tree):
     traverse(tree)
     return traversal
 
+
 def build_postorder_traversal(tree):
     """
     Build a postorder traversal of the tree structure.
@@ -205,10 +216,16 @@ def build_postorder_traversal(tree):
     traverse(tree)
     return traversal
 
+
 @pytest.mark.parametrize("cleanup", [False, True])
 @pytest.mark.parametrize("make_deepcopy", [False, True])
-@pytest.mark.parametrize("tree", [("top", [("sub1", []), ("sub2", [])]),
-                                  ("top", [("sub1", [("sub1_1", []), ("sub1_2",[])]), ("sub2", [("sub2_1", [])])])])
+@pytest.mark.parametrize(
+    "tree",
+    [
+        ("top", [("sub1", []), ("sub2", [])]),
+        ("top", [("sub1", [("sub1_1", []), ("sub1_2", [])]), ("sub2", [("sub2_1", [])])]),
+    ],
+)
 @pytest.mark.parametrize("use_preorder_traversal", [True, False])
 def test_traversal(tree, cleanup, make_deepcopy, use_preorder_traversal):
     # Check that the top-level model and all subgraphs are transformed when apply_to_subgraphs is True.
@@ -216,7 +233,9 @@ def test_traversal(tree, cleanup, make_deepcopy, use_preorder_traversal):
     print(f"Testing tree: {tree}, cleanup: {cleanup}, make_deepcopy: {make_deepcopy}")
     model = make_subgraph_model(tree)
     transform = DummyTransform()
-    t_model = model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True, use_preorder_traversal=use_preorder_traversal)
+    t_model = model.transform(
+        transform, cleanup, make_deepcopy, apply_to_subgraphs=True, use_preorder_traversal=use_preorder_traversal
+    )
 
     check_all_visted_once(tree, transform)
     check_all_subgraphs_transformed(t_model.model.graph)
@@ -230,8 +249,13 @@ def test_traversal(tree, cleanup, make_deepcopy, use_preorder_traversal):
 
 @pytest.mark.parametrize("cleanup", [False, True])
 @pytest.mark.parametrize("make_deepcopy", [False, True])
-@pytest.mark.parametrize("tree", [("top", [("sub1", []), ("sub2", [])]),
-                                  ("top", [("sub1", [("sub1_1", []), ("sub1_2",[])]), ("sub2", [("sub2_1", [])])])])
+@pytest.mark.parametrize(
+    "tree",
+    [
+        ("top", [("sub1", []), ("sub2", [])]),
+        ("top", [("sub1", [("sub1_1", []), ("sub1_2", [])]), ("sub2", [("sub2_1", [])])]),
+    ],
+)
 def test_traversal_nested(tree, cleanup, make_deepcopy):
     # Check that the top-level model and all subgraphs are transformed when apply_to_subgraphs is True.
     # This should always be done correctly regardless of cleanup and make_deepcopy.
@@ -242,6 +266,7 @@ def test_traversal_nested(tree, cleanup, make_deepcopy):
     check_all_visted_once(tree, transform.dummy_transform)
     check_all_subgraphs_transformed(t_model.model.graph)
 
+
 def dummy_analysis_fxn(model_wrapper):
     """
     A dummy analysis function that simply returns the model wrapper.
@@ -249,6 +274,7 @@ def dummy_analysis_fxn(model_wrapper):
     """
     d = {}
     return d
+
 
 @pytest.mark.xfail(reason="Analysis functions require apply_to_subgraphs when traversing subgraphs")
 def test_analysis_fxn_without_apply_to_subgraphs_fails():

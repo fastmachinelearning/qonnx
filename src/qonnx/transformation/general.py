@@ -261,8 +261,7 @@ class SortGraph(Transformation):
                     # check if node inputs are connected to graph inputs or initializers
                     # if so, we can keep the node in the graph
                     for name in n.input:
-                        if util.get_by_name(model.graph.initializer, name) or \
-                           util.get_by_name(model.graph.input, name):
+                        if util.get_by_name(model.graph.initializer, name) or util.get_by_name(model.graph.input, name):
                             # this node is connected to graph inputs or initializers
                             # so we can keep it in the graph
                             graph_dependencies[node_idx] = set()

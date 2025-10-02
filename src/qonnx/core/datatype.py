@@ -288,7 +288,7 @@ class IntType(BaseDataType):
         return signed_max if self._signed else unsigned_max
 
     def allowed(self, value):
-        value_is_integer = (np.round(value) == value)
+        value_is_integer = np.round(value) == value
         value_is_bounded = np.logical_and(self.min() <= value, value <= self.max())
         return np.logical_and(value_is_integer, value_is_bounded)
 

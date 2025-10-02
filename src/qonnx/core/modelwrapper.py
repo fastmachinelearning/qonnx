@@ -128,13 +128,17 @@ class ModelWrapper:
 
     def analysis(self, analysis_fxn, apply_to_subgraphs=False):
         """Runs given anaylsis_fxn on this model and return resulting dict."""
-        if apply_to_subgraphs == True:
-            assert "apply_to_subgraphs" in inspect.signature(analysis_fxn), "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
+        if apply_to_subgraphs:
+            assert "apply_to_subgraphs" in inspect.signature(
+                analysis_fxn
+            ), "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
             return analysis_fxn(self, apply_to_subgraphs)
         else:
             return analysis_fxn(self)
 
-    def transform_subgraphs(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
+    def transform_subgraphs(
+        self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True
+    ):
         """Applies given Transformation to all subgraphs of this ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
@@ -144,23 +148,27 @@ class ModelWrapper:
           otherwise postorder traversal is used.
         """
         for node in self.model.graph.node:
-                transformed_subgraph_attrs = []
-                for idx, attr in enumerate(node.attribute):
-                    if attr.type == onnx.AttributeProto.GRAPH:
-                        # this is a subgraph, add it to the list
-                        subgraph = self.make_subgraph_modelwrapper(attr.g)
-                        # apply the transformation to the subgraph
-                        subgraph = subgraph.transform(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
-                        # update the new subgraph in the attrubute
-                        transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
-                # replace the attributes in the node with the transformed subgraph attributes
-                for idx, new_attr in transformed_subgraph_attrs:
-                    # remove the old attribute
-                    node.attribute.pop(idx)
-                    # add the new attribute
-                    node.attribute.insert(idx, new_attr)
+            transformed_subgraph_attrs = []
+            for idx, attr in enumerate(node.attribute):
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    # this is a subgraph, add it to the list
+                    subgraph = self.make_subgraph_modelwrapper(attr.g)
+                    # apply the transformation to the subgraph
+                    subgraph = subgraph.transform(
+                        transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
+                    )
+                    # update the new subgraph in the attrubute
+                    transformed_subgraph_attrs.append((idx, onnx.helper.make_attribute(attr.name, subgraph.model.graph)))
+            # replace the attributes in the node with the transformed subgraph attributes
+            for idx, new_attr in transformed_subgraph_attrs:
+                # remove the old attribute
+                node.attribute.pop(idx)
+                # add the new attribute
+                node.attribute.insert(idx, new_attr)
 
-    def transform(self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True):
+    def transform(
+        self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True
+    ):
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
@@ -174,8 +182,10 @@ class ModelWrapper:
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
 
-        if apply_to_subgraphs and use_preorder_traversal == False:
-            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+        if apply_to_subgraphs and not use_preorder_traversal:
+            transformed_model.transform_subgraphs(
+                transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
+            )
 
         model_was_changed = True
         while model_was_changed:
@@ -184,7 +194,9 @@ class ModelWrapper:
             transformed_model.cleanup()
 
         if apply_to_subgraphs and use_preorder_traversal:
-            transformed_model.transform_subgraphs(transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal)
+            transformed_model.transform_subgraphs(
+                transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
+            )
 
         return transformed_model
 
