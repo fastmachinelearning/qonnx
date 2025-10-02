@@ -69,15 +69,19 @@ class VerTestOp_v3(VerTestOp_v2):
         return my_attrs
 
 
-def make_vertest_model(vertest_ver):
+def make_vertest_model(vertest_ver, no_opset_import):
     ishp = (1, 10)
     oshp = ishp
     ishp_str = str(list(ishp))
     oshp_str = str(list(oshp))
+    if no_opset_import:
+        opset_import = ""
+    else:
+        opset_import = f', "qonnx.custom_op.general" : {vertest_ver}'
     input = f"""
     <
         ir_version: 7,
-        opset_import: ["" : 9, "qonnx.custom_op.general" : {vertest_ver}]
+        opset_import: ["" : 9{opset_import}]
     >
     agraph (float{ishp_str} in0) => (float{oshp_str} out0)
     {{
@@ -98,16 +102,33 @@ def test_customop_version():
     general.custom_op["VerTestOp_v1"] = VerTestOp_v1
     general.custom_op["VerTestOp_v2"] = VerTestOp_v2
     general.custom_op["VerTestOp_v3"] = VerTestOp_v3
+
+    # if onnx is lacking the opset import, should default to v1 handler
+    # (since we set custom_op["VerTestOp"] = VerTestOp_v1)
+    model = make_vertest_model(1, True)
+    inst = getCustomOp(model.graph.node[0])
+    assert isinstance(inst, VerTestOp_v1)
+    # alternatively, when using ModelWrapper.get_customop_wrapper and onnx is
+    # lacking the opset import, should fall back to the specified version
+    inst = model.get_customop_wrapper(model.graph.node[0], fallback_customop_version=2)
+    assert isinstance(inst, VerTestOp_v2)
+
     for ver in [1, 2, 3]:
-        model = make_vertest_model(ver)
-        # explicitly specify onnx_opset_version in getCustomOp
-        inst = getCustomOp(model.graph.node[0], onnx_opset_version=ver)
-        assert inst.get_nodeattr(f"v{ver}_attr") == ver
-        # now use ModelWrapper.get_customop_wrapper for implicit
+        model = make_vertest_model(ver, False)
+        # use ModelWrapper.get_customop_wrapper for implicit
         # fetching of op version
         inst = model.get_customop_wrapper(model.graph.node[0])
         assert inst.get_nodeattr(f"v{ver}_attr") == ver
+        # explicitly specify onnx_opset_version in getCustomOp
+        # note: new code should avoid calling getCustomOp directly like this
+        # and instead use ModelWrapper.get_customop_wrapper
+        inst = getCustomOp(model.graph.node[0], onnx_opset_version=ver)
+        assert inst.get_nodeattr(f"v{ver}_attr") == ver
     # unspecified version getCustomOp should default to v1 handler
-    # (even though the node is actually v3 in this case)
+    model = make_vertest_model(1, False)
     inst = getCustomOp(model.graph.node[0])
     assert isinstance(inst, VerTestOp_v1)
+    # requesting v4 should return largest available version (v3 in this case)
+    model = make_vertest_model(3, False)
+    inst = getCustomOp(model.graph.node[0], onnx_opset_version=4)
+    assert isinstance(inst, VerTestOp_v3)
