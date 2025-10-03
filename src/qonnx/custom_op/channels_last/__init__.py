@@ -18,6 +18,10 @@ class ChannelsLastCustomOpDict(dict):
             return self._custom_ops[base_key]
         raise KeyError(f"Channels-last CustomOp '{key}' not found.")
 
+    def __contains__(self, key):
+        base_key = key.split("_v")[0]
+        return base_key in self._custom_ops
+
     def keys(self):
         return self._custom_ops.keys()
 
