@@ -48,7 +48,8 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                        data type or its canonical name
         rounding_mode: Rounding mode used for conversion into fixed point.
                        Default is "ROUND",
-                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN", "HALF_UP", "HALF_DOWN"]
+                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
+                       "HALF_UP", "HALF_DOWN"]
     """
 
     def __init__(self, fixedpt_dict, rounding_mode="ROUND"):
