@@ -41,7 +41,7 @@ def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
         domain = domain.replace("onnx.brevitas", "qonnx.custom_op.general")
     try:
         opset_module = importlib.import_module(domain)
-        assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
+        assert isinstance(opset_module.custom_op, dict), "custom_op dict not found in Python module %s" % domain
         if onnx_opset_version is None:
             inst_wrapper = opset_module.custom_op[op_type]
         else:
