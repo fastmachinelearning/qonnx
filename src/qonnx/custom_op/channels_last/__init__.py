@@ -8,7 +8,7 @@ from qonnx.custom_op.channels_last.max_pool import MaxPool
 # {ChannelsLastOp}_vX instead of hardcoding what versions are supported
 
 
-class ChannelsLastCustomOpDict:
+class ChannelsLastCustomOpDict(dict):
     def __init__(self):
         self._custom_ops = {"Conv": Conv, "MaxPool": MaxPool, "BatchNormalization": BatchNormalization}
 
