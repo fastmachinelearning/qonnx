@@ -158,6 +158,11 @@ class Trunc_v1(CustomOp):
     values.
     """
 
+    def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
+        super().__init__(onnx_node, onnx_opset_version)
+        # override any specified opset version, this instance is v1
+        self.onnx_opset_version = 1
+
     def get_nodeattr_types(self):
         return {
             # The rounding mode, which is used for the trunc function
