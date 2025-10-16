@@ -6,13 +6,18 @@ The attribute rounding_mode defines how truncated values are rounded.
 
 #### Version
 
-This operator is not part of the ONNX standard and is not currently versioned.
+This operator is not part of the ONNX standard.
+The description of this operator in this document corresponds to `qonnx.custom_ops.general` opset version 2.
 
 #### Attributes
 
 <dl>
 <dt><tt>rounding_mode</tt> : string (default is "FLOOR")</dt>
 <dd>Defines how rounding should be applied during truncation. Currently available modes are: "ROUND", "CEIL" and "FLOOR". Here "ROUND" implies a round-to-even operation. Lowercase variants for the rounding mode string are also supported: "round", "ceil", "floor".</dd>
+<dt><tt>signed</tt> : int (default is 1)</dt>
+<dd>Defines if the quantization includes a signed bit. E.g. at 8b unsigned=[0, 255] vs signed=[-128, 127].</dd>
+<dt><tt>narrow</tt> : int (default is 0)</dt>
+<dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
 </dl>
 
 #### Inputs
@@ -21,11 +26,13 @@ This operator is not part of the ONNX standard and is not currently versioned.
 <dt><tt>X</tt> (differentiable) : tensor(float32)</dt>
 <dd>input tensor to truncate</dd>
 <dt><tt>scale</tt> : float32</dt>
-<dd>The scale factor</dd>
+<dd>The scale factor at the input of the truncation</dd>
 <dt><tt>zeropt</tt> : float32</dt>
-<dd>The zero-point</dd>
+<dd>The zero-point at the input of the truncation</dd>
 <dt><tt>in_bitwidth</tt> : int32</dt>
 <dd>The number of bits used at the input of the truncation</dd>
+<dt><tt>out_scale</tt> : float32</dt>
+<dd>The scale factor of the output of the truncation</dd>
 <dt><tt>out_bitwidth</tt> : int32</dt>
 <dd>The number of bits used at the output of the truncation</dd>
 </dl>
@@ -91,26 +98,32 @@ from __future__ import unicode_literals
 
 import numpy as np
 
-def trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode):
-    # Port of TruncIntQuant class from Brevitas: https://bit.ly/3wzIpTR
+def trunc(inp_tensor, scale, zeropt, input_bit_width, narrow, signed, output_scale, output_bit_width, rounding_mode):
 
     # Scaling
     y = inp_tensor / scale
     y = y + zeropt
     # Rounding
     y = np.round(y)
-    # Truncate
-    trunc_bit_width = input_bit_width - output_bit_width
-    trunc_scale = 2.0 ** trunc_bit_width
+    # Rescale
+    trunc_scale = 2 ** np.round(
+        np.log2(output_scale / scale)
+    )  # Trunc scale should be a power-of-two - ensure that is the case
     y = y / trunc_scale
 
-    # To int
+    # Clamping
+    min_int_val = min_int(signed, narrow, output_bit_width)
+    max_int_val = max_int(signed, narrow, output_bit_width)
+    y = np.where(y > max_int_val, max_int_val.astype(y.dtype), y)
+    y = np.where(y < min_int_val, min_int_val.astype(y.dtype), y)
+    # To int (truncate)
     rounding_fx = resolve_rounding_mode(rounding_mode)
     y = rounding_fx(y)
 
     # Rescale
-    y = y - zeropt
-    y = y * scale
+    output_zeropt = zeropt / trunc_scale  # Rescale zero-point
+    y = y - output_zeropt
+    y = y * output_scale
 
     return y
 
