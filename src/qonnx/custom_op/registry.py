@@ -42,6 +42,7 @@ def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
     try:
         opset_module = importlib.import_module(domain)
         assert isinstance(opset_module.custom_op, dict), "custom_op dict not found in Python module %s" % domain
+        found_opset_version = None
         if onnx_opset_version is None:
             inst_wrapper = opset_module.custom_op[op_type]
         else:
@@ -49,6 +50,7 @@ def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
             if op_type_with_version in opset_module.custom_op:
                 # priority: if it exists, load the versioned CustomOp wrapper
                 inst_wrapper = opset_module.custom_op[op_type_with_version]
+                found_opset_version = onnx_opset_version
             else:
                 # when the exact version match is not found
                 # version handling: use highest available version smaller than requested version
@@ -59,11 +61,12 @@ def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
                 if suitable_versions:
                     highest_version = max(suitable_versions)
                     inst_wrapper = opset_module.custom_op[f"{op_type}_v{highest_version}"]
+                    found_opset_version = highest_version
                 else:
                     raise Exception(
                         "Op %s version %s not found in custom opset %s" % (op_type, str(onnx_opset_version), domain)
                     )
-        inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
+        inst = inst_wrapper(node, onnx_opset_version=found_opset_version)
         return inst
     except ModuleNotFoundError:
         raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)
