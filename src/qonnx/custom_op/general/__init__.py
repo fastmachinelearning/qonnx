@@ -35,7 +35,7 @@ from qonnx.custom_op.general.intquant import IntQuant
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
-from qonnx.custom_op.general.trunc import Trunc
+from qonnx.custom_op.general.trunc import Trunc_v1, Trunc_v2
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
 custom_op = dict()
@@ -49,7 +49,7 @@ custom_op["XnorPopcountMatMul"] = XnorPopcountMatMul
 custom_op["Im2Col"] = Im2Col
 custom_op["IntQuant"] = IntQuant
 custom_op["Quant"] = IntQuant
-custom_op["Trunc"] = Trunc
+custom_op["Trunc"] = Trunc_v1
 custom_op["BipolarQuant"] = BipolarQuant
 custom_op["FloatQuant"] = FloatQuant
 
@@ -62,6 +62,8 @@ custom_op["XnorPopcountMatMul_v1"] = XnorPopcountMatMul
 custom_op["Im2Col_v1"] = Im2Col
 custom_op["IntQuant_v1"] = IntQuant
 custom_op["Quant_v1"] = IntQuant
-custom_op["Trunc_v1"] = Trunc
+custom_op["Trunc_v1"] = Trunc_v1
 custom_op["BipolarQuant_v1"] = BipolarQuant
 custom_op["FloatQuant_v1"] = FloatQuant
+
+custom_op["Trunc_v2"] = Trunc_v2
