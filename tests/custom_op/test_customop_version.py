@@ -119,11 +119,13 @@ def test_customop_version():
         # fetching of op version
         inst = model.get_customop_wrapper(model.graph.node[0])
         assert inst.get_nodeattr(f"v{ver}_attr") == ver
+        assert inst.onnx_opset_version == ver
         # explicitly specify onnx_opset_version in getCustomOp
         # note: new code should avoid calling getCustomOp directly like this
         # and instead use ModelWrapper.get_customop_wrapper
         inst = getCustomOp(model.graph.node[0], onnx_opset_version=ver)
         assert inst.get_nodeattr(f"v{ver}_attr") == ver
+        assert inst.onnx_opset_version == ver
     # unspecified version getCustomOp should default to v1 handler
     model = make_vertest_model(1, False)
     inst = getCustomOp(model.graph.node[0])
@@ -132,3 +134,4 @@ def test_customop_version():
     model = make_vertest_model(3, False)
     inst = getCustomOp(model.graph.node[0], onnx_opset_version=4)
     assert isinstance(inst, VerTestOp_v3)
+    assert inst.onnx_opset_version == 3
