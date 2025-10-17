@@ -28,9 +28,10 @@
 
 import qonnx.custom_op.registry as registry
 from qonnx.core.datatype import DataType, ScaledIntType
+from qonnx.custom_op.registry import is_custom_op
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.qcdq_to_qonnx import extract_elem_type
-from qonnx.util.basic import get_by_name, is_finn_op
+from qonnx.util.basic import get_by_name
 
 
 def is_scaled_int(x):
@@ -82,7 +83,7 @@ def _infer_node_datatype(model, node, allow_scaledint_dtypes):
     idtypes = list(map(lambda x: model.get_tensor_datatype(x), node.input))
     odtypes = list(map(lambda x: model.get_tensor_datatype(x), node.output))
     op_type = node.op_type
-    if is_finn_op(node.domain):
+    if is_custom_op(node.domain):
         # handle DataType inference for CustomOp
         try:
             # lookup op_type in registry of CustomOps

@@ -27,24 +27,164 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import importlib
+import inspect
+from threading import RLock
+from typing import Dict, Optional, Tuple, Type
 
+from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import get_preferred_onnx_opset
 
+# Registry keyed by original ONNX domain: (domain, op_type) -> CustomOp class
+_OP_REGISTRY: Dict[Tuple[str, str], Type[CustomOp]] = {}
 
-def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
-    "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
+_REGISTRY_LOCK = RLock()
+
+# Maps ONNX domain names to Python module paths (used for imports only)
+_DOMAIN_ALIASES: Dict[str, str] = {
+    "onnx.brevitas": "qonnx.custom_op.general",
+}
+
+
+def add_domain_alias(domain: str, module_path: str) -> None:
+    """Map a domain name to a different module path.
+
+    Args:
+        domain: The ONNX domain name (e.g., "finn.custom_op.fpgadataflow")
+        module_path: The Python module path to use instead (e.g., "finn_custom_ops.fpgadataflow")
+    """
+    with _REGISTRY_LOCK:
+        _DOMAIN_ALIASES[domain] = module_path
+
+
+def resolve_domain(domain: str) -> str:
+    """Resolve a domain to its actual module path, handling aliases.
+
+    Args:
+        domain: The ONNX domain name
+
+    Returns:
+        Resolved module path
+    """
+    return _DOMAIN_ALIASES.get(domain, domain)
+
+
+def _discover_custom_op(domain: str, op_type: str) -> bool:
+    """Discover and register a single custom op.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: The specific op type to discover
+
+    Returns:
+        True if op was found and registered, False otherwise
+    """
+    module_path = resolve_domain(domain)
+
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        return False
+
+    # Try namespace lookup
+    op_class = getattr(module, op_type, None)
+    if inspect.isclass(op_class) and issubclass(op_class, CustomOp):
+        _OP_REGISTRY[(domain, op_type)] = op_class
+        return True
+
+    # Try legacy dict
+    custom_op_dict = getattr(module, 'custom_op', None)
+    if isinstance(custom_op_dict, dict):
+        op_class = custom_op_dict.get(op_type)
+        if inspect.isclass(op_class) and issubclass(op_class, CustomOp):
+            _OP_REGISTRY[(domain, op_type)] = op_class
+            return True
+
+    return False
+
+
+def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset()):
+    """Get a custom op instance for an ONNX node.
+
+    Args:
+        node: ONNX node with domain and op_type attributes
+        onnx_opset_version: ONNX opset version to use
+
+    Returns:
+        CustomOp instance for the node
+
+    Raises:
+        KeyError: If op_type not found in domain
+    """
     op_type = node.op_type
     domain = node.domain
-    if brevitas_exception:
-        # transparently resolve Brevitas domain ops to qonnx ones
-        domain = domain.replace("onnx.brevitas", "qonnx.custom_op.general")
-    try:
-        opset_module = importlib.import_module(domain)
-        assert type(opset_module.custom_op) is dict, "custom_op dict not found in Python module %s" % domain
-        inst_wrapper = opset_module.custom_op[op_type]
-        inst = inst_wrapper(node, onnx_opset_version=onnx_opset_version)
-        return inst
-    except ModuleNotFoundError:
-        raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)
-    except KeyError:
-        raise Exception("Op %s not found in custom opset %s" % (op_type, domain))
+    key = (domain, op_type)
+
+    with _REGISTRY_LOCK:
+        if key in _OP_REGISTRY:
+            return _OP_REGISTRY[key](node, onnx_opset_version=onnx_opset_version)
+
+        if _discover_custom_op(domain, op_type):
+            return _OP_REGISTRY[key](node, onnx_opset_version=onnx_opset_version)
+
+        module_path = resolve_domain(domain)
+        raise KeyError(
+            f"Op '{op_type}' not found in domain '{domain}' (module: {module_path}). "
+            f"Ensure it's exported in the module namespace or in the custom_op dict."
+        )
+
+
+def is_custom_op(domain: str, op_type: Optional[str] = None) -> bool:
+    """Check if a custom op exists or if a domain has any custom ops.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: Optional operation type name. If None, checks if domain has any ops.
+
+    Returns:
+        True if the specific op exists (when op_type given) or
+        if any ops exist for the domain (when op_type=None), False otherwise
+    """
+    # Empty domain means standard ONNX op
+    if not domain:
+        return False
+
+    with _REGISTRY_LOCK:
+        if op_type is not None:
+            # Check for specific op
+            key = (domain, op_type)
+            if key in _OP_REGISTRY:
+                return True
+            return _discover_custom_op(domain, op_type)
+        else:
+            # Check if domain has any registered ops
+            if any(d == domain for d, _ in _OP_REGISTRY.keys()):
+                return True
+            # Try to import the domain module as fallback
+            module_path = resolve_domain(domain)
+            try:
+                importlib.import_module(module_path)
+                return True
+            except (ModuleNotFoundError, ValueError):
+                return False
+
+
+def hasCustomOp(domain: str, op_type: str) -> bool:
+    """Deprecated: Use is_custom_op instead.
+
+    Check if a custom op exists.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: The operation type name
+
+    Returns:
+        True if the op exists, False otherwise
+    """
+    import warnings
+    warnings.warn(
+        "hasCustomOp is deprecated and will be removed in QONNX v1.0. "
+        "Use is_custom_op instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return is_custom_op(domain, op_type)
