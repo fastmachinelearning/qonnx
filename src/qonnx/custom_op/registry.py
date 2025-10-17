@@ -29,7 +29,7 @@
 import importlib
 import inspect
 from threading import RLock
-from typing import Dict, Tuple, Type
+from typing import Dict, Optional, Tuple, Type
 
 from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import get_preferred_onnx_opset
@@ -133,8 +133,45 @@ def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset()):
         )
 
 
+def is_custom_op(domain: str, op_type: Optional[str] = None) -> bool:
+    """Check if a custom op exists or if a domain has any custom ops.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: Optional operation type name. If None, checks if domain has any ops.
+
+    Returns:
+        True if the specific op exists (when op_type given) or
+        if any ops exist for the domain (when op_type=None), False otherwise
+    """
+    # Empty domain means standard ONNX op
+    if not domain:
+        return False
+
+    with _REGISTRY_LOCK:
+        if op_type is not None:
+            # Check for specific op
+            key = (domain, op_type)
+            if key in _OP_REGISTRY:
+                return True
+            return _discover_custom_op(domain, op_type)
+        else:
+            # Check if domain has any registered ops
+            if any(d == domain for d, _ in _OP_REGISTRY.keys()):
+                return True
+            # Try to import the domain module as fallback
+            module_path = resolve_domain(domain)
+            try:
+                importlib.import_module(module_path)
+                return True
+            except (ModuleNotFoundError, ValueError):
+                return False
+
+
 def hasCustomOp(domain: str, op_type: str) -> bool:
-    """Check if a custom op exists.
+    """Deprecated: Use is_custom_op instead.
+
+    Check if a custom op exists.
 
     Args:
         domain: The ONNX domain name
@@ -143,9 +180,11 @@ def hasCustomOp(domain: str, op_type: str) -> bool:
     Returns:
         True if the op exists, False otherwise
     """
-    key = (domain, op_type)
-
-    with _REGISTRY_LOCK:
-        if key in _OP_REGISTRY:
-            return True
-        return _discover_custom_op(domain, op_type)
+    import warnings
+    warnings.warn(
+        "hasCustomOp is deprecated and will be removed in QONNX v1.0. "
+        "Use is_custom_op instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return is_custom_op(domain, op_type)

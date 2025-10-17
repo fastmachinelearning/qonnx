@@ -39,6 +39,7 @@ from onnx import TensorProto
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
+from qonnx.custom_op.registry import is_custom_op
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
@@ -619,11 +620,11 @@ class ModelWrapper:
 
     def get_finn_nodes(self):
         """Returns a list of nodes where domain == 'qonnx.*'."""
-        return list(filter(lambda x: util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: is_custom_op(x.domain), self.graph.node))
 
     def get_non_finn_nodes(self):
         """Returns a list of nodes where domain != 'qonnx.*'."""
-        return list(filter(lambda x: not util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: not is_custom_op(x.domain), self.graph.node))
 
     def get_node_index(self, node):
         """Returns current index of given node, or None if not found."""
