@@ -1,4 +1,5 @@
 import numpy as np
+import re
 from tf2onnx.late_rewriters import channel_order_rewriters
 from tf2onnx.onnx_opset.math import DirectOp, MatMul
 from tf2onnx.onnx_opset.nn import BiasAdd, ConvOp
@@ -32,12 +33,18 @@ def _extract_node_name(onnx_node, keras_quantizers):
         keras_quantizers: The dictionary of all the keras quantizers
 
     """
-    onnx_name = onnx_node.name
+    onnx_name = onnx_node.name 
     keras_names = keras_quantizers.keys()
     for keras_name in keras_names:
         match = "/" + keras_name + "/"
-        if match in onnx_name:
+        match_keras3 = r"/" + re.escape(keras_name) + r"_\d+/"
+        print("onnx:",onnx_name)
+        print("keras:",keras_name)
+        print("keras3:",match_keras3)
+        if match in onnx_name or re.search(match_keras3, onnx_name):
+
             return keras_name
+            
         elif "Identity" in onnx_name:
             onnx_input = onnx_node.input[0]
             keras_input = keras_quantizers[keras_name]["input"]
