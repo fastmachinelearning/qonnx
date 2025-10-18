@@ -1,7 +1,12 @@
 import qkeras
 
 # import tensorflow as tf
-from qkeras.quantizers import BaseQuantizer
+try:
+    # New QKeras
+    from qkeras.base_quantizer import BaseQuantizer
+except ImportError:
+    # Old QKeras
+    from qkeras.quantizers import BaseQuantizer
 from qkeras.utils import REGISTERED_LAYERS as QKERAS_LAYERS
 
 
