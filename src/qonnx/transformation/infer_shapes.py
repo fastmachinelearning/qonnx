@@ -30,14 +30,14 @@ import onnx.shape_inference as si
 
 import qonnx.custom_op.registry as registry
 from qonnx.core.modelwrapper import ModelWrapper
+from qonnx.custom_op.registry import is_custom_op
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import is_finn_op
 
 
 def _make_shape_compatible_op(node, model):
     """Return a shape-compatible non-QONNX op for a given QONNX op. Used for
     shape inference with custom ops."""
-    assert is_finn_op(node.domain), "Node domain is not set to qonnx.*"
+    assert is_custom_op(node.domain), "Node domain is not a registered custom op domain"
     op_type = node.op_type
     try:
         # lookup op_type in registry of CustomOps
@@ -56,7 +56,7 @@ def _hide_finn_ops(model):
     node_ind = 0
     for node in model.graph.node:
         node_ind += 1
-        if is_finn_op(node.domain):
+        if is_custom_op(node.domain):
             new_node = _make_shape_compatible_op(node, model)
             # keep old node name to help debug shape inference issues
             new_node.name = node.name
