@@ -29,7 +29,7 @@
 import importlib
 import inspect
 from threading import RLock
-from typing import Dict, Optional, Tuple, Type
+from typing import Dict, List, Optional, Tuple, Type
 
 from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import get_preferred_onnx_opset
@@ -66,6 +66,29 @@ def resolve_domain(domain: str) -> str:
         Resolved module path
     """
     return _DOMAIN_ALIASES.get(domain, domain)
+
+
+def add_op_to_domain(domain: str, op_class: Type[CustomOp]) -> None:
+    """Register a custom op directly to a domain at runtime.
+
+    The op_type is automatically derived from the class name.
+    Useful for testing and experimentation. For production, define CustomOps
+    in the appropriate module file.
+
+    Args:
+        domain: ONNX domain name (e.g., "qonnx.custom_op.general")
+        op_class: CustomOp subclass
+
+    Example:
+        add_op_to_domain("qonnx.custom_op.general", MyTestOp)
+    """
+    if not inspect.isclass(op_class) or not issubclass(op_class, CustomOp):
+        raise ValueError(f"{op_class} must be a subclass of CustomOp")
+
+    op_type = op_class.__name__
+
+    with _REGISTRY_LOCK:
+        _OP_REGISTRY[(domain, op_type)] = op_class
 
 
 def _discover_custom_op(domain: str, op_type: str) -> bool:
@@ -188,3 +211,50 @@ def hasCustomOp(domain: str, op_type: str) -> bool:
         stacklevel=2
     )
     return is_custom_op(domain, op_type)
+
+
+def get_ops_in_domain(domain: str) -> List[Tuple[str, Type[CustomOp]]]:
+    """Get all CustomOp classes available in a domain.
+
+    Args:
+        domain: ONNX domain name (e.g., "qonnx.custom_op.general")
+
+    Returns:
+        List of (op_type, op_class) tuples
+
+    Example:
+        ops = get_ops_in_domain("qonnx.custom_op.general")
+        for op_name, op_class in ops:
+            print(f"{op_name}: {op_class}")
+    """
+    ops = []
+    module_path = resolve_domain(domain)
+
+    with _REGISTRY_LOCK:
+        # Strategy 1: Get cached ops (fast path)
+        for (d, op_type), op_class in _OP_REGISTRY.items():
+            if d == domain:
+                ops.append((op_type, op_class))
+
+        # Strategy 2: Discover from module (for uncached ops)
+        try:
+            module = importlib.import_module(module_path)
+
+            # Check namespace exports
+            for name, obj in inspect.getmembers(module):
+                if (inspect.isclass(obj) and
+                    issubclass(obj, CustomOp) and
+                    obj is not CustomOp and
+                    not name.startswith('_') and
+                    not any(op[0] == name for op in ops)):
+                    ops.append((name, obj))
+
+            # Check legacy custom_op dict
+            if hasattr(module, 'custom_op') and isinstance(module.custom_op, dict):
+                for name, cls in module.custom_op.items():
+                    if not any(op[0] == name for op in ops):
+                        ops.append((name, cls))
+        except ModuleNotFoundError:
+            pass  # Domain doesn't exist as module, return cached ops only
+
+    return ops
