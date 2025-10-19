@@ -50,13 +50,14 @@ Simply define your CustomOp subclass in the appropriate domain module
 (e.g., ``qonnx.custom_op.general`` for general ops) and it will be automatically
 available through ``getCustomOp``.
 
-For dynamic registration (e.g., in tests), use the registry functions:
+For dynamic registration and querying, use the registry functions:
 
 * ``getCustomOp(node)`` - Get a custom op instance from an ONNX node
-* ``add_op_to_domain(domain, op_type, op_class)`` - Add an op to a domain's namespace  
+* ``is_custom_op(domain, op_type=None)`` - Check if a specific op or domain has custom ops
+* ``add_op_to_domain(domain, op_class)`` - Register an op at runtime (for testing)
+* ``get_ops_in_domain(domain)`` - List all ops available in a domain
 * ``add_domain_alias(domain, module_path)`` - Map a domain to a different module path
 * ``hasCustomOp(domain, op_type)`` - Check if an op exists in a domain
-* ``get_ops_in_domain(domain)`` - List all ops available in a domain
 
 
 Custom ONNX Execution Flow

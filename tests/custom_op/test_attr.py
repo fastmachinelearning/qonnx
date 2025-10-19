@@ -60,7 +60,7 @@ class AttrTestOp(CustomOp):
 
 def test_attr():
     # Add the test op to the domain
-    add_op_to_domain("qonnx.custom_op.general", "AttrTestOp", AttrTestOp)
+    add_op_to_domain("qonnx.custom_op.general", AttrTestOp)
     
     ishp = (1, 10)
     wshp = (1, 3)

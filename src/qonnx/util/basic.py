@@ -62,21 +62,22 @@ def qonnx_make_model(graph_proto, **kwargs):
     return make_model(graph_proto, **kwargs)
 
 
-def is_finn_op(domain):
-    """Return whether given domain string is a QONNX, FINN, or Brainsmith custom op domain.
-    
-    Validates that:
-    1. The domain starts with known custom op prefixes (qonnx., finn., onnx.brevitas, brainsmith.)
-    2. The domain exists and contains at least one CustomOp
+def is_finn_op(op_type):
+    """Deprecated: Use is_custom_op from qonnx.custom_op.registry instead.
+
+    Return whether given op_type string is a QONNX or FINN custom op.
+    This function uses hard-coded string matching and will be removed in QONNX v1.0.
+    Use the registry-based is_custom_op for better accuracy and extensibility.
     """
-    # Check if domain has known custom op prefix
-    if not domain.startswith(("qonnx.", "finn.", "onnx.brevitas", "brainsmith.")):
-        return False
-    
-    # Validate that the domain actually exists and has CustomOps
-    # Lazy import to avoid circular dependency
-    from qonnx.custom_op.registry import get_ops_in_domain
-    return len(get_ops_in_domain(domain)) > 0
+    import warnings
+    warnings.warn(
+        "is_finn_op is deprecated and will be removed in QONNX v1.0. "
+        "Use 'from qonnx.custom_op.registry import is_custom_op' instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    from qonnx.custom_op.registry import is_custom_op
+    return is_custom_op(op_type)
 
 
 def get_num_default_workers():
