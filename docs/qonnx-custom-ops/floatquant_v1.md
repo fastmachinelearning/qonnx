@@ -16,7 +16,7 @@ special (symbolic) values. This makes it nontrivial to infer the maximum represe
 
 #### Version
 
-This operator is not part of the ONNX standard and is not currently versioned.
+The description of this operator in this document corresponds to `qonnx.custom_ops.general` opset version 1.
 
 #### Attributes
 

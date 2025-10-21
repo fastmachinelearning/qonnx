@@ -5,7 +5,7 @@ Additionally, takes one float as input, which define the scaling.
 
 #### Version
 
-This operator is not part of the ONNX standard and is not currently versioned.
+The description of this operator in this document corresponds to `qonnx.custom_ops.general` opset version 1.
 
 #### Attributes
 

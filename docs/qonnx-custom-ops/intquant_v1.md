@@ -9,11 +9,11 @@ rounding_mode defines how quantized values are rounded.
 
 Notes:
 * This operator was previously named `Quant` but is renamed to `IntQuant` to distinguish it from `FloatQuant`. For a transition period, qonnx will transparently handle `Quant` as `IntQuant` for backwards compatibility reasons, but only `IntQuant` should be used for new models.
-* This operator does not work for binary or bipolar quantization, for this purpose the simpler BipolarQuant node exists.
+* This operator does not work for binary or bipolar quantization, for this purpose the simpler `BipolarQuant` node exists.
 
 #### Version
 
-This operator is not part of the ONNX standard and is not currently versioned.
+The description of this operator in this document corresponds to `qonnx.custom_ops.general` opset version 1.
 
 #### Attributes
 
