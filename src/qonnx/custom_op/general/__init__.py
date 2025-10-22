@@ -28,6 +28,7 @@
 
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
+from qonnx.custom_op.general.FixedPoint import FixedPoint
 from qonnx.custom_op.general.floatquant import FloatQuant
 from qonnx.custom_op.general.genericpartition import GenericPartition
 from qonnx.custom_op.general.im2col import Im2Col
@@ -51,4 +52,5 @@ custom_op["IntQuant"] = IntQuant
 custom_op["Quant"] = IntQuant
 custom_op["Trunc"] = Trunc
 custom_op["BipolarQuant"] = BipolarQuant
+custom_op["FixedPoint"] = FixedPoint
 custom_op["FloatQuant"] = FloatQuant

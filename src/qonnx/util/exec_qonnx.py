@@ -147,6 +147,7 @@ def exec_qonnx(
 
     pbar = tqdm(range(n_dset_iters))
 
+    prediction = []
     for iter in pbar:
         iter_suffix = "_batch%d" % iter
         idict = {}
@@ -163,6 +164,7 @@ def exec_qonnx(
         if n_custom_nodes > 0:
             # run node-by-node in qonnx
             odict = execute_onnx(model, idict)
+            prediction.append(odict[model.graph.output[0].name].flatten())
         else:
             # run using onnxruntime
             sess = rt.InferenceSession(model.model.SerializeToString())
@@ -190,6 +192,7 @@ def exec_qonnx(
                 "Batch [%d/%d]: ok %d nok %d accuracy %f (overall ok %d nok %d accuracy %f)"
                 % (iter + 1, n_dset_iters, ok_batch, nok_batch, accuracy_batch, ok, nok, accuracy_overall)
             )
+    return np.array(prediction)
 
 
 def main():
