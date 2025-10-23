@@ -759,3 +759,23 @@ class ModelWrapper:
                 f"using fallback_customop_version={fallback_customop_version}"
             )
             return getCustomOp(node, onnx_opset_version=fallback_customop_version)
+
+    def set_opset_import(self, domain, version):
+        """Sets the opset version for a given domain in the model's opset imports.
+        If the domain already exists, its version will be updated. If not, a new
+        opset import will be added.
+
+        Args:
+            domain (str): The domain name (e.g. "qonnx.custom_op.general")
+            version (int): The opset version number
+        """
+        # find if domain already exists in opset imports
+        for opset in self._model_proto.opset_import:
+            if opset.domain == domain:
+                opset.version = version
+                return
+        # domain not found, add new opset import
+        new_opset = onnx.OperatorSetIdProto()
+        new_opset.domain = domain
+        new_opset.version = version
+        self._model_proto.opset_import.append(new_opset)
