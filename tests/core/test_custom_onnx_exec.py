@@ -32,6 +32,8 @@ from onnx import TensorProto, helper
 import qonnx.core.execute_custom_node as ex_cu_node
 from qonnx.custom_op.registry import getCustomOp
 
+mt_node_version = 1
+
 
 def test_execute_custom_node_multithreshold():
     inputs = np.ndarray(
@@ -155,7 +157,7 @@ def test_execute_custom_node_multithreshold():
     execution_context["v"] = inputs
     execution_context["thresholds"] = threshold_values
 
-    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def)
+    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def, mt_node_version)
 
     outputs = np.ndarray(
         shape=(6, 3, 2, 2),
@@ -250,7 +252,7 @@ def test_execute_custom_node_multithreshold():
     )
 
     graph_def = helper.make_graph([node_def], "test_model", [v, thresholds], [out])
-    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def)
+    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def, mt_node_version)
     outputs_scaled = 2.0 * outputs - 1.0
     assert (execution_context["out"] == outputs_scaled).all()
 
@@ -270,7 +272,7 @@ def test_execute_custom_node_multithreshold():
     execution_context["v"] = inputs_nhwc
 
     graph_def = helper.make_graph([node_def], "test_model", [v_nhwc, thresholds], [out_nhwc])
-    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def)
+    ex_cu_node.execute_custom_node(node_def, execution_context, graph_def, mt_node_version)
     assert (execution_context["out"] == outputs_nhwc).all()
     # check the set of allowed values
     op_inst = getCustomOp(node_def)
