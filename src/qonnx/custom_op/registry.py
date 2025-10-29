@@ -82,7 +82,7 @@ def add_op_to_domain(domain: str, op_class: Type[CustomOp]) -> None:
     Example:
         add_op_to_domain("qonnx.custom_op.general", MyTestOp)
     """
-    if not inspect.isclass(op_class) or not issubclass(op_class, CustomOp):
+    if not issubclass(op_class, CustomOp):
         raise ValueError(f"{op_class} must be a subclass of CustomOp")
 
     op_type = op_class.__name__
