@@ -204,7 +204,7 @@ class QCDQToQuant(Transformation):
                     signed=signed,
                 )
                 # Preserve metadata from all nodes being fused
-                copy_metadata_props(nodes_to_remove, fused_node)
+                copy_metadata_props(node, fused_node)
                 model.graph.node.insert(dequant_node_index, fused_node)
             for node_to_remove in nodes_to_remove:
                 model.graph.node.remove(node_to_remove)
