@@ -30,6 +30,7 @@ import warnings
 from onnx import helper
 
 from qonnx.transformation.base import Transformation
+from qonnx.util.basic import copy_metadata_props
 
 
 class ExtractBiasFromConv(Transformation):
@@ -75,8 +76,7 @@ class ExtractBiasFromConv(Transformation):
                         [act_add_tensor.name, n.input[2]],
                         [n.output[0]],
                     )
-                    if hasattr(n, "metadata_props"):
-                        add_node.metadata_props.extend(n.metadata_props)
+                    copy_metadata_props(n, add_node)
                     graph.node.insert(node_ind, add_node)
 
                     # Repoint Conv output and remove bias tensor
