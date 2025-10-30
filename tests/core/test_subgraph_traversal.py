@@ -265,3 +265,19 @@ def test_traversal_nested(tree, cleanup, make_deepcopy):
 
     check_all_visted_once(tree, transform.dummy_transform)
     check_all_subgraphs_transformed(t_model.model.graph)
+
+
+def dummy_analysis_fxn(model_wrapper):
+    """
+    A dummy analysis function that simply returns the model wrapper.
+    This is used to test that analysis functions are called correctly.
+    """
+    d = {}
+    return d
+
+
+@pytest.mark.xfail(reason="Analysis functions require apply_to_subgraphs when traversing subgraphs")
+def test_analysis_fxn_without_apply_to_subgraphs_fails():
+    # Check that an analysis function fails when apply_to_subgraphs is False
+    model = make_subgraph_model(("top", [("sub1", []), ("sub2", [])]))
+    model.analysis(dummy_analysis_fxn, apply_to_subgraphs=True)

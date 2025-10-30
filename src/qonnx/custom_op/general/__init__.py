@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Importing registers CustomOps in qonnx.custom_op.general domain
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
 from qonnx.custom_op.general.floatquant import FloatQuant
