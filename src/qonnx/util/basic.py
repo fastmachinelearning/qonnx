@@ -350,3 +350,35 @@ def auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h
         return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
     else:
         raise Exception("Unsupported auto_pad: " + autopad_str)
+
+
+def copy_metadata_props(source_node, target_node):
+    """Copy metadata properties from source node(s) to target node.
+    
+    Parameters
+    ----------
+    source_node : onnx.NodeProto or list of onnx.NodeProto
+        Source node(s) from which to copy metadata_props. If a list is provided,
+        metadata from all nodes will be merged into the target node.
+    target_node : onnx.NodeProto
+        Target node to which metadata_props will be copied.
+    
+    Returns
+    -------
+    None
+        Modifies target_node in place by extending its metadata_props.
+    
+    Examples
+    --------
+    >>> # Copy from single node
+    >>> copy_metadata_props(old_node, new_node)
+    >>> 
+    >>> # Copy from multiple nodes (e.g., when fusing)
+    >>> copy_metadata_props([quant_node, dequant_node], fused_node)
+    """
+    # Handle both single node and list of nodes
+    source_nodes = source_node if isinstance(source_node, list) else [source_node]
+    
+    for node in source_nodes:
+        if hasattr(node, "metadata_props"):
+            target_node.metadata_props.extend(node.metadata_props)

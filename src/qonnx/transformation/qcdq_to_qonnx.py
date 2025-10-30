@@ -34,7 +34,7 @@ from typing import Tuple
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name
 
 
 def extract_elem_type(elem_type: int, clip_range=None) -> Tuple[int, int, bool]:
@@ -203,10 +203,8 @@ class QCDQToQuant(Transformation):
                     rounding_mode="ROUND",  # round-to-even
                     signed=signed,
                 )
-                # Pass on metadata from DequantizeLinear node since it's the only node that
-                # must be present to be able to perform this transformation.
-                if hasattr(node, "metadata_props"):
-                    fused_node.metadata_props.extend(node.metadata_props)
+                # Preserve metadata from all nodes being fused
+                copy_metadata_props(nodes_to_remove, fused_node)
                 model.graph.node.insert(dequant_node_index, fused_node)
             for node_to_remove in nodes_to_remove:
                 model.graph.node.remove(node_to_remove)
