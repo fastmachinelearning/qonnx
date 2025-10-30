@@ -203,6 +203,10 @@ class QCDQToQuant(Transformation):
                     rounding_mode="ROUND",  # round-to-even
                     signed=signed,
                 )
+                # Pass on metadata from DequantizeLinear node since it's the only node that
+                # must be present to be able to perform this transformation.
+                if hasattr(node, "metadata_props"):
+                    fused_node.metadata_props.extend(node.metadata_props)
                 model.graph.node.insert(dequant_node_index, fused_node)
             for node_to_remove in nodes_to_remove:
                 model.graph.node.remove(node_to_remove)

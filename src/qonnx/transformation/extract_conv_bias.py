@@ -75,6 +75,8 @@ class ExtractBiasFromConv(Transformation):
                         [act_add_tensor.name, n.input[2]],
                         [n.output[0]],
                     )
+                    if hasattr(n, "metadata_props"):
+                        add_node.metadata_props.extend(n.metadata_props)
                     graph.node.insert(node_ind, add_node)
 
                     # Repoint Conv output and remove bias tensor

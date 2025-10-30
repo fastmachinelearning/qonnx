@@ -103,6 +103,8 @@ class RebalanceIm2Col(Transformation):
                     inp_reshape_node = helper.make_node(
                         "Reshape", [node.input[0], inp_shapedata.name], [inp_reshape_out.name]
                     )
+                    if hasattr(node, "metadata_props"):
+                        inp_reshape_node.metadata_props.extend(node.metadata_props)
                     graph.node.insert(running_node_index, inp_reshape_node)
                     # rewire Im2Col input
                     node.input[0] = inp_reshape_out.name

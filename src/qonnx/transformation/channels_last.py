@@ -96,6 +96,8 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             new_t_inp = model.make_new_valueinfo_name()
             inv_perm = np.argsort(perm)
             new_transpose_node = helper.make_node("Transpose", [eltwise_inp], [new_t_inp], perm=inv_perm)
+            if hasattr(transpose_node, "metadata_props"):
+                new_transpose_node.metadata_props.extend(transpose_node.metadata_props)
             t_shape = np.transpose(np.empty(inp_shape), axes=inv_perm).shape
             model.set_tensor_shape(new_t_inp, t_shape)
             eltwise_node.input[ind] = new_t_inp
@@ -107,6 +109,8 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             model.set_initializer(unsqueeze_param_name, np.asarray(list(range(ndim_inp - ndim)), dtype=np.int64))
             unsqueeze_out_name = model.make_new_valueinfo_name()
             new_unsqueeze_node = helper.make_node("Unsqueeze", [eltwise_inp, unsqueeze_param_name], [unsqueeze_out_name])
+            if hasattr(eltwise_inp, "metadata_props"):
+                new_unsqueeze_node.metadata_props.extend(eltwise_inp.metadata_props)
             unsqueeze_out_shape = np.expand_dims(np.empty(inp_shape), axis=tuple(range(ndim_inp - ndim))).shape
             model.set_tensor_shape(unsqueeze_out_name, unsqueeze_out_shape)
             model.graph.node.append(new_unsqueeze_node)
@@ -114,6 +118,8 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             new_t_inp = model.make_new_valueinfo_name()
             inv_perm = np.argsort(perm)
             new_transpose_node = helper.make_node("Transpose", [unsqueeze_out_name], [new_t_inp], perm=inv_perm)
+            if hasattr(transpose_node, "metadata_props"):
+                new_transpose_node.metadata_props.extend(transpose_node.metadata_props)
             t_shape = np.transpose(np.empty(unsqueeze_out_shape), axes=inv_perm).shape
             model.set_tensor_shape(new_t_inp, t_shape)
             eltwise_node.input[ind] = new_t_inp

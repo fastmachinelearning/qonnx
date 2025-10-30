@@ -78,6 +78,8 @@ class ChangeDataLayoutQuantAvgPool2d(Transformation):
                 graph.value_info.append(quantavg_out)
                 quantavg_out = quantavg_out.name
                 inp_trans_node = helper.make_node("Transpose", [node_input], [inp_trans_out], perm=[0, 2, 3, 1])
+                if hasattr(n, "metadata_props"):
+                    inp_trans_node.metadata_props.extend(n.metadata_props)
                 quantavg_node = helper.make_node(
                     "QuantAvgPool2d",
                     [inp_trans_out],
@@ -90,8 +92,12 @@ class ChangeDataLayoutQuantAvgPool2d(Transformation):
                     signed=signed,
                     data_layout="NHWC",
                 )
+                if hasattr(n, "metadata_props"):
+                    quantavg_node.metadata_props.extend(n.metadata_props)
                 # NHWC -> NCHW
                 out_trans_node = helper.make_node("Transpose", [quantavg_out], [node_output], perm=[0, 3, 1, 2])
+                if hasattr(n, "metadata_props"):
+                    out_trans_node.metadata_props.extend(n.metadata_props)
                 # insert nodes
                 graph.node.insert(node_ind, inp_trans_node)
                 graph.node.insert(node_ind + 1, quantavg_node)

@@ -178,8 +178,12 @@ class LowerConvsToMatMul(Transformation):
             matmul_input = im2col_out if need_im2col else inp_trans_out
             # do matmul
             matmul_node = helper.make_node("MatMul", [matmul_input, conv_weight_inp_name], [matmul_out])
+            if hasattr(node, "metadata_props"):
+                matmul_node.metadata_props.extend(node.metadata_props)
             # NHWC -> NCHW
             out_trans_node = helper.make_node("Transpose", [matmul_out], [cnv_output], perm=[0, 3, 1, 2])
+            if hasattr(node, "metadata_props"):
+                out_trans_node.metadata_props.extend(node.metadata_props)
 
             nodes_to_insert.extend([matmul_node, out_trans_node])
 

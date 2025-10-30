@@ -197,6 +197,9 @@ class SubPixelToDeconvolution(Transformation):
                         group=group,
                         dilations=dilation,
                     )
+                    # Save metadata from the original convolution node
+                    if hasattr(n, "metadata_props"):
+                        deconv_node.metadata_props.extend(n.metadata_props)
                     W_deconv_init = weight_name
                     if weight_prod is not None:
                         W_deconv_init = q_w_name
