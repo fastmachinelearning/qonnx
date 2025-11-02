@@ -63,6 +63,9 @@ class ChannelsLastWrappedOp(CustomOp):
     # Standard ONNX nodes which require a ChannelsLast data format to function properly
     _channelsLast_node_types = ["Conv", "MaxPool", "BatchNormalization"]
 
+    # Version-agnostic: channels_last ops wrap standard ONNX ops and work with any version
+    op_version = 1
+
     def infer_node_datatype(self, model):
         # data type stays the same for all supported nodes
         node = self.onnx_node

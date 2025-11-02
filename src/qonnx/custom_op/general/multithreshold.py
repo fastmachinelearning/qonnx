@@ -95,6 +95,8 @@ def multithreshold(v, thresholds, out_scale=None, out_bias=None, channels_last=F
 class MultiThreshold(CustomOp):
     """Class that corresponds to a multithresholding node."""
 
+    op_version = 1
+
     def get_nodeattr_types(self):
         return {
             "out_dtype": ("s", True, ""),

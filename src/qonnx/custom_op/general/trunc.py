@@ -69,6 +69,8 @@ class Trunc(CustomOp):
     values.
     """
 
+    op_version = 1
+
     def get_nodeattr_types(self):
         return {
             # The rounding mode, which is used for the trunc function

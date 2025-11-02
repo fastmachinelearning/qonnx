@@ -27,48 +27,465 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import importlib
+import inspect
+import warnings
+from threading import RLock
+from typing import Dict, List, Optional, Tuple, Type
+
+from qonnx.custom_op.base import CustomOp
+
+# Nested registry for O(1) lookups: domain -> op_type -> version -> CustomOp class
+# Uses "since version" semantics: version N covers opset N until a higher version exists
+_OP_REGISTRY: Dict[str, Dict[str, Dict[int, Type[CustomOp]]]] = {}
+
+_REGISTRY_LOCK = RLock()
+
+# Maps ONNX domain names to Python module paths (used for imports only)
+_DOMAIN_ALIASES: Dict[str, str] = {
+    "onnx.brevitas": "qonnx.custom_op.general",
+}
 
 
-def getCustomOp(node, onnx_opset_version=None, brevitas_exception=True):
-    "Return a QONNX CustomOp wrapper for the given ONNX node and given opset version,"
-    "if it exists. If opset version is None, the default handler for the op type will be used. "
-    "If version is specified but the exact version match isn't available, the highest available version "
-    "smaller than the requested version will be used."
+def add_domain_alias(domain: str, module_path: str) -> None:
+    """Map a domain name to a different module path.
+
+    Args:
+        domain: The ONNX domain name (e.g., "finn.custom_op.fpgadataflow")
+        module_path: The Python module path to use instead (e.g., "finn_custom_ops.fpgadataflow")
+    """
+    with _REGISTRY_LOCK:
+        _DOMAIN_ALIASES[domain] = module_path
+
+
+def resolve_domain(domain: str) -> str:
+    """Resolve a domain to its actual module path, handling aliases.
+
+    Args:
+        domain: The ONNX domain name
+
+    Returns:
+        Resolved module path
+    """
+    return _DOMAIN_ALIASES.get(domain, domain)
+
+
+def _get_op_type_for_class(cls: Type[CustomOp]) -> str:
+    """Extract the op_type from a CustomOp class name, stripping _vN suffix if present.
+
+    Args:
+        cls: CustomOp class
+
+    Returns:
+        op_type string (e.g., "IntQuant_v2" -> "IntQuant")
+    """
+    name = cls.__name__
+    # Strip _vN suffix if present
+    if "_v" in name:
+        parts = name.split("_v")
+        if len(parts) == 2 and parts[1].isdigit():
+            return parts[0]  # IntQuant_v2 -> IntQuant
+    return name
+
+
+def _get_op_version_for_class(cls: Type[CustomOp]) -> int:
+    """Extract and validate op_version from a CustomOp class.
+
+    Args:
+        cls: CustomOp class
+
+    Returns:
+        Opset version (defaults to 1 if not specified)
+
+    Raises:
+        ValueError: If class name suffix doesn't match op_version attribute
+    """
+    # Get version from attribute (default to 1)
+    version = getattr(cls, 'op_version', 1)
+
+    # Validate against name suffix
+    name = cls.__name__
+    if "_v" in name:
+        parts = name.split("_v")
+        if len(parts) == 2 and parts[1].isdigit():
+            name_version = int(parts[1])
+            if version != name_version:
+                raise ValueError(
+                    f"{cls.__name__} has op_version={version} "
+                    f"but class name suffix indicates v{name_version}. "
+                    f"These must match."
+                )
+
+    return version
+
+
+def _discover_custom_op_versions(domain: str, op_type: str) -> Dict[int, Type[CustomOp]]:
+    """Discover all versions of a SPECIFIC custom op without loading entire domain.
+
+    Uses __all__ when available for efficient filtering, otherwise falls back to
+    full module inspection. Only loads classes matching the requested op_type.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: The specific op type to discover
+
+    Returns:
+        Dict mapping version -> CustomOp class
+    """
+    module_path = resolve_domain(domain)
+    versions = {}
+
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        return versions
+
+    # Fast path: use __all__ to find only matching classes
+    if hasattr(module, '__all__'):
+        # Filter __all__ to find all versions of THIS op_type
+        # e.g., op_type="IntQuant" matches ["IntQuant", "IntQuant_v2", "IntQuant_v4"]
+        candidates = []
+        for name in module.__all__:
+            # Strip _vN suffix to check if it matches
+            base_name = name.split("_v")[0] if "_v" in name else name
+            if base_name == op_type:
+                candidates.append(name)
+
+        # Import ONLY the matching classes (lazy loading)
+        for name in candidates:
+            try:
+                obj = getattr(module, name)
+            except AttributeError:
+                continue
+
+            if not (inspect.isclass(obj) and issubclass(obj, CustomOp) and obj is not CustomOp):
+                continue
+
+            try:
+                version = _get_op_version_for_class(obj)
+            except ValueError as e:
+                warnings.warn(str(e))
+                continue
+
+            if version in versions:
+                warnings.warn(
+                    f"Multiple classes found for {domain}.{op_type} version {version}: "
+                    f"{versions[version].__name__} and {obj.__name__}. Using {obj.__name__}."
+                )
+            versions[version] = obj
+
+    else:
+        # Fallback: full module scan (for external modules without __all__)
+        for name, obj in inspect.getmembers(module, inspect.isclass):
+            if not issubclass(obj, CustomOp) or obj is CustomOp:
+                continue
+
+            class_op_type = _get_op_type_for_class(obj)
+            if class_op_type != op_type:
+                continue
+
+            try:
+                version = _get_op_version_for_class(obj)
+            except ValueError as e:
+                warnings.warn(str(e))
+                continue
+
+            if version in versions:
+                warnings.warn(
+                    f"Multiple classes found for {domain}.{op_type} version {version}: "
+                    f"{versions[version].__name__} and {obj.__name__}. Using {obj.__name__}."
+                )
+            versions[version] = obj
+
+    return versions
+
+
+def _resolve_version(
+    available_versions: Dict[int, Type[CustomOp]],
+    requested_version: Optional[int]
+) -> Tuple[int, Type[CustomOp]]:
+    """Resolve which version to use given available and requested versions.
+
+    Uses "since version" semantics: highest version <= requested is selected.
+
+    Resolution strategy:
+    1. If requested is None, use highest available version
+    2. Try exact match
+    3. Use highest version <= requested
+    4. Raise KeyError if no suitable version
+
+    Args:
+        available_versions: Dict of available versions -> CustomOp classes
+        requested_version: Requested opset version, or None for highest
+
+    Returns:
+        Tuple of (resolved_version, CustomOp_class)
+
+    Raises:
+        KeyError: If no suitable version found
+    """
+    if not available_versions:
+        raise KeyError("No versions available")
+
+    # Strategy 1: If no specific version requested, use highest
+    if requested_version is None:
+        highest = max(available_versions.keys())
+        return highest, available_versions[highest]
+
+    # Strategy 2: Try exact match
+    if requested_version in available_versions:
+        return requested_version, available_versions[requested_version]
+
+    # Strategy 3: Use highest version <= requested (since version semantics)
+    suitable = [v for v in available_versions.keys() if v <= requested_version]
+    if suitable:
+        selected = max(suitable)
+        return selected, available_versions[selected]
+
+    # Strategy 4: No suitable version found
+    available_list = sorted(available_versions.keys())
+    raise KeyError(
+        f"No suitable version found. Requested: {requested_version}, "
+        f"Available: {available_list}. Lowest available version is {available_list[0]}."
+    )
+
+
+def add_op_to_domain(domain: str, op_class: Type[CustomOp], version: Optional[int] = None) -> None:
+    """Register a custom op directly to a domain at runtime.
+
+    The op_type is automatically derived from the class name (with _vN stripped).
+    Useful for testing and experimentation. For production, define CustomOps
+    in the appropriate module file.
+
+    Args:
+        domain: ONNX domain name (e.g., "qonnx.custom_op.general")
+        op_class: CustomOp subclass
+        version: Optional version override. If None, uses op_class.op_version
+
+    Example:
+        add_op_to_domain("qonnx.custom_op.general", MyTestOp)
+        add_op_to_domain("qonnx.custom_op.general", MyTestOp_v2)
+    """
+    if not issubclass(op_class, CustomOp):
+        raise ValueError(f"{op_class} must be a subclass of CustomOp")
+
+    op_type = _get_op_type_for_class(op_class)
+
+    # Determine version to register
+    if version is not None:
+        op_version = version
+    else:
+        op_version = _get_op_version_for_class(op_class)
+
+    with _REGISTRY_LOCK:
+        # Ensure nested dict structure exists
+        if domain not in _OP_REGISTRY:
+            _OP_REGISTRY[domain] = {}
+        if op_type not in _OP_REGISTRY[domain]:
+            _OP_REGISTRY[domain][op_type] = {}
+
+        _OP_REGISTRY[domain][op_type][op_version] = op_class
+
+
+def getCustomOp(node, onnx_opset_version=None):
+    """Get a custom op instance for an ONNX node.
+
+    Uses "since version" semantics: selects highest version <= requested opset.
+    Lazy loads only the requested op_type using __all__ for efficiency.
+
+    Args:
+        node: ONNX node with domain and op_type attributes
+        onnx_opset_version: Opset version from model's opset_import, or None for highest
+
+    Returns:
+        CustomOp instance for the node
+
+    Raises:
+        KeyError: If op_type not found in domain or no suitable version available
+    """
     op_type = node.op_type
     domain = node.domain
-    if brevitas_exception:
-        # transparently resolve Brevitas domain ops to qonnx ones
-        domain = domain.replace("onnx.brevitas", "qonnx.custom_op.general")
-    try:
-        opset_module = importlib.import_module(domain)
-        assert isinstance(opset_module.custom_op, dict), "custom_op dict not found in Python module %s" % domain
-        found_opset_version = None
-        if onnx_opset_version is None:
-            inst_wrapper = opset_module.custom_op[op_type]
+
+    with _REGISTRY_LOCK:
+        # O(1) nested dict lookup to check cache
+        if domain in _OP_REGISTRY and op_type in _OP_REGISTRY[domain]:
+            cached_versions = _OP_REGISTRY[domain][op_type]
         else:
-            op_type_with_version = op_type + "_v" + str(onnx_opset_version)
-            if op_type_with_version in opset_module.custom_op:
-                # priority: if it exists, load the versioned CustomOp wrapper
-                inst_wrapper = opset_module.custom_op[op_type_with_version]
-                found_opset_version = onnx_opset_version
+            # Cache miss: discover THIS op only (lazy, uses __all__ for speed)
+            cached_versions = _discover_custom_op_versions(domain, op_type)
+
+            if not cached_versions:
+                module_path = resolve_domain(domain)
+                raise KeyError(
+                    f"Op '{op_type}' not found in domain '{domain}' (module: {module_path}). "
+                    f"Ensure it's defined in the module and declares op_version."
+                )
+
+            # Cache it in nested structure
+            if domain not in _OP_REGISTRY:
+                _OP_REGISTRY[domain] = {}
+            _OP_REGISTRY[domain][op_type] = cached_versions
+
+        # Resolve which version to use
+        resolved_version, op_class = _resolve_version(cached_versions, onnx_opset_version)
+
+        # Instantiate and return
+        return op_class(node, onnx_opset_version=resolved_version)
+
+
+def get_supported_versions(domain: str, op_type: str) -> List[int]:
+    """Get list of supported opset versions for a custom op.
+
+    Returns all "since versions" where the operator was introduced or changed.
+
+    Args:
+        domain: ONNX domain name
+        op_type: Operation type name
+
+    Returns:
+        Sorted list of opset versions
+
+    Raises:
+        KeyError: If op not found
+    """
+    with _REGISTRY_LOCK:
+        # O(1) check if cached
+        if domain in _OP_REGISTRY and op_type in _OP_REGISTRY[domain]:
+            return sorted(_OP_REGISTRY[domain][op_type].keys())
+
+        # Not cached: discover this op
+        versions_dict = _discover_custom_op_versions(domain, op_type)
+
+        if not versions_dict:
+            raise KeyError(f"Op '{op_type}' not found in domain '{domain}'")
+
+        # Cache discovered versions
+        if domain not in _OP_REGISTRY:
+            _OP_REGISTRY[domain] = {}
+        _OP_REGISTRY[domain][op_type] = versions_dict
+
+        return sorted(versions_dict.keys())
+
+
+def is_custom_op(domain: str, op_type: Optional[str] = None) -> bool:
+    """Check if a custom op exists or if a domain has any custom ops.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: Optional operation type name. If None, checks if domain has any ops.
+
+    Returns:
+        True if the specific op exists (when op_type given) or
+        if any ops exist for the domain (when op_type=None), False otherwise
+    """
+    # Empty domain means standard ONNX op
+    if not domain:
+        return False
+
+    with _REGISTRY_LOCK:
+        if op_type is not None:
+            # Check for specific op - O(1) with nested dict
+            if domain in _OP_REGISTRY and op_type in _OP_REGISTRY[domain]:
+                return True
+            # Try to discover
+            versions = _discover_custom_op_versions(domain, op_type)
+            return len(versions) > 0
+        else:
+            # Check if domain has any registered ops
+            if domain in _OP_REGISTRY and _OP_REGISTRY[domain]:
+                return True
+            # Try to import the domain module as fallback
+            module_path = resolve_domain(domain)
+            try:
+                importlib.import_module(module_path)
+                return True
+            except (ModuleNotFoundError, ValueError):
+                return False
+
+
+def hasCustomOp(domain: str, op_type: str) -> bool:
+    """Deprecated: Use is_custom_op instead.
+
+    Check if a custom op exists.
+
+    Args:
+        domain: The ONNX domain name
+        op_type: The operation type name
+
+    Returns:
+        True if the op exists, False otherwise
+    """
+    warnings.warn(
+        "hasCustomOp is deprecated and will be removed in QONNX v1.0. "
+        "Use is_custom_op instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return is_custom_op(domain, op_type)
+
+
+def get_ops_in_domain(domain: str) -> List[Tuple[str, Type[CustomOp]]]:
+    """Get all CustomOp classes available in a domain.
+
+    Note: Returns unique op_types. If multiple versions exist, returns the highest version.
+    This function eagerly loads all ops in the domain.
+
+    Args:
+        domain: ONNX domain name (e.g., "qonnx.custom_op.general")
+
+    Returns:
+        List of (op_type, op_class) tuples
+
+    Example:
+        ops = get_ops_in_domain("qonnx.custom_op.general")
+        for op_name, op_class in ops:
+            print(f"{op_name}: {op_class}")
+    """
+    module_path = resolve_domain(domain)
+    ops_dict = {}
+
+    with _REGISTRY_LOCK:
+        # Strategy 1: Get cached ops (fast path) - use highest version
+        if domain in _OP_REGISTRY:
+            for op_type, versions in _OP_REGISTRY[domain].items():
+                if versions:
+                    highest_version = max(versions.keys())
+                    ops_dict[op_type] = versions[highest_version]
+
+        # Strategy 2: Discover from module (for uncached ops)
+        # This uses full scan since we want ALL ops
+        try:
+            module = importlib.import_module(module_path)
+
+            # Use __all__ if available for efficiency
+            if hasattr(module, '__all__'):
+                candidates = [(name, getattr(module, name, None))
+                             for name in module.__all__]
+                candidates = [(n, obj) for n, obj in candidates if obj is not None]
             else:
-                # when the exact version match is not found
-                # version handling: use highest available version smaller than requested version
-                available_versions = [
-                    int(k.split("_v")[-1]) for k in opset_module.custom_op.keys() if k.startswith(op_type + "_v")
-                ]
-                suitable_versions = [v for v in available_versions if v <= onnx_opset_version]
-                if suitable_versions:
-                    highest_version = max(suitable_versions)
-                    inst_wrapper = opset_module.custom_op[f"{op_type}_v{highest_version}"]
-                    found_opset_version = highest_version
+                candidates = inspect.getmembers(module, inspect.isclass)
+
+            for name, obj in candidates:
+                if not (inspect.isclass(obj) and
+                       issubclass(obj, CustomOp) and
+                       obj is not CustomOp):
+                    continue
+
+                op_type = _get_op_type_for_class(obj)
+                try:
+                    version = _get_op_version_for_class(obj)
+                except ValueError:
+                    continue
+
+                # Keep highest version only
+                if op_type not in ops_dict:
+                    ops_dict[op_type] = obj
                 else:
-                    raise Exception(
-                        "Op %s version %s not found in custom opset %s" % (op_type, str(onnx_opset_version), domain)
-                    )
-        inst = inst_wrapper(node, onnx_opset_version=found_opset_version)
-        return inst
-    except ModuleNotFoundError:
-        raise Exception("Could not load custom opset %s, check your PYTHONPATH" % domain)
-    except KeyError:
-        raise Exception("Op %s version %s not found in custom opset %s" % (op_type, str(onnx_opset_version), domain))
+                    # Check if this version is higher
+                    existing_version = getattr(ops_dict[op_type], 'op_version', 1)
+                    if version > existing_version:
+                        ops_dict[op_type] = obj
+
+        except ModuleNotFoundError:
+            pass  # Domain doesn't exist as module, return cached ops only
+
+    return list(ops_dict.items())

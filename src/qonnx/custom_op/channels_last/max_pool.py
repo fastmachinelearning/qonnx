@@ -34,6 +34,8 @@ from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
 
 
 class MaxPool(ChannelsLastWrappedOp):
+    op_version = 1  # Version-agnostic
+
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)

@@ -30,15 +30,16 @@ import warnings
 
 import qonnx.core.data_layout as DataLayout
 import qonnx.custom_op.registry as registry
+from qonnx.custom_op.registry import is_custom_op
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import get_by_name, is_finn_op
+from qonnx.util.basic import get_by_name
 
 
 def _dims_to_layout(model, node, ndims):
     if ndims == 2:
         return DataLayout.NC
     else:
-        if is_finn_op(node.domain):
+        if is_custom_op(node.domain):
             if node.op_type == "MultiThreshold" or node.op_type == "QuantAvgPool2d":
                 mt_inst = registry.getCustomOp(node)
                 layout = mt_inst.get_nodeattr("data_layout")
@@ -72,7 +73,7 @@ def _infer_node_data_layout(model, node):
     Returns True if any changes were made."""
     old_layouts = list(map(lambda x: model.get_tensor_layout(x), node.output))
     try:
-        if is_finn_op(node.domain):
+        if is_custom_op(node.domain):
             # try to guess based on number of output dims
             for o in node.output:
                 ndims = len(model.get_tensor_shape(o))

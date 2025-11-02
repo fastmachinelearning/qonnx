@@ -141,6 +141,8 @@ def im2col_indices_nchw(
 
 
 class Im2Col(CustomOp):
+    op_version = 1
+
     def get_nodeattr_types(self):
         return {
             # stride and shape of convolution kernel

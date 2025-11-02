@@ -176,6 +176,8 @@ class IntQuant(CustomOp):
     values.
     """
 
+    op_version = 1
+
     def get_nodeattr_types(self):
         return {
             # whether the quantization interval should be signed or not

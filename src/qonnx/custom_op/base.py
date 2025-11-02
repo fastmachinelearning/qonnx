@@ -36,7 +36,32 @@ from qonnx.util.basic import get_by_name, get_preferred_qonnx_opset
 class CustomOp(ABC):
     """CustomOp class all custom op nodes are based on. Contains different functions
     every custom node should have. Some as abstract methods, these have to be
-    filled when writing a new custom op node."""
+    filled when writing a new custom op node.
+
+    Opset Version Support:
+        CustomOp classes use "since version" semantics matching ONNX operators.
+        The op_version attribute indicates the opset version when this operator
+        was introduced or last changed.
+
+        - op_version = 1: Original implementation (default)
+        - op_version = N: Updated in opset version N
+
+        The registry automatically selects the highest version <= requested opset.
+
+        Example:
+            class IntQuant(CustomOp):
+                op_version = 1  # Covers opset v1
+
+            class IntQuant_v2(CustomOp):
+                op_version = 2  # Covers opset v2-v3 (if no v3 exists)
+
+            class IntQuant_v4(CustomOp):
+                op_version = 4  # Covers opset v4+
+    """
+
+    # Opset version this CustomOp was introduced/changed
+    # Subclasses should override for versions > 1
+    op_version: int = 1
 
     def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
         super().__init__()

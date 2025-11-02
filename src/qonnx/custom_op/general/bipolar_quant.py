@@ -56,6 +56,8 @@ class BipolarQuant(CustomOp):
     values.
     """
 
+    op_version = 1
+
     def get_nodeattr_types(self):
         return dict()
 
