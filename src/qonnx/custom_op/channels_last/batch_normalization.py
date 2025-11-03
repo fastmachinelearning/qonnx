@@ -33,7 +33,6 @@ from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
 
 
 class BatchNormalization(ChannelsLastWrappedOp):
-    op_version = 1  # Version-agnostic
 
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:

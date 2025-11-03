@@ -34,7 +34,6 @@ from qonnx.custom_op.registry import add_op_to_domain, getCustomOp
 
 
 class VerTestOp_v1(CustomOp):
-    op_version = 1
 
     def get_nodeattr_types(self):
         my_attrs = {"v1_attr": ("i", True, 0)}
@@ -59,7 +58,6 @@ class VerTestOp_v1(CustomOp):
 
 
 class VerTestOp_v2(VerTestOp_v1):
-    op_version = 2
 
     def get_nodeattr_types(self):
         my_attrs = {"v2_attr": ("i", True, 0)}
@@ -67,7 +65,6 @@ class VerTestOp_v2(VerTestOp_v1):
 
 
 class VerTestOp_v3(VerTestOp_v2):
-    op_version = 3
 
     def get_nodeattr_types(self):
         my_attrs = {"v3_attr": ("i", True, 0)}

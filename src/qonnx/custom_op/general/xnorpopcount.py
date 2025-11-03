@@ -64,8 +64,6 @@ class XnorPopcountMatMul(CustomOp):
     """Class that corresponds to a XNOR-popcount matrix
     multiplication node."""
 
-    op_version = 1
-
     def get_nodeattr_types(self):
         return {}
 

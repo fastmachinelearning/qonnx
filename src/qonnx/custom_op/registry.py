@@ -88,34 +88,67 @@ def _get_op_type_for_class(cls: Type[CustomOp]) -> str:
 
 
 def _get_op_version_for_class(cls: Type[CustomOp]) -> int:
-    """Extract and validate op_version from a CustomOp class.
+    """Extract version from a CustomOp class name.
 
     Args:
         cls: CustomOp class
 
     Returns:
-        Opset version (defaults to 1 if not specified)
-
-    Raises:
-        ValueError: If class name suffix doesn't match op_version attribute
+        Opset version (defaults to 1 if no _vN suffix present)
     """
-    # Get version from attribute (default to 1)
-    version = getattr(cls, 'op_version', 1)
-
-    # Validate against name suffix
     name = cls.__name__
     if "_v" in name:
-        parts = name.split("_v")
+        parts = name.rsplit("_v", 1)
         if len(parts) == 2 and parts[1].isdigit():
-            name_version = int(parts[1])
-            if version != name_version:
-                raise ValueError(
-                    f"{cls.__name__} has op_version={version} "
-                    f"but class name suffix indicates v{name_version}. "
-                    f"These must match."
-                )
+            return int(parts[1])
+    return 1
 
-    return version
+
+def _discover_from_custom_op_dict(module, op_type: str, domain: str) -> Dict[int, Type[CustomOp]]:
+    """Extract CustomOp versions from legacy custom_op dict (backward compatibility).
+
+    Supports the old registration pattern:
+        custom_op = dict()
+        custom_op["IntQuant"] = IntQuant
+        custom_op["IntQuant_v2"] = IntQuant_v2
+
+    Args:
+        module: The imported module to check
+        op_type: The specific op type to discover
+        domain: The domain name (for warnings)
+
+    Returns:
+        Dict mapping version -> CustomOp class
+    """
+    versions = {}
+
+    if not (hasattr(module, 'custom_op') and isinstance(module.custom_op, dict)):
+        return versions
+
+    # Iterate all dict entries, filter by op_type
+    for key, obj in module.custom_op.items():
+        # Check if this dict key matches the requested op_type
+        base_name = key.split("_v")[0] if "_v" in key else key
+        if base_name != op_type:
+            continue
+
+        if not (inspect.isclass(obj) and issubclass(obj, CustomOp) and obj is not CustomOp):
+            continue
+
+        try:
+            version = _get_op_version_for_class(obj)
+        except ValueError as e:
+            warnings.warn(str(e))
+            continue
+
+        if version in versions:
+            warnings.warn(
+                f"Multiple classes found for {domain}.{op_type} version {version}: "
+                f"{versions[version].__name__} and {obj.__name__}. Using {obj.__name__}."
+            )
+        versions[version] = obj
+
+    return versions
 
 
 def _discover_custom_op_versions(domain: str, op_type: str) -> Dict[int, Type[CustomOp]]:
@@ -173,28 +206,36 @@ def _discover_custom_op_versions(domain: str, op_type: str) -> Dict[int, Type[Cu
                 )
             versions[version] = obj
 
+        # Backward compatibility: if __all__ didn't have the op, try custom_op dict
+        if not versions:
+            versions = _discover_from_custom_op_dict(module, op_type, domain)
+
     else:
-        # Fallback: full module scan (for external modules without __all__)
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            if not issubclass(obj, CustomOp) or obj is CustomOp:
-                continue
+        # No __all__ - try legacy dict first (O(1) check, cheaper than full scan)
+        versions = _discover_from_custom_op_dict(module, op_type, domain)
 
-            class_op_type = _get_op_type_for_class(obj)
-            if class_op_type != op_type:
-                continue
+        # Still nothing? Fallback to full module scan (for external modules)
+        if not versions:
+            for name, obj in inspect.getmembers(module, inspect.isclass):
+                if not issubclass(obj, CustomOp) or obj is CustomOp:
+                    continue
 
-            try:
-                version = _get_op_version_for_class(obj)
-            except ValueError as e:
-                warnings.warn(str(e))
-                continue
+                class_op_type = _get_op_type_for_class(obj)
+                if class_op_type != op_type:
+                    continue
 
-            if version in versions:
-                warnings.warn(
-                    f"Multiple classes found for {domain}.{op_type} version {version}: "
-                    f"{versions[version].__name__} and {obj.__name__}. Using {obj.__name__}."
-                )
-            versions[version] = obj
+                try:
+                    version = _get_op_version_for_class(obj)
+                except ValueError as e:
+                    warnings.warn(str(e))
+                    continue
+
+                if version in versions:
+                    warnings.warn(
+                        f"Multiple classes found for {domain}.{op_type} version {version}: "
+                        f"{versions[version].__name__} and {obj.__name__}. Using {obj.__name__}."
+                    )
+                versions[version] = obj
 
     return versions
 
@@ -249,32 +290,26 @@ def _resolve_version(
     )
 
 
-def add_op_to_domain(domain: str, op_class: Type[CustomOp], version: Optional[int] = None) -> None:
+def add_op_to_domain(domain: str, op_class: Type[CustomOp]) -> None:
     """Register a custom op directly to a domain at runtime.
 
-    The op_type is automatically derived from the class name (with _vN stripped).
+    The op_type and version are automatically derived from the class name.
     Useful for testing and experimentation. For production, define CustomOps
     in the appropriate module file.
 
     Args:
         domain: ONNX domain name (e.g., "qonnx.custom_op.general")
-        op_class: CustomOp subclass
-        version: Optional version override. If None, uses op_class.op_version
+        op_class: CustomOp subclass (version inferred from name)
 
     Example:
-        add_op_to_domain("qonnx.custom_op.general", MyTestOp)
-        add_op_to_domain("qonnx.custom_op.general", MyTestOp_v2)
+        add_op_to_domain("qonnx.custom_op.general", MyTestOp)      # v1
+        add_op_to_domain("qonnx.custom_op.general", MyTestOp_v2)  # v2
     """
     if not issubclass(op_class, CustomOp):
         raise ValueError(f"{op_class} must be a subclass of CustomOp")
 
     op_type = _get_op_type_for_class(op_class)
-
-    # Determine version to register
-    if version is not None:
-        op_version = version
-    else:
-        op_version = _get_op_version_for_class(op_class)
+    op_version = _get_op_version_for_class(op_class)
 
     with _REGISTRY_LOCK:
         # Ensure nested dict structure exists
@@ -317,7 +352,7 @@ def getCustomOp(node, onnx_opset_version=None):
                 module_path = resolve_domain(domain)
                 raise KeyError(
                     f"Op '{op_type}' not found in domain '{domain}' (module: {module_path}). "
-                    f"Ensure it's defined in the module and declares op_version."
+                    f"Ensure it's defined in the module with proper naming (OpName or OpName_vN)."
                 )
 
             # Cache it in nested structure
@@ -481,7 +516,7 @@ def get_ops_in_domain(domain: str) -> List[Tuple[str, Type[CustomOp]]]:
                     ops_dict[op_type] = obj
                 else:
                     # Check if this version is higher
-                    existing_version = getattr(ops_dict[op_type], 'op_version', 1)
+                    existing_version = _get_op_version_for_class(ops_dict[op_type])
                     if version > existing_version:
                         ops_dict[op_type] = obj
 

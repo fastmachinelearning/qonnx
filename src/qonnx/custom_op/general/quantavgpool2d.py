@@ -40,8 +40,6 @@ class QuantAvgPool2d(CustomOp):
     """CustomOp that corresponds to the quantized average pooling
     layer from Brevitas"""
 
-    op_version = 1
-
     def get_nodeattr_types(self):
         return {
             "stride": ("i", True, 1),

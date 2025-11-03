@@ -47,8 +47,6 @@ def compute_pool_output_dim(ifm_dim, k, stride, pad=0, ceil_mode=0):
 class MaxPoolNHWC(CustomOp):
     # a MaxPool node, but using the NHWC data layout
 
-    op_version = 1
-
     def get_nodeattr_types(self):
         # no specific attributes for MaxPoolNHWC
         # attributes below are identical to the standard ONNX MaxPool op:

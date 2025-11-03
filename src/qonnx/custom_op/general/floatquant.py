@@ -127,8 +127,6 @@ class FloatQuant(CustomOp):
     values.
     """
 
-    op_version = 1
-
     def get_nodeattr_types(self):
         return {
             # Integer value interpreted as boolean, defines whether the representation supports signed values.

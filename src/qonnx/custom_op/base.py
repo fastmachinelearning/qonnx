@@ -40,28 +40,23 @@ class CustomOp(ABC):
 
     Opset Version Support:
         CustomOp classes use "since version" semantics matching ONNX operators.
-        The op_version attribute indicates the opset version when this operator
-        was introduced or last changed.
+        Version is determined by the class name using _vN suffix convention:
 
-        - op_version = 1: Original implementation (default)
-        - op_version = N: Updated in opset version N
+        - No suffix (e.g., IntQuant): Version 1 (default)
+        - _vN suffix (e.g., IntQuant_v2): Version N
 
         The registry automatically selects the highest version <= requested opset.
 
         Example:
             class IntQuant(CustomOp):
-                op_version = 1  # Covers opset v1
+                pass  # Version 1 (no suffix)
 
             class IntQuant_v2(CustomOp):
-                op_version = 2  # Covers opset v2-v3 (if no v3 exists)
+                pass  # Version 2, covers opset v2-v3 (if no v3 exists)
 
             class IntQuant_v4(CustomOp):
-                op_version = 4  # Covers opset v4+
+                pass  # Version 4, covers opset v4+
     """
-
-    # Opset version this CustomOp was introduced/changed
-    # Subclasses should override for versions > 1
-    op_version: int = 1
 
     def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
         super().__init__()

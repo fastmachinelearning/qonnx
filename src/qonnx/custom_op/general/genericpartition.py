@@ -36,8 +36,6 @@ class GenericPartition(CustomOp):
     which is a placeholder for a group of nodes that have been separated
     out into an ONNX model of its own."""
 
-    op_version = 1
-
     def get_nodeattr_types(self):
         return {
             "model": ("s", True, ""),
