@@ -31,8 +31,7 @@ import numpy as np
 import warnings
 
 # Protobuf onnx graph node type
-from onnx import NodeProto  # noqa
-from onnx import mapping
+from onnx import AttributeProto, NodeProto, mapping  # noqa
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
@@ -335,26 +334,30 @@ class ApplyConfig(Transformation):
         super().__init__()
         self.config = config
         self.node_filter = node_filter
+        self.used_configurations = ["Defaults"]
+        self.missing_configurations = []
 
-    def apply(self, model):
-        if isinstance(self.config, dict):
-            model_config = self.config
-        else:
-            with open(self.config, "r") as f:
-                model_config = json.load(f)
-
-        used_configurations = ["Defaults"]
-        missing_configurations = []
-
+    def configure_network(self, model, model_config, subgraph_hier):
         # Configure network
         for node_idx, node in enumerate(model.graph.node):
             if not self.node_filter(node):
                 continue
+
             try:
                 node_config = model_config[node.name]
             except KeyError:
-                missing_configurations += [node.name]
+                self.missing_configurations += [node.name]
                 node_config = {}
+
+            # check if config matches subhierarchy parameter
+            try:
+                node_subgraph_hier = node_config["subgraph_hier"]
+            except KeyError:
+                node_subgraph_hier = None
+            if node_subgraph_hier != subgraph_hier:
+                continue
+
+            self.used_configurations += [node.name]
 
             from qonnx.custom_op.registry import getCustomOp
 
@@ -362,7 +365,6 @@ class ApplyConfig(Transformation):
                 inst = getCustomOp(node)
             except Exception:
                 continue
-            used_configurations += [node.name]
 
             # set specified defaults
             default_values = []
@@ -380,11 +382,28 @@ class ApplyConfig(Transformation):
             for attr, value in node_config.items():
                 inst.set_nodeattr(attr, value)
 
-        # Configuration verification
-        if len(missing_configurations) > 0:
-            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(missing_configurations))
+            # apply to subgraph
+            for attr in node.attribute:
+                if attr.type == AttributeProto.GRAPH:
+                    # this is a subgraph, add it to the list
+                    subgraph = model.make_subgraph_modelwrapper(attr.g)
+                    self.configure_network(subgraph, model_config, subgraph_hier=str(subgraph_hier) + "/" + node.name)
 
-        unused_configs = [x for x in model_config if x not in used_configurations]
+    def apply(self, model):
+        if isinstance(self.config, dict):
+            model_config = self.config
+        else:
+            with open(self.config, "r") as f:
+                model_config = json.load(f)
+
+        # apply configuration on upper level
+        self.configure_network(model, model_config, subgraph_hier=None)
+
+        # Configuration verification
+        if len(self.missing_configurations) > 0:
+            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(self.missing_configurations))
+
+        unused_configs = [x for x in model_config if x not in self.used_configurations]
         if len(unused_configs) > 0:
             warnings.warn("\nUnused HW configurations: " + ", ".join(unused_configs))
 
