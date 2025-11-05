@@ -43,11 +43,11 @@ from qonnx.transformation.channels_last import (
     MoveTransposePastFork,
     RemoveConsecutiveChanFirstAndChanLastTrafos,
 )
+from qonnx.custom_op.registry import is_custom_op
 from qonnx.transformation.general import GiveUniqueNodeNames
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
-from qonnx.util.basic import is_finn_op
 from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 from qonnx.util.to_channels_last import to_channels_last
 
@@ -126,7 +126,7 @@ def analysis_test_for_left_transposes(model, test_model, make_input_channels_las
 def verify_all_nodes(model):
     result = dict()
     for n in model.graph.node:
-        if is_finn_op(n.domain):
+        if is_custom_op(n.domain):
             n_instance = getCustomOp(n)
             verify_result = n_instance.verify_node()
             result[n.name] = verify_result
