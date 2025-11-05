@@ -354,8 +354,14 @@ class ApplyConfig(Transformation):
                 node_subgraph_hier = node_config["subgraph_hier"]
             except KeyError:
                 node_subgraph_hier = None
+            # if the subgraph hierarchy parameter does not match
+            # the fct parameter skip
+            # else: remove the parameter from config dict (if not None)
+            # to prevent applying it to the node as an attribute
             if node_subgraph_hier != subgraph_hier:
                 continue
+            elif node_subgraph_hier:
+                del node_config["subgraph_hier"]
 
             self.used_configurations += [node.name]
 
