@@ -41,31 +41,92 @@ from qonnx.util.basic import qonnx_make_model
 from qonnx.util.config import extract_model_config_to_json, extract_model_config
 
 
+# Helper functions for creating ONNX nodes and graphs
+
+def make_im2col_node(name, inputs, outputs, stride, kernel_size, input_shape, pad_amount):
+    """Helper to create an Im2Col node with given parameters."""
+    return helper.make_node(
+        "Im2Col",
+        inputs=inputs,
+        outputs=outputs,
+        domain="qonnx.custom_op.general",
+        stride=stride,
+        kernel_size=kernel_size,
+        input_shape=input_shape,
+        pad_amount=pad_amount,
+        name=name
+    )
+
+
+def make_if_node_with_subgraph(name, condition_input, output, subgraph):
+    """Helper to create an If node with a subgraph for both branches."""
+    if_node = helper.make_node(
+        "If",
+        inputs=[condition_input],
+        outputs=[output],
+        domain="",  # Standard ONNX operator
+        name=name
+    )
+    if_node.attribute.append(helper.make_attribute("then_branch", subgraph))
+    if_node.attribute.append(helper.make_attribute("else_branch", subgraph))
+    return if_node
+
+
+def verify_config_basic_structure(config):
+    """Helper to verify basic config structure."""
+    assert "Defaults" in config
+
+
+def verify_node_attributes(config, node_name, expected_attrs):
+    """Helper to verify node attributes in config.
+    
+    Args:
+        config: The extracted config dictionary
+        node_name: Name of the node to check
+        expected_attrs: Dict of attribute_name -> expected_value
+    """
+    assert node_name in config
+    for attr_name, expected_value in expected_attrs.items():
+        assert config[node_name][attr_name] == expected_value
+
+
+def extract_config_to_temp_json(model, attr_names):
+    """Helper to extract config to a temporary JSON file and return the config dict.
+    
+    Automatically cleans up the temp file after reading.
+    
+    Returns:
+        tuple: (config_dict, cleanup_function)
+    """
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json_filename = f.name
+    
+    extract_model_config_to_json(model, json_filename, attr_names)
+    
+    with open(json_filename, 'r') as f:
+        config = json.load(f)
+    
+    def cleanup():
+        if os.path.exists(json_filename):
+            os.remove(json_filename)
+    
+    return config, cleanup
+
+
 def make_simple_model_with_im2col():
     """Create a simple model with Im2Col nodes that have configurable attributes."""
-    
-    # Create input/output tensors
     inp = helper.make_tensor_value_info("inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
     out = helper.make_tensor_value_info("out", onnx.TensorProto.FLOAT, [1, 7, 7, 27])
     
-    # Create Im2Col node with some attributes
-    im2col_node = helper.make_node(
-        "Im2Col",
-        inputs=["inp"],
-        outputs=["out"],
-        domain="qonnx.custom_op.general",
-        stride=[2, 2],
-        kernel_size=[3, 3],
-        input_shape="(1, 14, 14, 3)",
-        pad_amount=[0, 0, 0, 0],
-        name="Im2Col_0"
+    im2col_node = make_im2col_node(
+        "Im2Col_0", ["inp"], ["out"],
+        stride=[2, 2], kernel_size=[3, 3],
+        input_shape="(1, 14, 14, 3)", pad_amount=[0, 0, 0, 0]
     )
     
     graph = helper.make_graph(
-        nodes=[im2col_node],
-        name="simple_graph",
-        inputs=[inp],
-        outputs=[out],
+        nodes=[im2col_node], name="simple_graph",
+        inputs=[inp], outputs=[out]
     )
     
     model = qonnx_make_model(graph, opset_imports=[helper.make_opsetid("", 11)])
@@ -74,82 +135,43 @@ def make_simple_model_with_im2col():
 
 def make_model_with_subgraphs():
     """Create a model with nodes that contain subgraphs with Im2Col operations."""
-    
-    # Create a subgraph with Im2Col nodes
+    # Create subgraph with Im2Col nodes
     subgraph_inp = helper.make_tensor_value_info("sub_inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
     subgraph_out = helper.make_tensor_value_info("sub_out", onnx.TensorProto.FLOAT, [1, 7, 7, 27])
     
-    # Create Im2Col nodes in the subgraph with different attributes
-    sub_im2col_1 = helper.make_node(
-        "Im2Col",
-        inputs=["sub_inp"],
-        outputs=["sub_intermediate"],
-        domain="qonnx.custom_op.general",
-        stride=[2, 2],
-        kernel_size=[3, 3],
-        input_shape="(1, 14, 14, 3)",
-        pad_amount=[1, 1, 1, 1],
-        name="SubIm2Col_0"
+    sub_im2col_1 = make_im2col_node(
+        "SubIm2Col_0", ["sub_inp"], ["sub_intermediate"],
+        stride=[2, 2], kernel_size=[3, 3],
+        input_shape="(1, 14, 14, 3)", pad_amount=[1, 1, 1, 1]
     )
-    
-    sub_im2col_2 = helper.make_node(
-        "Im2Col",
-        inputs=["sub_intermediate"],
-        outputs=["sub_out"],
-        domain="qonnx.custom_op.general",
-        stride=[1, 1],
-        kernel_size=[5, 5],
-        input_shape="(1, 7, 7, 27)",
-        pad_amount=[2, 2, 2, 2],
-        name="SubIm2Col_1"
+    sub_im2col_2 = make_im2col_node(
+        "SubIm2Col_1", ["sub_intermediate"], ["sub_out"],
+        stride=[1, 1], kernel_size=[5, 5],
+        input_shape="(1, 7, 7, 27)", pad_amount=[2, 2, 2, 2]
     )
     
     subgraph = helper.make_graph(
-        nodes=[sub_im2col_1, sub_im2col_2],
-        name="subgraph_1",
-        inputs=[subgraph_inp],
-        outputs=[subgraph_out],
+        nodes=[sub_im2col_1, sub_im2col_2], name="subgraph_1",
+        inputs=[subgraph_inp], outputs=[subgraph_out]
     )
     
-    # Create main graph with a node that has a subgraph attribute
+    # Create main graph
     main_inp = helper.make_tensor_value_info("main_inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
     main_out = helper.make_tensor_value_info("main_out", onnx.TensorProto.FLOAT, [1, 7, 7, 27])
     
-    # Create a top-level Im2Col node
-    main_im2col = helper.make_node(
-        "Im2Col",
-        inputs=["main_inp"],
-        outputs=["main_intermediate"],
-        domain="qonnx.custom_op.general",
-        stride=[1, 1],
-        kernel_size=[7, 7],
-        input_shape="(1, 14, 14, 3)",
-        pad_amount=[3, 3, 3, 3],
-        name="Im2Col_0"
+    main_im2col = make_im2col_node(
+        "Im2Col_0", ["main_inp"], ["main_intermediate"],
+        stride=[1, 1], kernel_size=[7, 7],
+        input_shape="(1, 14, 14, 3)", pad_amount=[3, 3, 3, 3]
     )
     
-    # Create a node with subgraph (using If node from ONNX standard)
-    # In ONNX, nodes like If, Loop, and Scan have graph attributes
-    if_node = helper.make_node(
-        "If",
-        inputs=["condition"],
-        outputs=["main_out"],
-        domain="",  # Standard ONNX operator
-        name="IfNode_0"
-    )
-    # Add the subgraph as the 'then_branch' and 'else_branch' attributes
-    if_node.attribute.append(helper.make_attribute("then_branch", subgraph))
-    if_node.attribute.append(helper.make_attribute("else_branch", subgraph))
-    
-    # Create a condition input for the If node
+    if_node = make_if_node_with_subgraph("IfNode_0", "condition", "main_out", subgraph)
     condition_init = helper.make_tensor("condition", onnx.TensorProto.BOOL, [], [True])
     
     main_graph = helper.make_graph(
-        nodes=[main_im2col, if_node],
-        name="main_graph",
-        inputs=[main_inp],
-        outputs=[main_out],
-        initializer=[condition_init],
+        nodes=[main_im2col, if_node], name="main_graph",
+        inputs=[main_inp], outputs=[main_out],
+        initializer=[condition_init]
     )
     
     model = qonnx_make_model(main_graph, opset_imports=[helper.make_opsetid("", 11)])
@@ -158,100 +180,57 @@ def make_model_with_subgraphs():
 
 def make_nested_subgraph_model():
     """Create a model with nested subgraphs (subgraph within a subgraph)."""
-    
-    # Create the deepest subgraph (level 2)
+    # Deepest subgraph (level 2)
     deep_inp = helper.make_tensor_value_info("deep_inp", onnx.TensorProto.FLOAT, [1, 8, 8, 16])
     deep_out = helper.make_tensor_value_info("deep_out", onnx.TensorProto.FLOAT, [1, 4, 4, 144])
     
-    deep_im2col = helper.make_node(
-        "Im2Col",
-        inputs=["deep_inp"],
-        outputs=["deep_out"],
-        domain="qonnx.custom_op.general",
-        stride=[2, 2],
-        kernel_size=[3, 3],
-        input_shape="(1, 8, 8, 16)",
-        pad_amount=[0, 0, 0, 0],
-        name="DeepIm2Col_0"
+    deep_im2col = make_im2col_node(
+        "DeepIm2Col_0", ["deep_inp"], ["deep_out"],
+        stride=[2, 2], kernel_size=[3, 3],
+        input_shape="(1, 8, 8, 16)", pad_amount=[0, 0, 0, 0]
     )
     
     deep_subgraph = helper.make_graph(
-        nodes=[deep_im2col],
-        name="deep_subgraph",
-        inputs=[deep_inp],
-        outputs=[deep_out],
+        nodes=[deep_im2col], name="deep_subgraph",
+        inputs=[deep_inp], outputs=[deep_out]
     )
     
-    # Create middle subgraph (level 1) that contains the deep subgraph
+    # Middle subgraph (level 1)
     mid_inp = helper.make_tensor_value_info("mid_inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
     mid_out = helper.make_tensor_value_info("mid_out", onnx.TensorProto.FLOAT, [1, 4, 4, 144])
     
-    mid_im2col = helper.make_node(
-        "Im2Col",
-        inputs=["mid_inp"],
-        outputs=["mid_intermediate"],
-        domain="qonnx.custom_op.general",
-        stride=[1, 1],
-        kernel_size=[5, 5],
-        input_shape="(1, 14, 14, 3)",
-        pad_amount=[2, 2, 2, 2],
-        name="MidIm2Col_0"
+    mid_im2col = make_im2col_node(
+        "MidIm2Col_0", ["mid_inp"], ["mid_intermediate"],
+        stride=[1, 1], kernel_size=[5, 5],
+        input_shape="(1, 14, 14, 3)", pad_amount=[2, 2, 2, 2]
     )
     
-    mid_if_node = helper.make_node(
-        "If",
-        inputs=["mid_condition"],
-        outputs=["mid_out"],
-        domain="",  # Standard ONNX operator
-        name="MidIfNode_0"
-    )
-    mid_if_node.attribute.append(helper.make_attribute("then_branch", deep_subgraph))
-    mid_if_node.attribute.append(helper.make_attribute("else_branch", deep_subgraph))
-    
+    mid_if_node = make_if_node_with_subgraph("MidIfNode_0", "mid_condition", "mid_out", deep_subgraph)
     mid_condition_init = helper.make_tensor("mid_condition", onnx.TensorProto.BOOL, [], [True])
     
     mid_subgraph = helper.make_graph(
-        nodes=[mid_im2col, mid_if_node],
-        name="mid_subgraph",
-        inputs=[mid_inp],
-        outputs=[mid_out],
-        initializer=[mid_condition_init],
+        nodes=[mid_im2col, mid_if_node], name="mid_subgraph",
+        inputs=[mid_inp], outputs=[mid_out],
+        initializer=[mid_condition_init]
     )
     
-    # Create main graph
+    # Main graph
     main_inp = helper.make_tensor_value_info("main_inp", onnx.TensorProto.FLOAT, [1, 28, 28, 1])
     main_out = helper.make_tensor_value_info("main_out", onnx.TensorProto.FLOAT, [1, 4, 4, 144])
     
-    main_im2col = helper.make_node(
-        "Im2Col",
-        inputs=["main_inp"],
-        outputs=["main_intermediate"],
-        domain="qonnx.custom_op.general",
-        stride=[2, 2],
-        kernel_size=[3, 3],
-        input_shape="(1, 28, 28, 1)",
-        pad_amount=[1, 1, 1, 1],
-        name="MainIm2Col_0"
+    main_im2col = make_im2col_node(
+        "MainIm2Col_0", ["main_inp"], ["main_intermediate"],
+        stride=[2, 2], kernel_size=[3, 3],
+        input_shape="(1, 28, 28, 1)", pad_amount=[1, 1, 1, 1]
     )
     
-    main_if_node = helper.make_node(
-        "If",
-        inputs=["main_condition"],
-        outputs=["main_out"],
-        domain="",  # Standard ONNX operator
-        name="MainIfNode_0"
-    )
-    main_if_node.attribute.append(helper.make_attribute("then_branch", mid_subgraph))
-    main_if_node.attribute.append(helper.make_attribute("else_branch", mid_subgraph))
-    
+    main_if_node = make_if_node_with_subgraph("MainIfNode_0", "main_condition", "main_out", mid_subgraph)
     main_condition_init = helper.make_tensor("main_condition", onnx.TensorProto.BOOL, [], [True])
     
     main_graph = helper.make_graph(
-        nodes=[main_im2col, main_if_node],
-        name="main_graph",
-        inputs=[main_inp],
-        outputs=[main_out],
-        initializer=[main_condition_init],
+        nodes=[main_im2col, main_if_node], name="main_graph",
+        inputs=[main_inp], outputs=[main_out],
+        initializer=[main_condition_init]
     )
     
     model = qonnx_make_model(main_graph, opset_imports=[helper.make_opsetid("", 11)])
@@ -261,185 +240,105 @@ def make_nested_subgraph_model():
 def test_extract_model_config_simple():
     """Test extracting config from a simple model without subgraphs."""
     model = make_simple_model_with_im2col()
-    
-    # Extract config for kernel_size and stride attributes
     config = extract_model_config(model, None, ["kernel_size", "stride"])
     
-    # Check that the config contains the expected keys
-    assert "Defaults" in config
-    assert "Im2Col_0" in config
-    
-    # Check that the attributes were extracted correctly
-    assert config["Im2Col_0"]["kernel_size"] == [3, 3]
-    assert config["Im2Col_0"]["stride"] == [2, 2]
+    verify_config_basic_structure(config)
+    verify_node_attributes(config, "Im2Col_0", {
+        "kernel_size": [3, 3],
+        "stride": [2, 2]
+    })
 
 
 def test_extract_model_config_to_json_simple():
     """Test extracting config to JSON from a simple model without subgraphs."""
     model = make_simple_model_with_im2col()
-    
-    # Create a temporary file for the JSON output
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json_filename = f.name
+    config, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride", "pad_amount"])
     
     try:
-        # Extract config to JSON
-        extract_model_config_to_json(model, json_filename, ["kernel_size", "stride", "pad_amount"])
-        
-        # Read the JSON file and verify its contents
-        with open(json_filename, 'r') as f:
-            config = json.load(f)
-        
-        assert "Defaults" in config
-        assert "Im2Col_0" in config
-        assert config["Im2Col_0"]["kernel_size"] == [3, 3]
-        assert config["Im2Col_0"]["stride"] == [2, 2]
-        assert config["Im2Col_0"]["pad_amount"] == [0, 0, 0, 0]
+        verify_config_basic_structure(config)
+        verify_node_attributes(config, "Im2Col_0", {
+            "kernel_size": [3, 3],
+            "stride": [2, 2],
+            "pad_amount": [0, 0, 0, 0]
+        })
     finally:
-        # Clean up the temporary file
-        if os.path.exists(json_filename):
-            os.remove(json_filename)
+        cleanup()
 
 
 def test_extract_model_config_with_subgraphs():
     """Test extracting config from a model with subgraphs."""
     model = make_model_with_subgraphs()
-    
-    # Extract config for kernel_size, stride, and pad_amount attributes
     config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
     
-    # Check that the config contains the expected keys
-    assert "Defaults" in config
+    verify_config_basic_structure(config)
     
-    # Check main graph node
-    assert "Im2Col_0" in config
-    assert config["Im2Col_0"]["kernel_size"] == [7, 7]
-    assert config["Im2Col_0"]["stride"] == [1, 1]
-    assert config["Im2Col_0"]["pad_amount"] == [3, 3, 3, 3]
+    # Verify main graph and subgraph nodes
+    verify_node_attributes(config, "Im2Col_0", {
+        "kernel_size": [7, 7],
+        "stride": [1, 1],
+        "pad_amount": [3, 3, 3, 3]
+    })
+    verify_node_attributes(config, "SubIm2Col_0", {
+        "kernel_size": [3, 3],
+        "stride": [2, 2],
+        "pad_amount": [1, 1, 1, 1]
+    })
+    verify_node_attributes(config, "SubIm2Col_1", {
+        "kernel_size": [5, 5],
+        "stride": [1, 1],
+        "pad_amount": [2, 2, 2, 2]
+    })
     
-    # Check subgraph nodes
-    assert "SubIm2Col_0" in config
-    assert config["SubIm2Col_0"]["kernel_size"] == [3, 3]
-    assert config["SubIm2Col_0"]["stride"] == [2, 2]
-    assert config["SubIm2Col_0"]["pad_amount"] == [1, 1, 1, 1]
-    
-    assert "SubIm2Col_1" in config
-    assert config["SubIm2Col_1"]["kernel_size"] == [5, 5]
-    assert config["SubIm2Col_1"]["stride"] == [1, 1]
-    assert config["SubIm2Col_1"]["pad_amount"] == [2, 2, 2, 2]
-    
-    # Check that subgraph hierarchy is tracked
     assert "subgraph_hier" in config
 
 
 def test_extract_model_config_to_json_with_subgraphs():
     """Test extracting config to JSON from a model with subgraphs."""
     model = make_model_with_subgraphs()
-    
-    # Create a temporary file for the JSON output
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json_filename = f.name
+    config, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride", "pad_amount"])
     
     try:
-        # Extract config to JSON
-        extract_model_config_to_json(model, json_filename, ["kernel_size", "stride", "pad_amount"])
-        
-        # Read the JSON file and verify its contents
-        with open(json_filename, 'r') as f:
-            config = json.load(f)
-        
-        # Verify the structure
-        assert "Defaults" in config
-        assert "Im2Col_0" in config
-        assert "SubIm2Col_0" in config
-        assert "SubIm2Col_1" in config
-        
-        # Verify main graph node attributes
-        assert config["Im2Col_0"]["kernel_size"] == [7, 7]
-        assert config["Im2Col_0"]["stride"] == [1, 1]
-        
-        # Verify subgraph node attributes
-        assert config["SubIm2Col_0"]["kernel_size"] == [3, 3]
-        assert config["SubIm2Col_0"]["pad_amount"] == [1, 1, 1, 1]
-        
-        assert config["SubIm2Col_1"]["kernel_size"] == [5, 5]
-        assert config["SubIm2Col_1"]["pad_amount"] == [2, 2, 2, 2]
-        
-        # Check that subgraph hierarchy information is present
+        verify_config_basic_structure(config)
+        verify_node_attributes(config, "Im2Col_0", {"kernel_size": [7, 7], "stride": [1, 1]})
+        verify_node_attributes(config, "SubIm2Col_0", {"kernel_size": [3, 3], "pad_amount": [1, 1, 1, 1]})
+        verify_node_attributes(config, "SubIm2Col_1", {"kernel_size": [5, 5], "pad_amount": [2, 2, 2, 2]})
         assert "subgraph_hier" in config
-        
     finally:
-        # Clean up the temporary file
-        if os.path.exists(json_filename):
-            os.remove(json_filename)
+        cleanup()
 
 
 def test_extract_model_config_nested_subgraphs():
     """Test extracting config from a model with nested subgraphs."""
     model = make_nested_subgraph_model()
-    model.save('nested_subgraph_model.onnx')
-    # Extract config for kernel_size and stride attributes
     config = extract_model_config(model, None, ["kernel_size", "stride"])
     
-    # Check that the config contains nodes from all levels
-    assert "Defaults" in config
+    verify_config_basic_structure(config)
     
-    # Main graph
-    assert "MainIm2Col_0" in config
-    assert config["MainIm2Col_0"]["kernel_size"] == [3, 3]
-    assert config["MainIm2Col_0"]["stride"] == [2, 2]
-    
-    # Middle subgraph
-    assert "MidIm2Col_0" in config
-    assert config["MidIm2Col_0"]["kernel_size"] == [5, 5]
-    assert config["MidIm2Col_0"]["stride"] == [1, 1]
-    
-    # Deep subgraph
-    assert "DeepIm2Col_0" in config
-    assert config["DeepIm2Col_0"]["kernel_size"] == [3, 3]
-    assert config["DeepIm2Col_0"]["stride"] == [2, 2]
+    # Verify nodes from all nesting levels
+    verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
+    verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1]})
+    verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
 
 
 def test_extract_model_config_to_json_nested_subgraphs():
     """Test extracting config to JSON from a model with nested subgraphs."""
     model = make_nested_subgraph_model()
-    
-    # Create a temporary file for the JSON output
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        json_filename = f.name
+    config, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride", "pad_amount"])
     
     try:
-        # Extract config to JSON
-        extract_model_config_to_json(model, json_filename, ["kernel_size", "stride", "pad_amount"])
-        
-        # Read the JSON file and verify its contents
-        with open(json_filename, 'r') as f:
-            config = json.load(f)
-        
-        # Verify all nodes from all nesting levels are present
-        assert "Defaults" in config
-        assert "MainIm2Col_0" in config
-        assert "MidIm2Col_0" in config
-        assert "DeepIm2Col_0" in config
-        
-        # Verify attributes from each level
-        assert config["MainIm2Col_0"]["kernel_size"] == [3, 3]
-        assert config["MidIm2Col_0"]["kernel_size"] == [5, 5]
-        assert config["DeepIm2Col_0"]["kernel_size"] == [3, 3]
-        
-        # Verify subgraph hierarchy tracking
+        verify_config_basic_structure(config)
+        verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3]})
+        verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5]})
+        verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3]})
         assert "subgraph_hier" in config
-        
     finally:
-        # Clean up the temporary file
-        if os.path.exists(json_filename):
-            os.remove(json_filename)
+        cleanup()
 
 
 def test_extract_model_config_empty_attr_list():
     """Test that extracting with an empty attribute list returns only Defaults."""
     model = make_simple_model_with_im2col()
-    mod
+    
     config = extract_model_config(model, None, [])
     
     # Should only have Defaults, no node-specific configs
