@@ -90,6 +90,35 @@ def verify_node_attributes(config, node_name, expected_attrs):
         assert config[node_name][attr_name] == expected_value
 
 
+def verify_subgraph_hierarchy(config, expected_hier_path=None):
+    """Helper to verify that subgraph hierarchy tracking is present and optionally matches expected path.
+    
+    Args:
+        config: The extracted config dictionary
+        expected_hier_path: Optional string or list of strings representing expected hierarchy path(s).
+                          If None, just checks that 'subgraph_hier' key exists.
+                          If string, checks that subgraph_hier equals that string.
+                          If list, checks that subgraph_hier contains at least one of the paths.
+    """
+    assert "subgraph_hier" in config, "subgraph_hier key not found in config"
+    
+    if expected_hier_path is not None:
+        actual_hier = config["subgraph_hier"]
+        
+        if isinstance(expected_hier_path, str):
+            # Single expected path - check exact match or that actual contains it
+            assert expected_hier_path in actual_hier, \
+                f"Expected hierarchy path '{expected_hier_path}' not found in '{actual_hier}'"
+        elif isinstance(expected_hier_path, list):
+            # Multiple possible paths - check that at least one matches
+            found = any(path in actual_hier for path in expected_hier_path)
+            assert found, \
+                f"None of the expected hierarchy paths {expected_hier_path} found in '{actual_hier}'"
+    else:
+        # subgraph_hier key should not be present
+        assert "subgraph_hier" not in config, "subgraph_hier found in config when not expected"
+
+
 def extract_config_to_temp_json(model, attr_names):
     """Helper to extract config to a temporary JSON file and return the config dict.
     
@@ -289,7 +318,8 @@ def test_extract_model_config_with_subgraphs():
         "pad_amount": [2, 2, 2, 2]
     })
     
-    assert "subgraph_hier" in config
+    # Verify subgraph hierarchy tracking
+    verify_subgraph_hierarchy(config, "IfNode_0")
 
 
 def test_extract_model_config_to_json_with_subgraphs():
@@ -302,7 +332,7 @@ def test_extract_model_config_to_json_with_subgraphs():
         verify_node_attributes(config, "Im2Col_0", {"kernel_size": [7, 7], "stride": [1, 1]})
         verify_node_attributes(config, "SubIm2Col_0", {"kernel_size": [3, 3], "pad_amount": [1, 1, 1, 1]})
         verify_node_attributes(config, "SubIm2Col_1", {"kernel_size": [5, 5], "pad_amount": [2, 2, 2, 2]})
-        assert "subgraph_hier" in config
+        verify_subgraph_hierarchy(config, "IfNode_0")
     finally:
         cleanup()
 
@@ -330,7 +360,8 @@ def test_extract_model_config_to_json_nested_subgraphs():
         verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3]})
         verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5]})
         verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3]})
-        assert "subgraph_hier" in config
+        # Verify nested hierarchy (MainIfNode_0 -> MidIfNode_0 -> DeepIm2Col_0)
+        verify_subgraph_hierarchy(config, ["MainIfNode_0", "MidIfNode_0"])
     finally:
         cleanup()
 
@@ -357,3 +388,47 @@ def test_extract_model_config_nonexistent_attr():
     assert "Defaults" in config
     # The node won't appear in config if none of its attributes match
     assert "Im2Col_0" not in config
+
+
+def test_verify_subgraph_hierarchy_validation():
+    """Test that subgraph hierarchy verification works correctly."""
+    model = make_model_with_subgraphs()
+    config = extract_model_config(model, None, ["kernel_size"])
+    
+    # Should pass with correct hierarchy node
+    verify_subgraph_hierarchy(config, "IfNode_0")
+    
+    # Should pass with list containing correct hierarchy node
+    verify_subgraph_hierarchy(config, ["IfNode_0", "SomeOtherNode"])
+    
+    # Should fail with incorrect hierarchy node
+    try:
+        verify_subgraph_hierarchy(config, "NonExistentNode")
+        assert False, "Should have raised assertion error for incorrect hierarchy"
+    except AssertionError as e:
+        assert "not found" in str(e)
+
+
+def test_top_level_nodes_no_subgraph_hier():
+    """Test that top-level models without subgraphs don't have subgraph_hier key."""
+    # Test simple model (no subgraphs at all)
+    model = make_simple_model_with_im2col()
+    config = extract_model_config(model, None, ["kernel_size", "stride"])
+    
+    # Should have the expected structure
+    verify_config_basic_structure(config)
+    verify_node_attributes(config, "Im2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
+    
+    # Should NOT have subgraph_hier since there are no subgraphs
+    assert "subgraph_hier" not in config, "Top-level model without subgraphs should not have subgraph_hier key"
+    
+    # Test model with subgraphs - verify main level nodes exist but subgraph_hier is separate
+    model_with_sub = make_model_with_subgraphs()
+    config_with_sub = extract_model_config(model_with_sub, None, ["kernel_size"])
+    
+    # Should have both main graph and subgraph nodes
+    assert "Im2Col_0" in config_with_sub  # Main graph node
+    assert "SubIm2Col_0" in config_with_sub  # Subgraph node
+    
+    # Should have subgraph_hier tracking since there ARE subgraphs
+    assert "subgraph_hier" in config_with_sub, "Model with subgraphs should have subgraph_hier key"
