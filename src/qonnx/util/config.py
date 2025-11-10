@@ -57,8 +57,10 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
             
         oi = getCustomOp(n)
         layer_dict = dict()
+        
+        # Add subgraph hierarchy to the node's config if in a subgraph
         if subgraph_hier is not None:
-            cfg["subgraph_hier"] = str(subgraph_hier) + '/' + n.name
+            layer_dict["subgraph_hier"] = str(subgraph_hier)
         
         for attr in n.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:

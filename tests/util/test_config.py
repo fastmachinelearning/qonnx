@@ -282,7 +282,6 @@ def make_nested_subgraph_model():
 def test_extract_model_config_simple():
     """Test extracting config from a simple model without subgraphs."""
     model = make_simple_model_with_im2col()
-    model.save('im2col_simple.onnx')
     config = extract_model_config(model, None, ["input_shape", "kernel_size", "stride"])
     
     verify_config_basic_structure(config)
@@ -312,7 +311,6 @@ def test_extract_model_config_to_json_simple():
 def test_extract_model_config_with_subgraphs():
     """Test extracting config from a model with subgraphs."""
     model = make_model_with_subgraphs()
-    model.save('model_with_subgraphs.onnx')
     config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
     
     verify_config_basic_structure(config)
@@ -362,7 +360,6 @@ def test_extract_model_config_to_json_with_subgraphs():
 def test_extract_model_config_nested_subgraphs():
     """Test extracting config from a model with nested subgraphs."""
     model = make_nested_subgraph_model()
-    model.save('nested_subgraph_model.onnx')
     config = extract_model_config(model, None, ["kernel_size", "stride"])
     
     verify_config_basic_structure(config)
