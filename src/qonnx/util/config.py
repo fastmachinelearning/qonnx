@@ -39,7 +39,6 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
     qonnx.transform.general.ApplyConfig."""
 
     cfg = dict()
-    cfg["Defaults"] = dict()
     for n in model.graph.node:
         # First, check for subgraphs in node attributes (for both custom and standard ops)
         for attr in n.attribute:

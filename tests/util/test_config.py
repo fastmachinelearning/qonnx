@@ -74,7 +74,7 @@ def make_if_node_with_subgraph(name, condition_input, output, subgraph):
 
 def verify_config_basic_structure(config):
     """Helper to verify basic config structure."""
-    assert "Defaults" in config
+    assert isinstance(config, dict), "Config should be a dictionary"
 
 
 def verify_node_attributes(config, node_name, expected_attrs):
@@ -367,14 +367,14 @@ def test_extract_model_config_to_json_nested_subgraphs():
 
 
 def test_extract_model_config_empty_attr_list():
-    """Test that extracting with an empty attribute list returns only Defaults."""
+    """Test that extracting with an empty attribute list returns an empty or minimal config."""
     model = make_simple_model_with_im2col()
     
     config = extract_model_config(model, None, [])
     
-    # Should only have Defaults, no node-specific configs
-    assert "Defaults" in config
-    assert "Im2Col_0" not in config
+    # Should have no node-specific configs when no attributes are requested
+    assert isinstance(config, dict), "Config should be a dictionary"
+    assert "Im2Col_0" not in config, "No nodes should be in config when no attributes are requested"
 
 
 def test_extract_model_config_nonexistent_attr():
@@ -384,10 +384,10 @@ def test_extract_model_config_nonexistent_attr():
     # Try to extract an attribute that doesn't exist
     config = extract_model_config(model, None, ["nonexistent_attr"])
     
-    # Should have Defaults but node should not appear since it has no matching attrs
-    assert "Defaults" in config
+    # Config should be a dict but node should not appear since it has no matching attrs
+    assert isinstance(config, dict), "Config should be a dictionary"
     # The node won't appear in config if none of its attributes match
-    assert "Im2Col_0" not in config
+    assert "Im2Col_0" not in config, "Node should not appear if it has no matching attributes"
 
 
 def test_verify_subgraph_hierarchy_validation():
@@ -425,6 +425,11 @@ def test_top_level_nodes_no_subgraph_hier():
     # Test model with subgraphs - verify main level nodes exist but subgraph_hier is separate
     model_with_sub = make_model_with_subgraphs()
     config_with_sub = extract_model_config(model_with_sub, None, ["kernel_size"])
+    
+    # verify that top-level nodes do not have subgraph_hier key
+    verify_node_attributes(config_with_sub, "Im2Col_0", {"kernel_size": [7, 7]})
+    verify_node_attributes(config_with_sub, "SubIm2Col_0", {"kernel_size": [3, 3]})
+    
     
     # Should have both main graph and subgraph nodes
     assert "Im2Col_0" in config_with_sub  # Main graph node
