@@ -86,6 +86,11 @@ def verify_node_attributes(config, node_name, expected_attrs):
         expected_attrs: Dict of attribute_name -> expected_value
     """
     assert node_name in config
+    
+    # check that all config attributes are present in expected_attrs
+    for attr in config[node_name]:
+        assert attr in expected_attrs, f"Unexpected attribute '{attr}' found in config for node '{node_name}'"
+    
     for attr_name, expected_value in expected_attrs.items():
         assert config[node_name][attr_name] == expected_value
 
@@ -269,10 +274,12 @@ def make_nested_subgraph_model():
 def test_extract_model_config_simple():
     """Test extracting config from a simple model without subgraphs."""
     model = make_simple_model_with_im2col()
-    config = extract_model_config(model, None, ["kernel_size", "stride"])
+    model.save('im2col_simple.onnx')
+    config = extract_model_config(model, None, ["input_shape", "kernel_size", "stride"])
     
     verify_config_basic_structure(config)
     verify_node_attributes(config, "Im2Col_0", {
+        "input_shape": '(1, 14, 14, 3)',
         "kernel_size": [3, 3],
         "stride": [2, 2]
     })
@@ -297,6 +304,7 @@ def test_extract_model_config_to_json_simple():
 def test_extract_model_config_with_subgraphs():
     """Test extracting config from a model with subgraphs."""
     model = make_model_with_subgraphs()
+    model.save('model_with_subgraphs.onnx')
     config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
     
     verify_config_basic_structure(config)
@@ -329,9 +337,9 @@ def test_extract_model_config_to_json_with_subgraphs():
     
     try:
         verify_config_basic_structure(config)
-        verify_node_attributes(config, "Im2Col_0", {"kernel_size": [7, 7], "stride": [1, 1]})
-        verify_node_attributes(config, "SubIm2Col_0", {"kernel_size": [3, 3], "pad_amount": [1, 1, 1, 1]})
-        verify_node_attributes(config, "SubIm2Col_1", {"kernel_size": [5, 5], "pad_amount": [2, 2, 2, 2]})
+        verify_node_attributes(config, "Im2Col_0", {"kernel_size": [7, 7], "stride": [1, 1], "pad_amount": [3, 3, 3, 3]})
+        verify_node_attributes(config, "SubIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]})
+        verify_node_attributes(config, "SubIm2Col_1", {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]})
         verify_subgraph_hierarchy(config, "IfNode_0")
     finally:
         cleanup()
@@ -340,6 +348,7 @@ def test_extract_model_config_to_json_with_subgraphs():
 def test_extract_model_config_nested_subgraphs():
     """Test extracting config from a model with nested subgraphs."""
     model = make_nested_subgraph_model()
+    model.save('nested_subgraph_model.onnx')
     config = extract_model_config(model, None, ["kernel_size", "stride"])
     
     verify_config_basic_structure(config)
@@ -357,9 +366,9 @@ def test_extract_model_config_to_json_nested_subgraphs():
     
     try:
         verify_config_basic_structure(config)
-        verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3]})
-        verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5]})
-        verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3]})
+        verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]})
+        verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]})
+        verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]})
         # Verify nested hierarchy (MainIfNode_0 -> MidIfNode_0 -> DeepIm2Col_0)
         verify_subgraph_hierarchy(config, ["MainIfNode_0", "MidIfNode_0"])
     finally:
