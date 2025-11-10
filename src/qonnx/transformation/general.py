@@ -346,7 +346,17 @@ class ApplyConfig(Transformation):
             try:
                 node_config = model_config[node.name]
             except KeyError:
-                self.missing_configurations += [node.name]
+                # Only mark as missing if this node should be configured at this level
+                # (i.e., it's not waiting to be configured in a subgraph)
+                # We can't know for sure, so we check if ANY config entry might be for this node
+                # but in a subgraph - if not, it's truly missing
+                is_in_subgraph = any(
+                    cfg_name == node.name and isinstance(cfg_val, dict) and "subgraph_hier" in cfg_val
+                    for cfg_name, cfg_val in model_config.items()
+                    if cfg_name != "Defaults"
+                )
+                if not is_in_subgraph:
+                    self.missing_configurations += [node.name]
                 node_config = {}
 
             # check if config matches subhierarchy parameter
@@ -369,31 +379,36 @@ class ApplyConfig(Transformation):
 
             try:
                 inst = getCustomOp(node)
+                
+                # set specified defaults
+                default_values = []
+                for key, value in model_config["Defaults"].items():
+                    assert len(value) % 2 == 0
+                    if key not in model_config:
+                        for val, op in zip(value[::2], value[1::2]):
+                            default_values.append((key, val, op))
+                            assert not (op == "all" and len(value) > 2)
+                default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
+                for attr, value in default_configs.items():
+                    inst.set_nodeattr(attr, value)
+
+                # set node attributes from specified configuration
+                for attr, value in node_config.items():
+                    inst.set_nodeattr(attr, value)
             except Exception:
-                continue
+                # Node is not a custom op, but it might have subgraphs
+                pass
 
-            # set specified defaults
-            default_values = []
-            for key, value in model_config["Defaults"].items():
-                assert len(value) % 2 == 0
-                if key not in model_config:
-                    for val, op in zip(value[::2], value[1::2]):
-                        default_values.append((key, val, op))
-                        assert not (op == "all" and len(value) > 2)
-            default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
-            for attr, value in default_configs.items():
-                inst.set_nodeattr(attr, value)
-
-            # set node attributes from specified configuration
-            for attr, value in node_config.items():
-                inst.set_nodeattr(attr, value)
-
-            # apply to subgraph
+            # apply to subgraph (do this regardless of whether node is custom op)
             for attr in node.attribute:
                 if attr.type == AttributeProto.GRAPH:
                     # this is a subgraph, add it to the list
                     subgraph = model.make_subgraph_modelwrapper(attr.g)
-                    self.configure_network(subgraph, model_config, subgraph_hier=str(subgraph_hier) + "/" + node.name)
+                    if subgraph_hier is None:
+                        new_hier = node.name
+                    else:
+                        new_hier = str(subgraph_hier) + "/" + node.name
+                    self.configure_network(subgraph, model_config, subgraph_hier=new_hier)
 
     def apply(self, model):
         if isinstance(self.config, dict):
@@ -406,10 +421,13 @@ class ApplyConfig(Transformation):
         self.configure_network(model, model_config, subgraph_hier=None)
 
         # Configuration verification
-        if len(self.missing_configurations) > 0:
-            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(self.missing_configurations))
+        # Remove duplicates from missing_configurations (can happen with shared subgraphs in If nodes)
+        unique_missing = list(dict.fromkeys(self.missing_configurations))
+        if len(unique_missing) > 0:
+            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(unique_missing))
 
-        unused_configs = [x for x in model_config if x not in self.used_configurations]
+        # Check for unused configs (top-level configs that weren't applied)
+        unused_configs = [x for x in model_config if x not in self.used_configurations and x != "Defaults"]
         if len(unused_configs) > 0:
             warnings.warn("\nUnused HW configurations: " + ", ".join(unused_configs))
 
