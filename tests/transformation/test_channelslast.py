@@ -90,6 +90,8 @@ def analysis_testing_for_chanlast_domain(model):
         "Conv": 3,
         "MaxPool": 3,
         "BatchNormalization": 3,
+        "Resize": 4,
+        "Concat": 1
     }
     # Check that all wrapped_ops in the registry have a definition here
     chanlast_op_types = list(channels_last.custom_op.keys())
