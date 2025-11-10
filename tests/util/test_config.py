@@ -373,7 +373,7 @@ def test_extract_model_config_empty_attr_list():
     config = extract_model_config(model, None, [])
     
     # Should have no node-specific configs when no attributes are requested
-    assert isinstance(config, dict), "Config should be a dictionary"
+    verify_config_basic_structure(config)
     assert "Im2Col_0" not in config, "No nodes should be in config when no attributes are requested"
 
 
@@ -385,7 +385,7 @@ def test_extract_model_config_nonexistent_attr():
     config = extract_model_config(model, None, ["nonexistent_attr"])
     
     # Config should be a dict but node should not appear since it has no matching attrs
-    assert isinstance(config, dict), "Config should be a dictionary"
+    verify_config_basic_structure(config)
     # The node won't appear in config if none of its attributes match
     assert "Im2Col_0" not in config, "Node should not appear if it has no matching attributes"
 
