@@ -344,23 +344,12 @@ class ApplyConfig(Transformation):
                 continue
 
             # Build the config key by prepending hierarchy if in a subgraph
-            if subgraph_hier is None:
-                config_key = node.name
-            else:
-                config_key = str(subgraph_hier) + "_" + node.name
+            config_key = node.name if subgraph_hier is None else str(subgraph_hier) + "_" + node.name
 
             try:
                 node_config = model_config[config_key].copy()  # Make a copy to avoid modifying original
             except KeyError:
-                # Only mark as missing if this node should be configured at this level
-                # Check if ANY config entry might be for this node in a subgraph
-                is_in_subgraph = any(
-                    cfg_name.endswith("_" + node.name) and cfg_name != node.name
-                    for cfg_name in model_config.keys()
-                    if cfg_name != "Defaults"
-                )
-                if not is_in_subgraph:
-                    self.missing_configurations += [node.name]
+                self.missing_configurations += [node.name]
                 node_config = {}
 
             if node_config:
