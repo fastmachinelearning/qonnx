@@ -43,41 +43,29 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
     as 'IfNode_0_Conv_0' in the config."""
 
     cfg = dict()
-    for n in model.graph.node:
-        # First, check for subgraphs in node attributes (for both custom and standard ops)
-        for attr in n.attribute:
-            if attr.type == onnx.AttributeProto.GRAPH:  # Graph type
-                # If the attribute is a graph, we need to extract the attributes from the subgraph
-                # Build the hierarchy prefix for nodes inside this subgraph
-                if subgraph_hier is None:
-                    new_hier = n.name
-                else:
-                    new_hier = str(subgraph_hier) + '_' + n.name
-                cfg.update(extract_model_config(model.make_subgraph_modelwrapper(attr.g), 
-                                                new_hier, attr_names_to_extract))
+    for n in model.graph.node:       
+        new_hier = n.name if subgraph_hier is None else str(subgraph_hier) + '_' + n.name
         
-        # Only process attributes for custom ops
-        if not is_custom_op(n.domain, n.op_type):
-            continue
-            
-        oi = getCustomOp(n)
-        layer_dict = dict()
+        # Check if this is a custom op and prepare to extract attributes
+        is_custom = is_custom_op(n.domain, n.op_type)
+        if is_custom:
+            oi = getCustomOp(n)
+            layer_dict = dict()
         
+        # Process node attributes - handle both subgraphs and extractable attributes
         for attr in n.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
-                # Already handled above
-                continue
-            elif attr.name in attr_names_to_extract:
-                # If the attribute name is in the list, we can add it directly
+                # If the attribute is a graph, extract configs from the subgraph recursively
+                cfg.update(extract_model_config(model.make_subgraph_modelwrapper(attr.g), 
+                                                new_hier, attr_names_to_extract))
+            elif is_custom and attr.name in attr_names_to_extract:
+                # For custom ops, extract the requested attribute
                 layer_dict[attr.name] = oi.get_nodeattr(attr.name)
         
-        if len(layer_dict) > 0:
-            # Build the config key name by prepending hierarchy if in a subgraph
-            if subgraph_hier is None:
-                config_key = n.name
-            else:
-                config_key = str(subgraph_hier) + '_' + n.name
-            cfg[config_key] = layer_dict
+        # Add the node's config if we extracted any attributes
+        if is_custom and len(layer_dict) > 0:
+            cfg[new_hier] = layer_dict
+            
     return cfg
 
 
