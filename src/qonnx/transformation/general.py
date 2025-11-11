@@ -343,37 +343,28 @@ class ApplyConfig(Transformation):
             if not self.node_filter(node):
                 continue
 
+            # Build the config key by prepending hierarchy if in a subgraph
+            if subgraph_hier is None:
+                config_key = node.name
+            else:
+                config_key = str(subgraph_hier) + "_" + node.name
+
             try:
-                node_config = model_config[node.name]
+                node_config = model_config[config_key].copy()  # Make a copy to avoid modifying original
             except KeyError:
                 # Only mark as missing if this node should be configured at this level
-                # (i.e., it's not waiting to be configured in a subgraph)
-                # We can't know for sure, so we check if ANY config entry might be for this node
-                # but in a subgraph - if not, it's truly missing
+                # Check if ANY config entry might be for this node in a subgraph
                 is_in_subgraph = any(
-                    cfg_name == node.name and isinstance(cfg_val, dict) and "subgraph_hier" in cfg_val
-                    for cfg_name, cfg_val in model_config.items()
+                    cfg_name.endswith("_" + node.name) and cfg_name != node.name
+                    for cfg_name in model_config.keys()
                     if cfg_name != "Defaults"
                 )
                 if not is_in_subgraph:
                     self.missing_configurations += [node.name]
                 node_config = {}
 
-            # check if config matches subhierarchy parameter
-            try:
-                node_subgraph_hier = node_config["subgraph_hier"]
-            except KeyError:
-                node_subgraph_hier = None
-            # if the subgraph hierarchy parameter does not match
-            # the fct parameter skip
-            # else: remove the parameter from config dict (if not None)
-            # to prevent applying it to the node as an attribute
-            if node_subgraph_hier != subgraph_hier:
-                continue
-            elif node_subgraph_hier:
-                del node_config["subgraph_hier"]
-
-            self.used_configurations += [node.name]
+            if node_config:
+                self.used_configurations += [config_key]
 
             from qonnx.custom_op.registry import getCustomOp
 
@@ -407,7 +398,7 @@ class ApplyConfig(Transformation):
                     if subgraph_hier is None:
                         new_hier = node.name
                     else:
-                        new_hier = str(subgraph_hier) + "/" + node.name
+                        new_hier = str(subgraph_hier) + "_" + node.name
                     self.configure_network(subgraph, model_config, subgraph_hier=new_hier)
 
     def apply(self, model):

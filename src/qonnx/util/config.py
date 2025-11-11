@@ -36,7 +36,11 @@ from qonnx.custom_op.registry import getCustomOp, is_custom_op
 def extract_model_config(model, subgraph_hier, attr_names_to_extract):
     """Create a dictionary with layer name -> attribute mappings extracted from the
     model. The created dictionary can be later applied on a model with
-    qonnx.transform.general.ApplyConfig."""
+    qonnx.transform.general.ApplyConfig.
+    
+    Nodes in subgraphs are prefixed with their parent hierarchy using '_' as separator.
+    For example, a node 'Conv_0' inside a subgraph of node 'IfNode_0' will be exported
+    as 'IfNode_0_Conv_0' in the config."""
 
     cfg = dict()
     for n in model.graph.node:
@@ -44,10 +48,11 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
         for attr in n.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:  # Graph type
                 # If the attribute is a graph, we need to extract the attributes from the subgraph
+                # Build the hierarchy prefix for nodes inside this subgraph
                 if subgraph_hier is None:
                     new_hier = n.name
                 else:
-                    new_hier = str(subgraph_hier) + '/' + n.name
+                    new_hier = str(subgraph_hier) + '_' + n.name
                 cfg.update(extract_model_config(model.make_subgraph_modelwrapper(attr.g), 
                                                 new_hier, attr_names_to_extract))
         
@@ -58,10 +63,6 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
         oi = getCustomOp(n)
         layer_dict = dict()
         
-        # Add subgraph hierarchy to the node's config if in a subgraph
-        if subgraph_hier is not None:
-            layer_dict["subgraph_hier"] = str(subgraph_hier)
-        
         for attr in n.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
                 # Already handled above
@@ -69,8 +70,14 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
             elif attr.name in attr_names_to_extract:
                 # If the attribute name is in the list, we can add it directly
                 layer_dict[attr.name] = oi.get_nodeattr(attr.name)
+        
         if len(layer_dict) > 0:
-            cfg[n.name] = layer_dict
+            # Build the config key name by prepending hierarchy if in a subgraph
+            if subgraph_hier is None:
+                config_key = n.name
+            else:
+                config_key = str(subgraph_hier) + '_' + n.name
+            cfg[config_key] = layer_dict
     return cfg
 
 
