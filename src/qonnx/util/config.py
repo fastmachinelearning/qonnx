@@ -27,8 +27,46 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import json
+import onnx
 
-from qonnx.custom_op.registry import getCustomOp
+from qonnx.custom_op.registry import getCustomOp, is_custom_op
+
+# update this code to handle export configs from subgraphs
+# where the subgraph is found in a node's attribute as a graph type
+def extract_model_config(model, subgraph_hier, attr_names_to_extract):
+    """Create a dictionary with layer name -> attribute mappings extracted from the
+    model. The created dictionary can be later applied on a model with
+    qonnx.transform.general.ApplyConfig.
+    
+    Nodes in subgraphs are prefixed with their parent hierarchy using '_' as separator.
+    For example, a node 'Conv_0' inside a subgraph of node 'IfNode_0' will be exported
+    as 'IfNode_0_Conv_0' in the config."""
+
+    cfg = dict()
+    for n in model.graph.node:       
+        new_hier = n.name if subgraph_hier is None else str(subgraph_hier) + '_' + n.name
+        
+        # Check if this is a custom op and prepare to extract attributes
+        is_custom = is_custom_op(n.domain, n.op_type)
+        if is_custom:
+            oi = getCustomOp(n)
+            layer_dict = dict()
+        
+        # Process node attributes - handle both subgraphs and extractable attributes
+        for attr in n.attribute:
+            if attr.type == onnx.AttributeProto.GRAPH:
+                # If the attribute is a graph, extract configs from the subgraph recursively
+                cfg.update(extract_model_config(model.make_subgraph_modelwrapper(attr.g), 
+                                                new_hier, attr_names_to_extract))
+            elif is_custom and attr.name in attr_names_to_extract:
+                # For custom ops, extract the requested attribute
+                layer_dict[attr.name] = oi.get_nodeattr(attr.name)
+        
+        # Add the node's config if we extracted any attributes
+        if is_custom and len(layer_dict) > 0:
+            cfg[new_hier] = layer_dict
+            
+    return cfg
 
 
 def extract_model_config_to_json(model, json_filename, attr_names_to_extract):
@@ -36,17 +74,8 @@ def extract_model_config_to_json(model, json_filename, attr_names_to_extract):
     model. The created json file can be later applied on a model with
     qonnx.transform.general.ApplyConfig."""
 
-    cfg = dict()
-    cfg["Defaults"] = dict()
-    for n in model.graph.node:
-        oi = getCustomOp(n)
-        layer_dict = dict()
-        for attr in attr_names_to_extract:
-            try:
-                layer_dict[attr] = oi.get_nodeattr(attr)
-            except AttributeError:
-                pass
-        if len(layer_dict) > 0:
-            cfg[n.name] = layer_dict
     with open(json_filename, "w") as f:
-        json.dump(cfg, f, indent=2)
+        json.dump(extract_model_config(model, 
+                                       subgraph_hier=None, 
+                                       attr_names_to_extract=attr_names_to_extract), 
+                  f, indent=2)

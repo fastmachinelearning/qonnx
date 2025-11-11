@@ -31,8 +31,7 @@ import numpy as np
 import warnings
 
 # Protobuf onnx graph node type
-from onnx import NodeProto  # noqa
-from onnx import mapping
+from onnx import AttributeProto, NodeProto, mapping  # noqa
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
@@ -335,6 +334,61 @@ class ApplyConfig(Transformation):
         super().__init__()
         self.config = config
         self.node_filter = node_filter
+        self.used_configurations = ["Defaults"]
+        self.missing_configurations = []
+
+    def configure_network(self, model, model_config, subgraph_hier):
+        # Configure network
+        for node_idx, node in enumerate(model.graph.node):
+            if not self.node_filter(node):
+                continue
+
+            # Build the config key by prepending hierarchy if in a subgraph
+            config_key = node.name if subgraph_hier is None else str(subgraph_hier) + "_" + node.name
+
+            try:
+                node_config = model_config[config_key].copy()  # Make a copy to avoid modifying original
+            except KeyError:
+                self.missing_configurations += [node.name]
+                node_config = {}
+
+            if node_config:
+                self.used_configurations += [config_key]
+
+            from qonnx.custom_op.registry import getCustomOp
+
+            try:
+                inst = getCustomOp(node)
+                
+                # set specified defaults
+                default_values = []
+                for key, value in model_config["Defaults"].items():
+                    assert len(value) % 2 == 0
+                    if key not in model_config:
+                        for val, op in zip(value[::2], value[1::2]):
+                            default_values.append((key, val, op))
+                            assert not (op == "all" and len(value) > 2)
+                default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
+                for attr, value in default_configs.items():
+                    inst.set_nodeattr(attr, value)
+
+                # set node attributes from specified configuration
+                for attr, value in node_config.items():
+                    inst.set_nodeattr(attr, value)
+            except Exception:
+                # Node is not a custom op, but it might have subgraphs
+                pass
+
+            # apply to subgraph (do this regardless of whether node is custom op)
+            for attr in node.attribute:
+                if attr.type == AttributeProto.GRAPH:
+                    # this is a subgraph, add it to the list
+                    subgraph = model.make_subgraph_modelwrapper(attr.g)
+                    if subgraph_hier is None:
+                        new_hier = node.name
+                    else:
+                        new_hier = str(subgraph_hier) + "_" + node.name
+                    self.configure_network(subgraph, model_config, subgraph_hier=new_hier)
 
     def apply(self, model):
         if isinstance(self.config, dict):
@@ -343,48 +397,17 @@ class ApplyConfig(Transformation):
             with open(self.config, "r") as f:
                 model_config = json.load(f)
 
-        used_configurations = ["Defaults"]
-        missing_configurations = []
-
-        # Configure network
-        for node_idx, node in enumerate(model.graph.node):
-            if not self.node_filter(node):
-                continue
-            try:
-                node_config = model_config[node.name]
-            except KeyError:
-                missing_configurations += [node.name]
-                node_config = {}
-
-            from qonnx.custom_op.registry import getCustomOp
-
-            try:
-                inst = getCustomOp(node)
-            except Exception:
-                continue
-            used_configurations += [node.name]
-
-            # set specified defaults
-            default_values = []
-            for key, value in model_config["Defaults"].items():
-                assert len(value) % 2 == 0
-                if key not in model_config:
-                    for val, op in zip(value[::2], value[1::2]):
-                        default_values.append((key, val, op))
-                        assert not (op == "all" and len(value) > 2)
-            default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
-            for attr, value in default_configs.items():
-                inst.set_nodeattr(attr, value)
-
-            # set node attributes from specified configuration
-            for attr, value in node_config.items():
-                inst.set_nodeattr(attr, value)
+        # apply configuration on upper level
+        self.configure_network(model, model_config, subgraph_hier=None)
 
         # Configuration verification
-        if len(missing_configurations) > 0:
-            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(missing_configurations))
+        # Remove duplicates from missing_configurations (can happen with shared subgraphs in If nodes)
+        unique_missing = list(dict.fromkeys(self.missing_configurations))
+        if len(unique_missing) > 0:
+            warnings.warn("\nNo HW configuration for nodes: " + ", ".join(unique_missing))
 
-        unused_configs = [x for x in model_config if x not in used_configurations]
+        # Check for unused configs (top-level configs that weren't applied)
+        unused_configs = [x for x in model_config if x not in self.used_configurations and x != "Defaults"]
         if len(unused_configs) > 0:
             warnings.warn("\nUnused HW configurations: " + ", ".join(unused_configs))
 
