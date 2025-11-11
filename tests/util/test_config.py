@@ -82,54 +82,17 @@ def verify_node_attributes(config, node_name, expected_attrs):
     
     Args:
         config: The extracted config dictionary
-        node_name: Name of the node to check
+        node_name: Name of the node to check (can include hierarchy prefix)
         expected_attrs: Dict of attribute_name -> expected_value
     """
     assert node_name in config
     
-    # check that all config attributes are present in expected_attrs
-    # (excluding 'subgraph_hier' which is a special tracking field)
+    # Check that all config attributes match expected_attrs
     for attr in config[node_name]:
-        if attr == "subgraph_hier":
-            continue
         assert attr in expected_attrs, f"Unexpected attribute '{attr}' found in config for node '{node_name}'"
     
     for attr_name, expected_value in expected_attrs.items():
         assert config[node_name][attr_name] == expected_value
-
-
-def verify_subgraph_hierarchy(config, node_name, expected_hier_path):
-    """Helper to verify that a node's subgraph hierarchy tracking is present and matches expected path.
-    
-    Args:
-        config: The extracted config dictionary
-        node_name: Name of the node to check for subgraph_hier
-        expected_hier_path: String or list of strings representing expected hierarchy path(s).
-                          If string, checks that subgraph_hier equals that string.
-                          If list, checks that subgraph_hier contains at least one of the paths.
-                          If None, checks that subgraph_hier is not present.
-    """
-    assert node_name in config, f"Node '{node_name}' not found in config"
-    
-    if expected_hier_path is None:
-        # subgraph_hier key should not be present
-        assert "subgraph_hier" not in config[node_name], \
-            f"subgraph_hier found in node '{node_name}' config when not expected"
-    else:
-        assert "subgraph_hier" in config[node_name], \
-            f"subgraph_hier key not found in config for node '{node_name}'"
-        
-        actual_hier = config[node_name]["subgraph_hier"]
-        
-        if isinstance(expected_hier_path, str):
-            # Single expected path - check exact match or that actual contains it
-            assert expected_hier_path in actual_hier, \
-                f"Expected hierarchy path '{expected_hier_path}' not found in '{actual_hier}' for node '{node_name}'"
-        elif isinstance(expected_hier_path, list):
-            # Multiple possible paths - check that at least one matches
-            found = any(path in actual_hier for path in expected_hier_path)
-            assert found, \
-                f"None of the expected hierarchy paths {expected_hier_path} found in '{actual_hier}' for node '{node_name}'"
 
 
 def extract_config_to_temp_json(model, attr_names):
@@ -315,29 +278,31 @@ def test_extract_model_config_with_subgraphs():
     
     verify_config_basic_structure(config)
     
-    # Verify main graph and subgraph nodes
+    # Verify main graph and subgraph nodes with hierarchy-encoded names
     verify_node_attributes(config, "Im2Col_0", {
         "kernel_size": [7, 7],
         "stride": [1, 1],
         "pad_amount": [3, 3, 3, 3]
     })
-    verify_node_attributes(config, "SubIm2Col_0", {
+    verify_node_attributes(config, "IfNode_0_SubIm2Col_0", {
         "kernel_size": [3, 3],
         "stride": [2, 2],
         "pad_amount": [1, 1, 1, 1]
     })
-    verify_node_attributes(config, "SubIm2Col_1", {
+    verify_node_attributes(config, "IfNode_0_SubIm2Col_1", {
         "kernel_size": [5, 5],
         "stride": [1, 1],
         "pad_amount": [2, 2, 2, 2]
     })
     
-    # Verify subgraph hierarchy tracking for subgraph nodes
-    verify_subgraph_hierarchy(config, "SubIm2Col_0", "IfNode_0")
-    verify_subgraph_hierarchy(config, "SubIm2Col_1", "IfNode_0")
+    # Verify no aliasing - all nodes should be present with unique keys
+    assert "Im2Col_0" in config
+    assert "IfNode_0_SubIm2Col_0" in config
+    assert "IfNode_0_SubIm2Col_1" in config
     
-    # Verify top-level node has no subgraph_hier
-    verify_subgraph_hierarchy(config, "Im2Col_0", None)
+    # Verify original unprefixed names don't exist (they should be prefixed now)
+    assert "SubIm2Col_0" not in config
+    assert "SubIm2Col_1" not in config
 
 
 def test_extract_model_config_to_json_with_subgraphs():
@@ -348,11 +313,13 @@ def test_extract_model_config_to_json_with_subgraphs():
     try:
         verify_config_basic_structure(config)
         verify_node_attributes(config, "Im2Col_0", {"kernel_size": [7, 7], "stride": [1, 1], "pad_amount": [3, 3, 3, 3]})
-        verify_node_attributes(config, "SubIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]})
-        verify_node_attributes(config, "SubIm2Col_1", {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]})
-        verify_subgraph_hierarchy(config, "SubIm2Col_0", "IfNode_0")
-        verify_subgraph_hierarchy(config, "SubIm2Col_1", "IfNode_0")
-        verify_subgraph_hierarchy(config, "Im2Col_0", None)
+        verify_node_attributes(config, "IfNode_0_SubIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]})
+        verify_node_attributes(config, "IfNode_0_SubIm2Col_1", {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]})
+        
+        # Verify all nodes with hierarchy-encoded names
+        assert "Im2Col_0" in config
+        assert "IfNode_0_SubIm2Col_0" in config
+        assert "IfNode_0_SubIm2Col_1" in config
     finally:
         cleanup()
 
@@ -364,10 +331,15 @@ def test_extract_model_config_nested_subgraphs():
     
     verify_config_basic_structure(config)
     
-    # Verify nodes from all nesting levels
+    # Verify nodes from all nesting levels with proper hierarchy prefixes
     verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
-    verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1]})
-    verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
+    verify_node_attributes(config, "MainIfNode_0_MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1]})
+    verify_node_attributes(config, "MainIfNode_0_MidIfNode_0_DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
+    
+    # Verify all nodes present with hierarchy-encoded names
+    assert "MainIm2Col_0" in config
+    assert "MainIfNode_0_MidIm2Col_0" in config
+    assert "MainIfNode_0_MidIfNode_0_DeepIm2Col_0" in config
 
 
 def test_extract_model_config_to_json_nested_subgraphs():
@@ -377,13 +349,22 @@ def test_extract_model_config_to_json_nested_subgraphs():
     
     try:
         verify_config_basic_structure(config)
-        verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]})
-        verify_node_attributes(config, "MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]})
-        verify_node_attributes(config, "DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]})
-        # Verify nested hierarchy - each node should have its proper hierarchy path (not including itself)
-        verify_subgraph_hierarchy(config, "MainIm2Col_0", None)  # Top-level
-        verify_subgraph_hierarchy(config, "MidIm2Col_0", "MainIfNode_0")  # One level deep
-        verify_subgraph_hierarchy(config, "DeepIm2Col_0", "MainIfNode_0/MidIfNode_0")  # Two levels deep
+        
+        # Verify nodes with hierarchy-encoded names
+        verify_node_attributes(config, "MainIm2Col_0", {
+            "kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]
+        })
+        verify_node_attributes(config, "MainIfNode_0_MidIm2Col_0", {
+            "kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]
+        })
+        verify_node_attributes(config, "MainIfNode_0_MidIfNode_0_DeepIm2Col_0", {
+            "kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]
+        })
+        
+        # Verify nested hierarchy encoded in names
+        assert "MainIm2Col_0" in config  # Top-level
+        assert "MainIfNode_0_MidIm2Col_0" in config  # One level deep
+        assert "MainIfNode_0_MidIfNode_0_DeepIm2Col_0" in config  # Two levels deep
     finally:
         cleanup()
 
@@ -412,54 +393,31 @@ def test_extract_model_config_nonexistent_attr():
     assert "Im2Col_0" not in config, "Node should not appear if it has no matching attributes"
 
 
-def test_verify_subgraph_hierarchy_validation():
-    """Test that subgraph hierarchy verification works correctly."""
-    model = make_model_with_subgraphs()
-    config = extract_model_config(model, None, ["kernel_size"])
-    
-    # Should pass with correct hierarchy node for a subgraph node
-    verify_subgraph_hierarchy(config, "SubIm2Col_0", "IfNode_0")
-    
-    # Should pass with list containing correct hierarchy node
-    verify_subgraph_hierarchy(config, "SubIm2Col_0", ["IfNode_0", "SomeOtherNode"])
-    
-    # Should pass with None for top-level node
-    verify_subgraph_hierarchy(config, "Im2Col_0", None)
-    
-    # Should fail with incorrect hierarchy node
-    try:
-        verify_subgraph_hierarchy(config, "SubIm2Col_0", "NonExistentNode")
-        assert False, "Should have raised assertion error for incorrect hierarchy"
-    except AssertionError as e:
-        assert "not found" in str(e)
-
-
-def test_top_level_nodes_no_subgraph_hier():
-    """Test that top-level nodes don't have subgraph_hier key, but subgraph nodes do."""
+def test_top_level_vs_subgraph_node_names():
+    """Test that top-level nodes have simple names while subgraph nodes have hierarchy prefixes."""
     # Test simple model (no subgraphs at all)
     model = make_simple_model_with_im2col()
     config = extract_model_config(model, None, ["kernel_size", "stride"])
     
-    # Should have the expected structure
     verify_config_basic_structure(config)
+    # Simple name for top-level node
+    assert "Im2Col_0" in config
     verify_node_attributes(config, "Im2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
     
-    # Should NOT have subgraph_hier in the node config since there are no subgraphs
-    verify_subgraph_hierarchy(config, "Im2Col_0", None)
-    
-    # Test model with subgraphs - verify top-level nodes don't have subgraph_hier but subgraph nodes do
+    # Test model with subgraphs - verify hierarchy encoding in names
     model_with_sub = make_model_with_subgraphs()
     config_with_sub = extract_model_config(model_with_sub, None, ["kernel_size"])
     
-    # Should have both main graph and subgraph nodes
-    assert "Im2Col_0" in config_with_sub  # Main graph node
-    assert "SubIm2Col_0" in config_with_sub  # Subgraph node
+    # Top-level node has simple name
+    assert "Im2Col_0" in config_with_sub
     
-    # Top-level node should NOT have subgraph_hier
-    verify_subgraph_hierarchy(config_with_sub, "Im2Col_0", None)
+    # Subgraph nodes have prefixed names
+    assert "IfNode_0_SubIm2Col_0" in config_with_sub
+    assert "IfNode_0_SubIm2Col_1" in config_with_sub
     
-    # Subgraph nodes SHOULD have subgraph_hier
-    verify_subgraph_hierarchy(config_with_sub, "SubIm2Col_0", "IfNode_0")
+    # Old unprefixed names should NOT exist
+    assert "SubIm2Col_0" not in config_with_sub
+    assert "SubIm2Col_1" not in config_with_sub
 
 
 def test_roundtrip_export_import_simple():
@@ -735,3 +693,133 @@ def test_roundtrip_partial_config():
             os.remove(config_json_file)
     finally:
         cleanup()
+
+
+def test_duplicate_node_names_different_levels():
+    """Test that nodes with the same name at different hierarchy levels are handled correctly.
+    
+    With the new hierarchy-encoding approach, nodes with duplicate names at different levels
+    will have unique config keys (parent prefix makes them distinct), eliminating aliasing.
+    """
+    from qonnx.transformation.general import ApplyConfig
+    
+    # Create a model where the same node name appears at different levels
+    # Top-level graph with Im2Col_0
+    top_inp = helper.make_tensor_value_info("top_inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
+    top_out = helper.make_tensor_value_info("top_out", onnx.TensorProto.FLOAT, [1, 7, 7, 27])
+    
+    top_im2col = make_im2col_node(
+        "Im2Col_0", ["top_inp"], ["top_intermediate"],
+        stride=[1, 1], kernel_size=[3, 3],
+        input_shape="(1, 14, 14, 3)", pad_amount=[0, 0, 0, 0]
+    )
+    
+    # Subgraph also has Im2Col_0 (same name!)
+    sub_inp = helper.make_tensor_value_info("sub_inp", onnx.TensorProto.FLOAT, [1, 14, 14, 3])
+    sub_out = helper.make_tensor_value_info("sub_out", onnx.TensorProto.FLOAT, [1, 7, 7, 27])
+    
+    sub_im2col = make_im2col_node(
+        "Im2Col_0",  # Same name as top-level node!
+        ["sub_inp"], ["sub_out"],
+        stride=[2, 2], kernel_size=[5, 5],
+        input_shape="(1, 14, 14, 3)", pad_amount=[1, 1, 1, 1]
+    )
+    
+    subgraph = helper.make_graph(
+        nodes=[sub_im2col], name="subgraph_1",
+        inputs=[sub_inp], outputs=[sub_out]
+    )
+    
+    # Create If node with subgraph
+    if_node = make_if_node_with_subgraph("IfNode_0", "condition", "top_out", subgraph)
+    condition_init = helper.make_tensor("condition", onnx.TensorProto.BOOL, [], [True])
+    
+    main_graph = helper.make_graph(
+        nodes=[top_im2col, if_node], name="main_graph",
+        inputs=[top_inp], outputs=[top_out],
+        initializer=[condition_init]
+    )
+    
+    model = qonnx_make_model(main_graph, opset_imports=[helper.make_opsetid("", 11)])
+    model = ModelWrapper(model)
+    
+    # Extract config
+    config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
+    
+    # NEW BEHAVIOR: Both nodes should be present with distinct keys!
+    assert "Im2Col_0" in config, "Top-level Im2Col_0 should be in config"
+    assert "IfNode_0_Im2Col_0" in config, "Subgraph Im2Col_0 should be in config with prefix"
+    
+    # Verify both nodes have their correct attributes (no aliasing!)
+    verify_node_attributes(config, "Im2Col_0", {
+        "kernel_size": [3, 3],
+        "stride": [1, 1],
+        "pad_amount": [0, 0, 0, 0]
+    })
+    
+    verify_node_attributes(config, "IfNode_0_Im2Col_0", {
+        "kernel_size": [5, 5],
+        "stride": [2, 2],
+        "pad_amount": [1, 1, 1, 1]
+    })
+    
+    print("SUCCESS: Hierarchy encoding prevents aliasing for duplicate node names!")
+    
+    # Test round-trip: both nodes should be independently configurable
+    config_json, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride", "pad_amount"])
+    
+    try:
+        model2 = qonnx_make_model(main_graph, opset_imports=[helper.make_opsetid("", 11)])
+        model2 = ModelWrapper(model2)
+        
+        # Modify both Im2Col_0 nodes
+        for node in model2.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                inst.set_nodeattr("kernel_size", [9, 9])
+                inst.set_nodeattr("stride", [7, 7])
+        
+        if_node = model2.get_nodes_by_op_type("If")[0]
+        subgraph_attr = if_node.attribute[0]
+        subgraph_wrapper = model2.make_subgraph_modelwrapper(subgraph_attr.g)
+        for node in subgraph_wrapper.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                inst.set_nodeattr("kernel_size", [9, 9])
+                inst.set_nodeattr("stride", [7, 7])
+        
+        # Apply config
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_with_defaults = config_json.copy()
+            config_with_defaults["Defaults"] = {}
+            json.dump(config_with_defaults, f, indent=2)
+            config_file = f.name
+        
+        model2 = model2.transform(ApplyConfig(config_file))
+        
+        # BOTH nodes should be restored to their original values
+        # Top-level Im2Col_0
+        for node in model2.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                assert inst.get_nodeattr("kernel_size") == [3, 3]
+                assert inst.get_nodeattr("stride") == [1, 1]
+                assert inst.get_nodeattr("pad_amount") == [0, 0, 0, 0]
+        
+        # Subgraph Im2Col_0
+        if_node = model2.get_nodes_by_op_type("If")[0]
+        subgraph_attr = if_node.attribute[0]
+        subgraph_wrapper = model2.make_subgraph_modelwrapper(subgraph_attr.g)
+        for node in subgraph_wrapper.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                assert inst.get_nodeattr("kernel_size") == [5, 5]
+                assert inst.get_nodeattr("stride") == [2, 2]
+                assert inst.get_nodeattr("pad_amount") == [1, 1, 1, 1]
+        
+        if os.path.exists(config_file):
+            os.remove(config_file)
+    finally:
+        cleanup()
+    
+    print("Round-trip test PASSED: Both nodes restored independently!")
