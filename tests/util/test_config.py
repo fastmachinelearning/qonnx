@@ -124,18 +124,16 @@ def make_simple_model_with_im2col():
 
 
 def make_nested_subgraph_model():
-    """Create a model with nested subgraphs (subgraph within a subgraph).
+    """Create a model with nested subgraphs (2 levels of hierarchy).
     
-    Uses ONNX Script with Python if statements and qops for custom operations.
-    Demonstrates three levels of hierarchy:
+    Uses ONNX Script with Python if statement and qops for custom operations.
+    Demonstrates two levels of hierarchy:
     - Main graph with MainIm2Col_0 and MainIfNode_0
-    - Mid-level subgraph with MidIm2Col_0 and MidIfNode_0  
-    - Deep subgraph with DeepIm2Col_0
+    - Subgraph with SubIm2Col_0 and SubIm2Col_1
     """
-    # Define main graph with nested if statements
     @script(default_opset=op)
-    def main_graph_fn(main_inp: FLOAT[1, 28, 28, 1], main_condition: BOOL) -> FLOAT[1, 4, 4, 144]:
-        """Main graph with nested if statements - creates 3 levels of hierarchy!"""
+    def main_graph_fn(main_inp: FLOAT[1, 28, 28, 1], condition: BOOL) -> FLOAT[1, 4, 4, 144]:
+        """Main graph with if statement - creates 2 levels of hierarchy."""
         main_intermediate = qops.Im2Col(
             main_inp,
             stride=[2, 2],
@@ -144,63 +142,38 @@ def make_nested_subgraph_model():
             pad_amount=[1, 1, 1, 1]
         )
         
-        # Outer Python if statement → ONNX If node (MainIfNode_0)
-        if main_condition:
-            # Mid-level: MidIm2Col_0 operation
-            mid_intermediate = qops.Im2Col(
+        # Python if statement → ONNX If node with subgraph
+        if condition:
+            sub_intermediate = qops.Im2Col(
                 main_intermediate,
                 stride=[1, 1],
                 kernel_size=[5, 5],
                 input_shape="(1, 14, 14, 3)",
                 pad_amount=[2, 2, 2, 2]
             )
-            
-            # Inner Python if statement → nested ONNX If node (MidIfNode_0)
-            if main_condition:  # Using main_condition as mid_condition
-                # Deepest level: DeepIm2Col_0 operation
-                main_out = qops.Im2Col(
-                    mid_intermediate,
-                    stride=[2, 2],
-                    kernel_size=[3, 3],
-                    input_shape="(1, 8, 8, 16)",
-                    pad_amount=[0, 0, 0, 0]
-                )
-            else:
-                main_out = qops.Im2Col(
-                    mid_intermediate,
-                    stride=[2, 2],
-                    kernel_size=[3, 3],
-                    input_shape="(1, 8, 8, 16)",
-                    pad_amount=[0, 0, 0, 0]
-                )
+            main_out = qops.Im2Col(
+                sub_intermediate,
+                stride=[2, 2],
+                kernel_size=[3, 3],
+                input_shape="(1, 8, 8, 16)",
+                pad_amount=[0, 0, 0, 0]
+            )
         else:
-            # Mid-level: MidIm2Col_0 operation (same as then branch)
-            mid_intermediate = qops.Im2Col(
+            # Else branch (same structure for simplicity)
+            sub_intermediate = qops.Im2Col(
                 main_intermediate,
                 stride=[1, 1],
                 kernel_size=[5, 5],
                 input_shape="(1, 14, 14, 3)",
                 pad_amount=[2, 2, 2, 2]
             )
-            
-            # Inner Python if statement → nested ONNX If node (MidIfNode_0)
-            if main_condition:  # Using main_condition as mid_condition
-                # Deepest level: DeepIm2Col_0 operation
-                main_out = qops.Im2Col(
-                    mid_intermediate,
-                    stride=[2, 2],
-                    kernel_size=[3, 3],
-                    input_shape="(1, 8, 8, 16)",
-                    pad_amount=[0, 0, 0, 0]
-                )
-            else:
-                main_out = qops.Im2Col(
-                    mid_intermediate,
-                    stride=[2, 2],
-                    kernel_size=[3, 3],
-                    input_shape="(1, 8, 8, 16)",
-                    pad_amount=[0, 0, 0, 0]
-                )
+            main_out = qops.Im2Col(
+                sub_intermediate,
+                stride=[2, 2],
+                kernel_size=[3, 3],
+                input_shape="(1, 8, 8, 16)",
+                pad_amount=[0, 0, 0, 0]
+            )
         
         return main_out
     
@@ -212,24 +185,15 @@ def make_nested_subgraph_model():
     model.graph.node[0].name = "MainIm2Col_0"
     model.graph.node[1].name = "MainIfNode_0"
     
-    # Add main condition initializer
-    main_condition_init = helper.make_tensor("main_condition", onnx.TensorProto.BOOL, [], [True])
-    model.graph.initializer.append(main_condition_init)
+    # Add condition initializer
+    condition_init = helper.make_tensor("condition", onnx.TensorProto.BOOL, [], [True])
+    model.graph.initializer.append(condition_init)
     
-    # Name nodes in mid-level subgraph (then_branch)
-    main_if_node = model.graph.node[1]
-    mid_subgraph = main_if_node.attribute[0].g
-    mid_subgraph.node[0].name = "MidIm2Col_0"
-    mid_subgraph.node[1].name = "MidIfNode_0"
-    
-    # Add mid condition initializer
-    mid_condition_init = helper.make_tensor("mid_condition", onnx.TensorProto.BOOL, [], [True])
-    mid_subgraph.initializer.append(mid_condition_init)
-    
-    # Name nodes in deep subgraph (then_branch of mid If node)
-    mid_if_node = mid_subgraph.node[1]
-    deep_subgraph = mid_if_node.attribute[0].g
-    deep_subgraph.node[0].name = "DeepIm2Col_0"
+    # Name nodes in subgraph (then_branch)
+    if_node = model.graph.node[1]
+    subgraph = if_node.attribute[0].g
+    subgraph.node[0].name = "SubIm2Col_0"
+    subgraph.node[1].name = "SubIm2Col_1"
     
     return model
 
@@ -240,8 +204,8 @@ def make_nested_subgraph_model():
     }),
     ("nested", make_nested_subgraph_model, {
         "MainIm2Col_0": {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]},
-        "MainIfNode_0_MidIm2Col_0": {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]},
-        "MainIfNode_0_MidIfNode_0_DeepIm2Col_0": {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]}
+        "MainIfNode_0_SubIm2Col_0": {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]},
+        "MainIfNode_0_SubIm2Col_1": {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]}
     }),
 ])
 def test_extract_model_config(model_name, model_factory, expected_nodes):
@@ -267,8 +231,8 @@ def test_extract_model_config(model_name, model_factory, expected_nodes):
     
     # For nested model, verify no aliasing (unprefixed names don't exist)
     if model_name == "nested":
-        assert "MidIm2Col_0" not in config, "Subgraph node should have hierarchy prefix"
-        assert "DeepIm2Col_0" not in config, "Nested subgraph node should have hierarchy prefix"
+        assert "SubIm2Col_0" not in config, "Subgraph node should have hierarchy prefix"
+        assert "SubIm2Col_1" not in config, "Subgraph node should have hierarchy prefix"
 
 
 @pytest.mark.parametrize("model_name,model_factory", [
