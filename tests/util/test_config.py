@@ -43,33 +43,6 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.util.basic import qonnx_make_model
 from qonnx.util.config import extract_model_config_to_json, extract_model_config
 
-"""
-This test module uses ONNX Script for cleaner, more Pythonic graph definitions.
-
-ONNX Script benefits:
-- Decorator-based syntax (@script()) for defining graphs as Python functions
-- Type annotations (FLOAT[...], BOOL) for clear tensor shapes
-- **Python if/else statements automatically convert to ONNX If nodes!**
-- Nested if statements create nested subgraphs automatically
-- Much cleaner than verbose helper.make_node() and helper.make_graph() calls
-- Standard operators via opset13 (e.g., op.Identity, op.Add)
-
-Key feature: Python control flow → ONNX control flow
-  if condition:
-      result = op.Add(x, y)
-  else:
-      result = op.Mul(x, y)
-      
-  This Python code automatically generates an ONNX If node with proper then_branch 
-  and else_branch subgraphs containing the Add and Mul operations!
-
-Limitations:
-- Custom ops (like Im2Col) must still use traditional helper functions
-- Operations in if/else must be inlined (not function calls) for proper subgraph generation
-- Need default_opset=op when using if statements
-- We use a hybrid approach: ONNX Script for graphs with standard ops, helpers for custom ops
-"""
-
 # this is a pretend opset so that we can create
 # qonnx custom ops with onnxscript
 qops = Opset("qonnx.custom_op.general", 1)
@@ -261,81 +234,63 @@ def make_nested_subgraph_model():
     return model
 
 
-def test_extract_model_config_simple():
-    """Test extracting config from a simple model without subgraphs."""
-    model = make_simple_model_with_im2col()
-    config = extract_model_config(model, None, ["input_shape", "kernel_size", "stride"])
+@pytest.mark.parametrize("model_name,model_factory,expected_nodes", [
+    ("simple", make_simple_model_with_im2col, {
+        "Im2Col_0": {"kernel_size": [3, 3], "stride": [2, 2], "input_shape": '(1, 14, 14, 3)'}
+    }),
+    ("nested", make_nested_subgraph_model, {
+        "MainIm2Col_0": {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [1, 1, 1, 1]},
+        "MainIfNode_0_MidIm2Col_0": {"kernel_size": [5, 5], "stride": [1, 1], "pad_amount": [2, 2, 2, 2]},
+        "MainIfNode_0_MidIfNode_0_DeepIm2Col_0": {"kernel_size": [3, 3], "stride": [2, 2], "pad_amount": [0, 0, 0, 0]}
+    }),
+])
+def test_extract_model_config(model_name, model_factory, expected_nodes):
+    """Test extracting config from models with and without subgraphs.
     
-    verify_config_basic_structure(config)
-    verify_node_attributes(config, "Im2Col_0", {
-        "input_shape": '(1, 14, 14, 3)',
-        "kernel_size": [3, 3],
-        "stride": [2, 2]
-    })
-
-
-def test_extract_model_config_with_subgraphs():
-    """Test extracting config from a model with subgraphs (using nested model, testing first level)."""
-    model = make_nested_subgraph_model()
-    config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
+    Parameterized test covering:
+    - simple: Model without subgraphs (base case)
+    - nested: Model with nested subgraphs (tests hierarchy encoding at all levels)
+    """
+    model = model_factory()
     
-    verify_config_basic_structure(config)
+    # Get all attributes that appear in expected_nodes
+    all_attrs = set()
+    for node_attrs in expected_nodes.values():
+        all_attrs.update(node_attrs.keys())
     
-    # Verify main graph node
-    verify_node_attributes(config, "MainIm2Col_0", {
-        "kernel_size": [3, 3],
-        "stride": [2, 2],
-        "pad_amount": [1, 1, 1, 1]
-    })
-    
-    # Verify first-level subgraph node (mid-level)
-    verify_node_attributes(config, "MainIfNode_0_MidIm2Col_0", {
-        "kernel_size": [5, 5],
-        "stride": [1, 1],
-        "pad_amount": [2, 2, 2, 2]
-    })
-    
-    # Verify no aliasing between hierarchy levels
-    assert "MainIm2Col_0" in config  # Top-level node
-    assert "MainIfNode_0_MidIm2Col_0" in config  # First-level subgraph node
-    assert "MainIfNode_0_MidIfNode_0_DeepIm2Col_0" in config  # Nested subgraph node
-    
-    # Verify unprefixed names don't exist (they should have hierarchy prefix)
-    assert "MidIm2Col_0" not in config
-    assert "DeepIm2Col_0" not in config
-
-
-def test_extract_model_config_nested_subgraphs():
-    """Test extracting config from a model with nested subgraphs."""
-    model = make_nested_subgraph_model()
-    config = extract_model_config(model, None, ["kernel_size", "stride"])
-    
+    config = extract_model_config(model, None, list(all_attrs))
     verify_config_basic_structure(config)
     
-    # Verify nodes from all nesting levels with proper hierarchy prefixes
-    verify_node_attributes(config, "MainIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
-    verify_node_attributes(config, "MainIfNode_0_MidIm2Col_0", {"kernel_size": [5, 5], "stride": [1, 1]})
-    verify_node_attributes(config, "MainIfNode_0_MidIfNode_0_DeepIm2Col_0", {"kernel_size": [3, 3], "stride": [2, 2]})
+    # Verify all expected nodes and their attributes
+    for node_name, expected_attrs in expected_nodes.items():
+        verify_node_attributes(config, node_name, expected_attrs)
     
-    # Verify all nodes present with hierarchy-encoded names
-    assert "MainIm2Col_0" in config
-    assert "MainIfNode_0_MidIm2Col_0" in config
-    assert "MainIfNode_0_MidIfNode_0_DeepIm2Col_0" in config
+    # For nested model, verify no aliasing (unprefixed names don't exist)
+    if model_name == "nested":
+        assert "MidIm2Col_0" not in config, "Subgraph node should have hierarchy prefix"
+        assert "DeepIm2Col_0" not in config, "Nested subgraph node should have hierarchy prefix"
 
 
-def test_extract_model_config_edge_cases():
-    """Test edge cases: empty attribute list and nonexistent attributes."""
-    model = make_simple_model_with_im2col()
+@pytest.mark.parametrize("model_name,model_factory", [
+    ("simple", make_simple_model_with_im2col),
+    ("nested", make_nested_subgraph_model),
+])
+def test_extract_model_config_edge_cases(model_name, model_factory):
+    """Test edge cases: empty attribute list and nonexistent attributes.
+    
+    Parameterized to ensure edge cases work for both simple and nested models.
+    """
+    model = model_factory()
     
     # Edge case 1: Empty attribute list - no attributes requested
     config = extract_model_config(model, None, [])
     verify_config_basic_structure(config)
-    assert "Im2Col_0" not in config, "No nodes should be in config when no attributes are requested"
+    assert len(config) == 0, "Config should be empty when no attributes are requested"
     
     # Edge case 2: Nonexistent attribute - attribute doesn't exist on any nodes
     config = extract_model_config(model, None, ["nonexistent_attr"])
     verify_config_basic_structure(config)
-    assert "Im2Col_0" not in config, "Node should not appear if it has no matching attributes"
+    assert len(config) == 0, "Config should be empty when no nodes have matching attributes"
 
 @pytest.mark.parametrize("model_name,model_factory", [
     ("simple", make_simple_model_with_im2col),
@@ -432,28 +387,71 @@ def test_roundtrip_export_import(model_name, model_factory):
         cleanup()
 
 
-def test_roundtrip_partial_config():
-    """Test that ApplyConfig only modifies specified attributes, leaving others unchanged."""
+@pytest.mark.parametrize("model_name,model_factory", [
+    ("simple", make_simple_model_with_im2col),
+])
+def test_roundtrip_partial_config(model_name, model_factory):
+    """Test that ApplyConfig only modifies specified attributes, leaving others unchanged.
+    
+    Note: Only testing with simple model as nested model config application through subgraphs
+    has complexities that make partial config verification difficult.
+    """
     from qonnx.transformation.general import ApplyConfig
     
-    # Create model
-    model = make_simple_model_with_im2col()
-    node = model.graph.node[0]
-    inst = getCustomOp(node)
+    # Helper to collect and modify all Im2Col nodes recursively
+    def collect_and_store_attrs(model_wrapper, original_attrs=None):
+        if original_attrs is None:
+            original_attrs = {}
+        for node in model_wrapper.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                original_attrs[node.name] = {
+                    "kernel_size": inst.get_nodeattr("kernel_size"),
+                    "stride": inst.get_nodeattr("stride"),
+                    "pad_amount": inst.get_nodeattr("pad_amount")
+                }
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
+                    collect_and_store_attrs(subgraph, original_attrs)
+        return original_attrs
     
-    # Store original values
-    original_kernel = inst.get_nodeattr("kernel_size")
-    original_stride = inst.get_nodeattr("stride")
-    original_pad = inst.get_nodeattr("pad_amount")
+    def modify_all_attrs(graph_proto):
+        """Modify attributes directly in the graph proto (not through wrapper)."""
+        for node in graph_proto.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                inst.set_nodeattr("kernel_size", [7, 7])
+                inst.set_nodeattr("stride", [4, 4])
+                inst.set_nodeattr("pad_amount", [9, 9, 9, 9])
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    modify_all_attrs(attr.g)
+    
+    def verify_attrs(model_wrapper, original_attrs):
+        for node in model_wrapper.graph.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                # kernel_size and stride should be restored
+                assert inst.get_nodeattr("kernel_size") == original_attrs[node.name]["kernel_size"]
+                assert inst.get_nodeattr("stride") == original_attrs[node.name]["stride"]
+                # pad_amount should remain modified (not in config)
+                assert inst.get_nodeattr("pad_amount") == [9, 9, 9, 9]
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
+                    verify_attrs(subgraph, original_attrs)
+    
+    # Create model and store original values
+    model = model_factory()
+    original_attrs = collect_and_store_attrs(model)
     
     # Export only kernel_size and stride (not pad_amount)
     config, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride"])
     
     try:
-        # Modify all attributes
-        inst.set_nodeattr("kernel_size", [7, 7])
-        inst.set_nodeattr("stride", [4, 4])
-        inst.set_nodeattr("pad_amount", [9, 9, 9, 9])
+        # Modify all attributes (work directly with graph proto)
+        modify_all_attrs(model.graph)
         
         # Create config with Defaults
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
@@ -465,13 +463,8 @@ def test_roundtrip_partial_config():
         # Apply config
         model = model.transform(ApplyConfig(config_json_file))
         
-        # Verify kernel_size and stride are restored
-        inst = getCustomOp(model.graph.node[0])
-        assert inst.get_nodeattr("kernel_size") == original_kernel
-        assert inst.get_nodeattr("stride") == original_stride
-        
-        # Verify pad_amount remains modified (not in config)
-        assert inst.get_nodeattr("pad_amount") == [9, 9, 9, 9]
+        # Verify partial restoration
+        verify_attrs(model, original_attrs)
         
         # Cleanup
         if os.path.exists(config_json_file):
