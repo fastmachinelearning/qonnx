@@ -150,85 +150,6 @@ def make_simple_model_with_im2col():
     return model
 
 
-def make_model_with_subgraphs():
-    """Create a model with nodes that contain subgraphs with Im2Col operations.
-    The If node has different then_branch and else_branch subgraphs.
-    
-    Uses ONNX Script with Python if statement and qops for custom operations.
-    """
-    # Define main graph with Python if statement (converts to ONNX If node!)
-    @script(default_opset=op)
-    def main_graph_fn(main_inp: FLOAT[1, 14, 14, 3], condition: BOOL) -> FLOAT[1, 7, 7, 27]:
-        """Main graph with Im2Col and If node using Python if statement"""
-        main_intermediate = qops.Im2Col(
-            main_inp,
-            stride=[1, 1],
-            kernel_size=[7, 7],
-            input_shape="(1, 14, 14, 3)",
-            pad_amount=[3, 3, 3, 3]
-        )
-        
-        # Python if statement → ONNX If node with inlined subgraph operations!
-        if condition:
-            # Then branch: stride [2,2] -> [1,1], kernel [3,3] -> [5,5]
-            sub_intermediate = qops.Im2Col(
-                main_intermediate,
-                stride=[2, 2],
-                kernel_size=[3, 3],
-                input_shape="(1, 14, 14, 3)",
-                pad_amount=[1, 1, 1, 1]
-            )
-            main_out = qops.Im2Col(
-                sub_intermediate,
-                stride=[1, 1],
-                kernel_size=[5, 5],
-                input_shape="(1, 7, 7, 27)",
-                pad_amount=[2, 2, 2, 2]
-            )
-        else:
-            # Else branch: stride [1,1] -> [2,2], kernel [7,7] -> [3,3]
-            else_intermediate = qops.Im2Col(
-                main_intermediate,
-                stride=[1, 1],
-                kernel_size=[7, 7],
-                input_shape="(1, 14, 14, 3)",
-                pad_amount=[3, 3, 3, 3]
-            )
-            main_out = qops.Im2Col(
-                else_intermediate,
-                stride=[2, 2],
-                kernel_size=[3, 3],
-                input_shape="(1, 14, 14, 63)",
-                pad_amount=[0, 0, 0, 0]
-            )
-        
-        return main_out
-    
-    # Convert to ONNX model
-    model_proto = main_graph_fn.to_model_proto()
-    model = ModelWrapper(model_proto)
-    
-    # Name the nodes
-    model.graph.node[0].name = "Im2Col_0"
-    model.graph.node[1].name = "IfNode_0"
-    
-    # Name nodes in subgraphs
-    if_node = model.graph.node[1]
-    then_branch = if_node.attribute[0].g
-    then_branch.node[0].name = "SubIm2Col_0"
-    then_branch.node[1].name = "SubIm2Col_1"
-    
-    else_branch = if_node.attribute[1].g
-    else_branch.node[0].name = "SubIm2Col_0"
-    else_branch.node[1].name = "SubIm2Col_1"
-    
-    # Add condition initializer
-    condition_init = helper.make_tensor("condition", onnx.TensorProto.BOOL, [], [True])
-    model.graph.initializer.append(condition_init)
-    
-    return model
-
-
 def make_nested_subgraph_model():
     """Create a model with nested subgraphs (subgraph within a subgraph).
     
@@ -354,45 +275,34 @@ def test_extract_model_config_simple():
 
 
 def test_extract_model_config_with_subgraphs():
-    """Test extracting config from a model with subgraphs.
-    The If node has different configurations in then_branch and else_branch."""
-    model = make_model_with_subgraphs()
+    """Test extracting config from a model with subgraphs (using nested model, testing first level)."""
+    model = make_nested_subgraph_model()
     config = extract_model_config(model, None, ["kernel_size", "stride", "pad_amount"])
     
     verify_config_basic_structure(config)
     
     # Verify main graph node
-    verify_node_attributes(config, "Im2Col_0", {
-        "kernel_size": [7, 7],
-        "stride": [1, 1],
-        "pad_amount": [3, 3, 3, 3]
-    })
-    
-    # Note: Both then_branch and else_branch nodes have the same names (SubIm2Col_0, SubIm2Col_1)
-    # and get the same hierarchy prefix (IfNode_0_), so the else_branch values overwrite
-    # the then_branch values (last encountered wins). This is expected behavior since both
-    # branches share the same parent node. In practice, only one branch executes at runtime.
-    
-    # Verify subgraph nodes - these will have values from else_branch (last processed)
-    verify_node_attributes(config, "IfNode_0_SubIm2Col_0", {
-        "kernel_size": [7, 7],
-        "stride": [1, 1],
-        "pad_amount": [3, 3, 3, 3]
-    })
-    verify_node_attributes(config, "IfNode_0_SubIm2Col_1", {
+    verify_node_attributes(config, "MainIm2Col_0", {
         "kernel_size": [3, 3],
         "stride": [2, 2],
-        "pad_amount": [0, 0, 0, 0]
+        "pad_amount": [1, 1, 1, 1]
     })
     
-    # Verify no aliasing at different hierarchy levels
-    assert "Im2Col_0" in config  # Top-level node
-    assert "IfNode_0_SubIm2Col_0" in config  # Subgraph node
-    assert "IfNode_0_SubIm2Col_1" in config  # Subgraph node
+    # Verify first-level subgraph node (mid-level)
+    verify_node_attributes(config, "MainIfNode_0_MidIm2Col_0", {
+        "kernel_size": [5, 5],
+        "stride": [1, 1],
+        "pad_amount": [2, 2, 2, 2]
+    })
     
-    # Verify original unprefixed names don't exist (they should be prefixed now)
-    assert "SubIm2Col_0" not in config
-    assert "SubIm2Col_1" not in config
+    # Verify no aliasing between hierarchy levels
+    assert "MainIm2Col_0" in config  # Top-level node
+    assert "MainIfNode_0_MidIm2Col_0" in config  # First-level subgraph node
+    assert "MainIfNode_0_MidIfNode_0_DeepIm2Col_0" in config  # Nested subgraph node
+    
+    # Verify unprefixed names don't exist (they should have hierarchy prefix)
+    assert "MidIm2Col_0" not in config
+    assert "DeepIm2Col_0" not in config
 
 
 def test_extract_model_config_nested_subgraphs():
@@ -479,11 +389,11 @@ def test_roundtrip_export_import_simple():
 
 
 def test_roundtrip_export_import_with_subgraphs():
-    """Test export/import round-trip for a model with subgraphs."""
+    """Test export/import round-trip for a model with subgraphs (using nested model)."""
     from qonnx.transformation.general import ApplyConfig
     
-    # Create model with subgraphs
-    model = make_model_with_subgraphs()
+    # Create model with nested subgraphs
+    model = make_nested_subgraph_model()
     
     # Store original attribute values for all nodes
     original_attrs = {}
@@ -496,11 +406,11 @@ def test_roundtrip_export_import_with_subgraphs():
                 "pad_amount": inst.get_nodeattr("pad_amount")
             }
     
-    # Get nodes from subgraph
-    if_node = model.get_nodes_by_op_type("If")[0]
-    subgraph_attr = if_node.attribute[0]  # then_branch
-    subgraph = model.make_subgraph_modelwrapper(subgraph_attr.g)
-    for node in subgraph.graph.node:
+    # Get nodes from first-level subgraph (MainIfNode_0)
+    main_if_node = model.get_nodes_by_op_type("If")[0]
+    mid_subgraph_attr = main_if_node.attribute[0]  # then_branch
+    mid_subgraph = model.make_subgraph_modelwrapper(mid_subgraph_attr.g)
+    for node in mid_subgraph.graph.node:
         if node.op_type == "Im2Col":
             inst = getCustomOp(node)
             original_attrs[node.name] = {
@@ -521,8 +431,8 @@ def test_roundtrip_export_import_with_subgraphs():
                 inst.set_nodeattr("stride", [4, 4])
                 inst.set_nodeattr("pad_amount", [5, 5, 5, 5])
         
-        # Modify subgraph nodes
-        for node in subgraph.graph.node:
+        # Modify mid-level subgraph nodes
+        for node in mid_subgraph.graph.node:
             if node.op_type == "Im2Col":
                 inst = getCustomOp(node)
                 inst.set_nodeattr("kernel_size", [9, 9])
@@ -547,11 +457,11 @@ def test_roundtrip_export_import_with_subgraphs():
                 assert inst.get_nodeattr("stride") == original_attrs[node.name]["stride"]
                 assert inst.get_nodeattr("pad_amount") == original_attrs[node.name]["pad_amount"]
         
-        # Verify subgraph nodes are restored
-        if_node = model.get_nodes_by_op_type("If")[0]
-        subgraph_attr = if_node.attribute[0]
-        subgraph = model.make_subgraph_modelwrapper(subgraph_attr.g)
-        for node in subgraph.graph.node:
+        # Verify first-level subgraph nodes are restored
+        main_if_node = model.get_nodes_by_op_type("If")[0]
+        mid_subgraph_attr = main_if_node.attribute[0]
+        mid_subgraph = model.make_subgraph_modelwrapper(mid_subgraph_attr.g)
+        for node in mid_subgraph.graph.node:
             if node.op_type == "Im2Col":
                 inst = getCustomOp(node)
                 assert inst.get_nodeattr("kernel_size") == original_attrs[node.name]["kernel_size"]
