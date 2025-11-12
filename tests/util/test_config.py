@@ -36,6 +36,7 @@ import onnx.helper as helper
 import numpy as np
 from onnxscript import script, FLOAT, BOOL
 from onnxscript import opset13 as op
+from onnxscript.values import Opset
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.registry import getCustomOp
@@ -69,36 +70,11 @@ Limitations:
 - We use a hybrid approach: ONNX Script for graphs with standard ops, helpers for custom ops
 """
 
+# this is a pretend opset so that we can create
+# qonnx custom ops with onnxscript
+qops = Opset("qonnx.custom_op.general", 1)
 
-# Helper functions for creating ONNX nodes and graphs
-
-def make_im2col_node(name, inputs, outputs, stride, kernel_size, input_shape, pad_amount):
-    """Helper to create an Im2Col node with given parameters."""
-    return helper.make_node(
-        "Im2Col",
-        inputs=inputs,
-        outputs=outputs,
-        domain="qonnx.custom_op.general",
-        stride=stride,
-        kernel_size=kernel_size,
-        input_shape=input_shape,
-        pad_amount=pad_amount,
-        name=name
-    )
-
-
-def make_if_node_with_subgraph(name, condition_input, output, subgraph):
-    """Helper to create an If node with a subgraph for both branches."""
-    if_node = helper.make_node(
-        "If",
-        inputs=[condition_input],
-        outputs=[output],
-        domain="",  # Standard ONNX operator
-        name=name
-    )
-    if_node.attribute.append(helper.make_attribute("then_branch", subgraph))
-    if_node.attribute.append(helper.make_attribute("else_branch", subgraph))
-    return if_node
+# Helper functions for verifying configs
 
 
 def verify_config_basic_structure(config):
@@ -150,25 +126,26 @@ def extract_config_to_temp_json(model, attr_names):
 def make_simple_model_with_im2col():
     """Create a simple model with Im2Col nodes that have configurable attributes.
     
-    Uses ONNX Script for cleaner model definition.
+    Uses ONNX Script with qops custom opset for direct Im2Col creation.
     """
     @script()
     def simple_graph(inp: FLOAT[1, 14, 14, 3]) -> FLOAT[1, 7, 7, 27]:
-        # Custom Im2Col operation with configurable attributes
-        out = op.Identity(inp)  # Placeholder - will be replaced by Im2Col node
+        # Custom Im2Col operation using qops opset
+        out = qops.Im2Col(
+            inp,
+            stride=[2, 2],
+            kernel_size=[3, 3],
+            input_shape="(1, 14, 14, 3)",
+            pad_amount=[0, 0, 0, 0]
+        )
         return out
     
     # Convert to ONNX model
     model_proto = simple_graph.to_model_proto()
     model = ModelWrapper(model_proto)
     
-    # Replace Identity with Im2Col custom op (ONNX Script doesn't support custom ops directly)
-    im2col_node = make_im2col_node(
-        "Im2Col_0", ["inp"], ["out"],
-        stride=[2, 2], kernel_size=[3, 3],
-        input_shape="(1, 14, 14, 3)", pad_amount=[0, 0, 0, 0]
-    )
-    model.graph.node[0].CopyFrom(im2col_node)
+    # Name the node
+    model.graph.node[0].name = "Im2Col_0"
     
     return model
 
@@ -177,24 +154,53 @@ def make_model_with_subgraphs():
     """Create a model with nodes that contain subgraphs with Im2Col operations.
     The If node has different then_branch and else_branch subgraphs.
     
-    Uses ONNX Script with Python if statement - automatically converted to ONNX If node!
-    Note: Operations must be inlined in if/else blocks, not called as functions.
+    Uses ONNX Script with Python if statement and qops for custom operations.
     """
     # Define main graph with Python if statement (converts to ONNX If node!)
     @script(default_opset=op)
     def main_graph_fn(main_inp: FLOAT[1, 14, 14, 3], condition: BOOL) -> FLOAT[1, 7, 7, 27]:
         """Main graph with Im2Col and If node using Python if statement"""
-        main_intermediate = op.Identity(main_inp)  # Will be replaced with Im2Col_0
+        main_intermediate = qops.Im2Col(
+            main_inp,
+            stride=[1, 1],
+            kernel_size=[7, 7],
+            input_shape="(1, 14, 14, 3)",
+            pad_amount=[3, 3, 3, 3]
+        )
         
         # Python if statement → ONNX If node with inlined subgraph operations!
         if condition:
             # Then branch: stride [2,2] -> [1,1], kernel [3,3] -> [5,5]
-            sub_intermediate = op.Identity(main_intermediate)  # Will be SubIm2Col_0
-            main_out = op.Identity(sub_intermediate)  # Will be SubIm2Col_1
+            sub_intermediate = qops.Im2Col(
+                main_intermediate,
+                stride=[2, 2],
+                kernel_size=[3, 3],
+                input_shape="(1, 14, 14, 3)",
+                pad_amount=[1, 1, 1, 1]
+            )
+            main_out = qops.Im2Col(
+                sub_intermediate,
+                stride=[1, 1],
+                kernel_size=[5, 5],
+                input_shape="(1, 7, 7, 27)",
+                pad_amount=[2, 2, 2, 2]
+            )
         else:
             # Else branch: stride [1,1] -> [2,2], kernel [7,7] -> [3,3]
-            else_intermediate = op.Identity(main_intermediate)  # Will be SubIm2Col_0
-            main_out = op.Identity(else_intermediate)  # Will be SubIm2Col_1
+            else_intermediate = qops.Im2Col(
+                main_intermediate,
+                stride=[1, 1],
+                kernel_size=[7, 7],
+                input_shape="(1, 14, 14, 3)",
+                pad_amount=[3, 3, 3, 3]
+            )
+            main_out = qops.Im2Col(
+                else_intermediate,
+                stride=[2, 2],
+                kernel_size=[3, 3],
+                input_shape="(1, 14, 14, 63)",
+                pad_amount=[0, 0, 0, 0]
+            )
         
         return main_out
     
@@ -202,47 +208,19 @@ def make_model_with_subgraphs():
     model_proto = main_graph_fn.to_model_proto()
     model = ModelWrapper(model_proto)
     
-    # Replace Identity with Im2Col custom op in main graph
-    main_im2col = make_im2col_node(
-        "Im2Col_0", ["main_inp"], ["main_intermediate"],
-        stride=[1, 1], kernel_size=[7, 7],
-        input_shape="(1, 14, 14, 3)", pad_amount=[3, 3, 3, 3]
-    )
-    model.graph.node[0].CopyFrom(main_im2col)
+    # Name the nodes
+    model.graph.node[0].name = "Im2Col_0"
+    model.graph.node[1].name = "IfNode_0"
     
-    # Find the If node and update its subgraphs
+    # Name nodes in subgraphs
     if_node = model.graph.node[1]
-    if_node.name = "IfNode_0"
-    
-    # Update then_branch subgraph nodes
     then_branch = if_node.attribute[0].g
-    then_im2col_1 = make_im2col_node(
-        "SubIm2Col_0", ["sub_inp"], ["sub_intermediate"],
-        stride=[2, 2], kernel_size=[3, 3],
-        input_shape="(1, 14, 14, 3)", pad_amount=[1, 1, 1, 1]
-    )
-    then_im2col_2 = make_im2col_node(
-        "SubIm2Col_1", ["sub_intermediate"], ["sub_out"],
-        stride=[1, 1], kernel_size=[5, 5],
-        input_shape="(1, 7, 7, 27)", pad_amount=[2, 2, 2, 2]
-    )
-    then_branch.node[0].CopyFrom(then_im2col_1)
-    then_branch.node[1].CopyFrom(then_im2col_2)
+    then_branch.node[0].name = "SubIm2Col_0"
+    then_branch.node[1].name = "SubIm2Col_1"
     
-    # Update else_branch subgraph nodes
     else_branch = if_node.attribute[1].g
-    else_im2col_1 = make_im2col_node(
-        "SubIm2Col_0", ["sub_inp"], ["else_intermediate"],
-        stride=[1, 1], kernel_size=[7, 7],
-        input_shape="(1, 14, 14, 3)", pad_amount=[3, 3, 3, 3]
-    )
-    else_im2col_2 = make_im2col_node(
-        "SubIm2Col_1", ["else_intermediate"], ["sub_out"],
-        stride=[2, 2], kernel_size=[3, 3],
-        input_shape="(1, 14, 14, 63)", pad_amount=[0, 0, 0, 0]
-    )
-    else_branch.node[0].CopyFrom(else_im2col_1)
-    else_branch.node[1].CopyFrom(else_im2col_2)
+    else_branch.node[0].name = "SubIm2Col_0"
+    else_branch.node[1].name = "SubIm2Col_1"
     
     # Add condition initializer
     condition_init = helper.make_tensor("condition", onnx.TensorProto.BOOL, [], [True])
@@ -254,41 +232,81 @@ def make_model_with_subgraphs():
 def make_nested_subgraph_model():
     """Create a model with nested subgraphs (subgraph within a subgraph).
     
-    Uses ONNX Script with Python if statements - automatically creates nested If nodes!
+    Uses ONNX Script with Python if statements and qops for custom operations.
     Demonstrates three levels of hierarchy:
     - Main graph with MainIm2Col_0 and MainIfNode_0
     - Mid-level subgraph with MidIm2Col_0 and MidIfNode_0  
     - Deep subgraph with DeepIm2Col_0
-    
-    Note: Operations must be inlined in if/else blocks for proper subgraph generation.
     """
     # Define main graph with nested if statements
     @script(default_opset=op)
     def main_graph_fn(main_inp: FLOAT[1, 28, 28, 1], main_condition: BOOL) -> FLOAT[1, 4, 4, 144]:
         """Main graph with nested if statements - creates 3 levels of hierarchy!"""
-        main_intermediate = op.Identity(main_inp)  # Will be replaced with MainIm2Col_0
+        main_intermediate = qops.Im2Col(
+            main_inp,
+            stride=[2, 2],
+            kernel_size=[3, 3],
+            input_shape="(1, 28, 28, 1)",
+            pad_amount=[1, 1, 1, 1]
+        )
         
         # Outer Python if statement → ONNX If node (MainIfNode_0)
         if main_condition:
             # Mid-level: MidIm2Col_0 operation
-            mid_intermediate = op.Identity(main_intermediate)  # Will be MidIm2Col_0
+            mid_intermediate = qops.Im2Col(
+                main_intermediate,
+                stride=[1, 1],
+                kernel_size=[5, 5],
+                input_shape="(1, 14, 14, 3)",
+                pad_amount=[2, 2, 2, 2]
+            )
             
             # Inner Python if statement → nested ONNX If node (MidIfNode_0)
             if main_condition:  # Using main_condition as mid_condition
                 # Deepest level: DeepIm2Col_0 operation
-                main_out = op.Identity(mid_intermediate)  # Will be DeepIm2Col_0
+                main_out = qops.Im2Col(
+                    mid_intermediate,
+                    stride=[2, 2],
+                    kernel_size=[3, 3],
+                    input_shape="(1, 8, 8, 16)",
+                    pad_amount=[0, 0, 0, 0]
+                )
             else:
-                main_out = op.Identity(mid_intermediate)  # Will be DeepIm2Col_0
+                main_out = qops.Im2Col(
+                    mid_intermediate,
+                    stride=[2, 2],
+                    kernel_size=[3, 3],
+                    input_shape="(1, 8, 8, 16)",
+                    pad_amount=[0, 0, 0, 0]
+                )
         else:
-            # Mid-level: MidIm2Col_0 operation
-            mid_intermediate = op.Identity(main_intermediate)  # Will be MidIm2Col_0
+            # Mid-level: MidIm2Col_0 operation (same as then branch)
+            mid_intermediate = qops.Im2Col(
+                main_intermediate,
+                stride=[1, 1],
+                kernel_size=[5, 5],
+                input_shape="(1, 14, 14, 3)",
+                pad_amount=[2, 2, 2, 2]
+            )
             
             # Inner Python if statement → nested ONNX If node (MidIfNode_0)
             if main_condition:  # Using main_condition as mid_condition
                 # Deepest level: DeepIm2Col_0 operation
-                main_out = op.Identity(mid_intermediate)  # Will be DeepIm2Col_0
+                main_out = qops.Im2Col(
+                    mid_intermediate,
+                    stride=[2, 2],
+                    kernel_size=[3, 3],
+                    input_shape="(1, 8, 8, 16)",
+                    pad_amount=[0, 0, 0, 0]
+                )
             else:
-                main_out = op.Identity(mid_intermediate)  # Will be DeepIm2Col_0
+                main_out = qops.Im2Col(
+                    mid_intermediate,
+                    stride=[2, 2],
+                    kernel_size=[3, 3],
+                    input_shape="(1, 8, 8, 16)",
+                    pad_amount=[0, 0, 0, 0]
+                )
         
         return main_out
     
@@ -296,51 +314,28 @@ def make_nested_subgraph_model():
     model_proto = main_graph_fn.to_model_proto()
     model = ModelWrapper(model_proto)
     
-    # Replace Identity with Im2Col custom op in main graph
-    main_im2col = make_im2col_node(
-        "MainIm2Col_0", ["main_inp"], ["main_intermediate"],
-        stride=[2, 2], kernel_size=[3, 3],
-        input_shape="(1, 28, 28, 1)", pad_amount=[1, 1, 1, 1]
-    )
-    model.graph.node[0].CopyFrom(main_im2col)
-    
-    # Find main If node and navigate to nested subgraphs
-    main_if_node = model.graph.node[1]
-    main_if_node.name = "MainIfNode_0"
+    # Name the nodes in main graph
+    model.graph.node[0].name = "MainIm2Col_0"
+    model.graph.node[1].name = "MainIfNode_0"
     
     # Add main condition initializer
     main_condition_init = helper.make_tensor("main_condition", onnx.TensorProto.BOOL, [], [True])
     model.graph.initializer.append(main_condition_init)
     
-    # Get mid subgraph from main If node
-    mid_subgraph = main_if_node.attribute[0].g  # then_branch
-    
-    # Replace Identity with Im2Col in mid subgraph
-    mid_im2col = make_im2col_node(
-        "MidIm2Col_0", ["mid_inp"], ["mid_intermediate"],
-        stride=[1, 1], kernel_size=[5, 5],
-        input_shape="(1, 14, 14, 3)", pad_amount=[2, 2, 2, 2]
-    )
-    mid_subgraph.node[0].CopyFrom(mid_im2col)
-    
-    # Find nested If node in mid subgraph
-    mid_if_node = mid_subgraph.node[1]
-    mid_if_node.name = "MidIfNode_0"
+    # Name nodes in mid-level subgraph (then_branch)
+    main_if_node = model.graph.node[1]
+    mid_subgraph = main_if_node.attribute[0].g
+    mid_subgraph.node[0].name = "MidIm2Col_0"
+    mid_subgraph.node[1].name = "MidIfNode_0"
     
     # Add mid condition initializer
     mid_condition_init = helper.make_tensor("mid_condition", onnx.TensorProto.BOOL, [], [True])
     mid_subgraph.initializer.append(mid_condition_init)
     
-    # Get deep subgraph from mid If node
-    deep_subgraph = mid_if_node.attribute[0].g  # then_branch
-    
-    # Replace Identity with Im2Col in deep subgraph
-    deep_im2col = make_im2col_node(
-        "DeepIm2Col_0", ["deep_inp"], ["deep_out"],
-        stride=[2, 2], kernel_size=[3, 3],
-        input_shape="(1, 8, 8, 16)", pad_amount=[0, 0, 0, 0]
-    )
-    deep_subgraph.node[0].CopyFrom(deep_im2col)
+    # Name nodes in deep subgraph (then_branch of mid If node)
+    mid_if_node = mid_subgraph.node[1]
+    deep_subgraph = mid_if_node.attribute[0].g
+    deep_subgraph.node[0].name = "DeepIm2Col_0"
     
     return model
 
