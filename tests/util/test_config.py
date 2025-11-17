@@ -54,20 +54,22 @@ def main_graph_fn(main_inp: FLOAT[1, 28, 28, 1], condition: BOOL, nested_conditi
                            pad_amount=[1, 1, 1, 1], input_shape=[1, 28, 28, 1])
     
     # Python if statement → ONNX If node with subgraph
+    # settings for Im2Col are meant to validate the extraction/application of attributes
+    # and are not necessarily realistic or correct
     if condition:
         # Then branch: simple subgraph (2 levels)
         main_out = qops.Im2Col(im2col_0, stride=[2, 1], kernel_size=[5, 5], 
                                pad_amount=[2, 2, 2, 2], input_shape=[1, 14, 14, 144])
     else:
-        im2col_1 = qops.Im2Col(im2col_0, stride=[2, 1], kernel_size=[7, 7], 
-                               pad_amount=[3, 3, 3, 3], input_shape=[1, 14, 14, 144])
+        im2col_1 = qops.Im2Col(im2col_0, stride=[2, 1], kernel_size=[6, 6], 
+                               pad_amount=[3, 3, 3, 3], input_shape=[1, 14, 14, 145])
         # Else branch: nested if statement (3 levels)
         if nested_condition:
-            main_out = qops.Im2Col(im2col_1, stride=[3, 1], kernel_size=[3, 2], 
-                                   pad_amount=[1, 1, 1, 1], input_shape=[1, 4, 4, 144])
+            main_out = qops.Im2Col(im2col_1, stride=[3, 1], kernel_size=[7, 7], 
+                                   pad_amount=[4, 4, 4, 4], input_shape=[1, 4, 4, 146])
         else:
-            main_out = qops.Im2Col(im2col_1, stride=[3, 2], kernel_size=[7, 7], 
-                                   pad_amount=[3, 3, 3, 3], input_shape=[1, 4, 4, 144])
+            main_out = qops.Im2Col(im2col_1, stride=[3, 2], kernel_size=[8, 8], 
+                                   pad_amount=[5, 5, 5, 5], input_shape=[1, 4, 4, 147])
     
     return main_out
 
