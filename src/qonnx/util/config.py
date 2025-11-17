@@ -56,8 +56,10 @@ def extract_model_config(model, subgraph_hier, attr_names_to_extract):
         for attr in n.attribute:
             if attr.type == onnx.AttributeProto.GRAPH:
                 # If the attribute is a graph, extract configs from the subgraph recursively
+                # Include the subgraph attribute name in the hierarchy
+                subgraph_hier_with_attr = new_hier + '_' + attr.name
                 cfg.update(extract_model_config(model.make_subgraph_modelwrapper(attr.g), 
-                                                new_hier, attr_names_to_extract))
+                                                subgraph_hier_with_attr, attr_names_to_extract))
             elif is_custom and attr.name in attr_names_to_extract:
                 # For custom ops, extract the requested attribute
                 layer_dict[attr.name] = oi.get_nodeattr(attr.name)
