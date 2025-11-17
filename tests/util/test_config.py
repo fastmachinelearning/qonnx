@@ -118,206 +118,47 @@ def test_extract_model_config():
     
     extracted_config = extract_model_config(model, subgraph_hier=None, attr_names_to_extract=attrs_to_extract)
     assert extracted_config == expected_config, "Extracted config does not match expected config"
-    
-    
-
-# @pytest.mark.parametrize("model_name,model_factory", [
-#     ("simple", make_simple_model_with_im2col),
-#     ("nested", make_nested_subgraph_model),
-# ])
-# def test_extract_model_config_edge_cases(model_name, model_factory):
-#     """Test edge cases: empty attribute list and nonexistent attributes.
-    
-#     Parameterized to ensure edge cases work for both simple and nested models.
-#     """
-#     model = model_factory()
-    
-#     # Edge case 1: Empty attribute list - no attributes requested
-#     config = extract_model_config(model, None, [])
-#     verify_config_basic_structure(config)
-#     assert len(config) == 0, "Config should be empty when no attributes are requested"
-    
-#     # Edge case 2: Nonexistent attribute - attribute doesn't exist on any nodes
-#     config = extract_model_config(model, None, ["nonexistent_attr"])
-#     verify_config_basic_structure(config)
-#     assert len(config) == 0, "Config should be empty when no nodes have matching attributes"
-
-# @pytest.mark.parametrize("model_name,model_factory", [
-#     ("simple", make_simple_model_with_im2col),
-#     ("nested", make_nested_subgraph_model),
-# ])
-# def test_roundtrip_export_import(model_name, model_factory):
-#     """Test export/import round-trip for models with and without subgraphs.
-    
-#     Parameterized test covering:
-#     - simple: Model without subgraphs
-#     - nested: Model with nested subgraphs (tests multi-level hierarchy)
-#     """
-#     from qonnx.transformation.general import ApplyConfig
-    
-#     # Helper to collect all Im2Col nodes from model and subgraphs recursively
-#     def collect_im2col_attrs(model_wrapper, collected_attrs=None):
-#         if collected_attrs is None:
-#             collected_attrs = {}
-        
-#         for node in model_wrapper.graph.node:
-#             if node.op_type == "Im2Col":
-#                 inst = getCustomOp(node)
-#                 collected_attrs[node.name] = {
-#                     "kernel_size": inst.get_nodeattr("kernel_size"),
-#                     "stride": inst.get_nodeattr("stride"),
-#                     "pad_amount": inst.get_nodeattr("pad_amount")
-#                 }
-            
-#             # Recursively check subgraphs
-#             for attr in node.attribute:
-#                 if attr.type == onnx.AttributeProto.GRAPH:
-#                     subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
-#                     collect_im2col_attrs(subgraph, collected_attrs)
-        
-#         return collected_attrs
-    
-#     # Create first model and collect original attributes
-#     model1 = model_factory()
-#     original_attrs = collect_im2col_attrs(model1)
-    
-#     # Export config from first model
-#     config, cleanup = extract_config_to_temp_json(model1, ["kernel_size", "stride", "pad_amount"])
-    
-#     try:
-#         # Create a second model and modify its attributes
-#         model2 = model_factory()
-        
-#         # Modify all Im2Col nodes to different values
-#         def modify_all_nodes(model_wrapper):
-#             for node in model_wrapper.graph.node:
-#                 if node.op_type == "Im2Col":
-#                     inst = getCustomOp(node)
-#                     inst.set_nodeattr("kernel_size", [11, 11])
-#                     inst.set_nodeattr("stride", [5, 5])
-#                     inst.set_nodeattr("pad_amount", [7, 7, 7, 7])
-                
-#                 # Recursively modify subgraphs
-#                 for attr in node.attribute:
-#                     if attr.type == onnx.AttributeProto.GRAPH:
-#                         subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
-#                         modify_all_nodes(subgraph)
-        
-#         modify_all_nodes(model2)
-        
-#         # Apply the original config to model2
-#         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-#             config_with_defaults = config.copy()
-#             config_with_defaults["Defaults"] = {}
-#             json.dump(config_with_defaults, f, indent=2)
-#             config_json_file = f.name
-        
-#         model2 = model2.transform(ApplyConfig(config_json_file))
-        
-#         # Collect attributes from model2 after applying config
-#         restored_attrs = collect_im2col_attrs(model2)
-        
-#         # Verify all nodes in model2 now match original_attrs from model1
-#         assert len(restored_attrs) == len(original_attrs), \
-#             f"Expected {len(original_attrs)} nodes, got {len(restored_attrs)}"
-        
-#         for node_name in original_attrs:
-#             assert node_name in restored_attrs, f"Node {node_name} not found after applying config"
-#             assert restored_attrs[node_name]["kernel_size"] == original_attrs[node_name]["kernel_size"], \
-#                 f"Node {node_name} kernel_size not restored"
-#             assert restored_attrs[node_name]["stride"] == original_attrs[node_name]["stride"], \
-#                 f"Node {node_name} stride not restored"
-#             assert restored_attrs[node_name]["pad_amount"] == original_attrs[node_name]["pad_amount"], \
-#                 f"Node {node_name} pad_amount not restored"
-        
-#         # Cleanup
-#         if os.path.exists(config_json_file):
-#             os.remove(config_json_file)
-#     finally:
-#         cleanup()
 
 
-# @pytest.mark.parametrize("model_name,model_factory", [
-#     ("simple", make_simple_model_with_im2col),
-# ])
-# def test_roundtrip_partial_config(model_name, model_factory):
-#     """Test that ApplyConfig only modifies specified attributes, leaving others unchanged.
+def test_roundtrip_export_import():
+    """Test config extraction and re-application preserves node attributes."""
+    from qonnx.transformation.general import ApplyConfig
     
-#     Note: Only testing with simple model as nested model config application through subgraphs
-#     has complexities that make partial config verification difficult.
-#     """
-#     from qonnx.transformation.general import ApplyConfig
+    model, expected_config = make_im2col_test_model()
+    attrs_to_extract = ["kernel_size", "stride", "pad_amount", "input_shape"]
     
-#     # Helper to collect and modify all Im2Col nodes recursively
-#     def collect_and_store_attrs(model_wrapper, original_attrs=None):
-#         if original_attrs is None:
-#             original_attrs = {}
-#         for node in model_wrapper.graph.node:
-#             if node.op_type == "Im2Col":
-#                 inst = getCustomOp(node)
-#                 original_attrs[node.name] = {
-#                     "kernel_size": inst.get_nodeattr("kernel_size"),
-#                     "stride": inst.get_nodeattr("stride"),
-#                     "pad_amount": inst.get_nodeattr("pad_amount")
-#                 }
-#             for attr in node.attribute:
-#                 if attr.type == onnx.AttributeProto.GRAPH:
-#                     subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
-#                     collect_and_store_attrs(subgraph, original_attrs)
-#         return original_attrs
+    # Extract config from model
+    original_config = extract_model_config(model, subgraph_hier=None, attr_names_to_extract=attrs_to_extract)
     
-#     def modify_all_attrs(graph_proto):
-#         """Modify attributes directly in the graph proto (not through wrapper)."""
-#         for node in graph_proto.node:
-#             if node.op_type == "Im2Col":
-#                 inst = getCustomOp(node)
-#                 inst.set_nodeattr("kernel_size", [7, 7])
-#                 inst.set_nodeattr("stride", [4, 4])
-#                 inst.set_nodeattr("pad_amount", [9, 9, 9, 9])
-#             for attr in node.attribute:
-#                 if attr.type == onnx.AttributeProto.GRAPH:
-#                     modify_all_attrs(attr.g)
+    # Modify all Im2Col nodes to different values (recursively through subgraphs)
+    def modify_all_im2col_nodes(graph_proto):
+        for node in graph_proto.node:
+            if node.op_type == "Im2Col":
+                inst = getCustomOp(node)
+                inst.set_nodeattr("kernel_size", [11, 11])
+                inst.set_nodeattr("stride", [5, 5])
+                inst.set_nodeattr("pad_amount", [7, 7, 7, 7])
+                inst.set_nodeattr("input_shape", "")  # input_shape is a string attribute
+            for attr in node.attribute:
+                if attr.type == onnx.AttributeProto.GRAPH:
+                    modify_all_im2col_nodes(attr.g)
     
-#     def verify_attrs(model_wrapper, original_attrs):
-#         for node in model_wrapper.graph.node:
-#             if node.op_type == "Im2Col":
-#                 inst = getCustomOp(node)
-#                 # kernel_size and stride should be restored
-#                 assert inst.get_nodeattr("kernel_size") == original_attrs[node.name]["kernel_size"]
-#                 assert inst.get_nodeattr("stride") == original_attrs[node.name]["stride"]
-#                 # pad_amount should remain modified (not in config)
-#                 assert inst.get_nodeattr("pad_amount") == [9, 9, 9, 9]
-#             for attr in node.attribute:
-#                 if attr.type == onnx.AttributeProto.GRAPH:
-#                     subgraph = model_wrapper.make_subgraph_modelwrapper(attr.g)
-#                     verify_attrs(subgraph, original_attrs)
+    modify_all_im2col_nodes(model.graph)
     
-#     # Create model and store original values
-#     model = model_factory()
-#     original_attrs = collect_and_store_attrs(model)
+    # Apply the original config via temp JSON file
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        config_with_defaults = original_config.copy()
+        config_with_defaults["Defaults"] = {}
+        json.dump(config_with_defaults, f, indent=2)
+        config_json_file = f.name
     
-#     # Export only kernel_size and stride (not pad_amount)
-#     config, cleanup = extract_config_to_temp_json(model, ["kernel_size", "stride"])
-    
-#     try:
-#         # Modify all attributes (work directly with graph proto)
-#         modify_all_attrs(model.graph)
+    try:
+        model = model.transform(ApplyConfig(config_json_file))
         
-#         # Create config with Defaults
-#         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-#             config_with_defaults = config.copy()
-#             config_with_defaults["Defaults"] = {}
-#             json.dump(config_with_defaults, f, indent=2)
-#             config_json_file = f.name
-        
-#         # Apply config
-#         model = model.transform(ApplyConfig(config_json_file))
-        
-#         # Verify partial restoration
-#         verify_attrs(model, original_attrs)
-        
-#         # Cleanup
-#         if os.path.exists(config_json_file):
-#             os.remove(config_json_file)
-#     finally:
-#         cleanup()
+        # Re-extract config and verify it matches original
+        restored_config = extract_model_config(model, subgraph_hier=None, attr_names_to_extract=attrs_to_extract)
+        assert restored_config == original_config, "Config not properly restored after roundtrip"
+    finally:
+        if os.path.exists(config_json_file):
+            os.remove(config_json_file)
+  

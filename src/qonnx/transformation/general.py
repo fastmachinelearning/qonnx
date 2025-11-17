@@ -337,17 +337,23 @@ class ApplyConfig(Transformation):
         self.used_configurations = ["Defaults"]
         self.missing_configurations = []
 
-    def configure_network(self, model, model_config, subgraph_hier):
-        # Configure network
-        for node_idx, node in enumerate(model.graph.node):
+    def configure_network(self, graph_proto, model_config, subgraph_hier):
+        # Configure network - graph_proto can be a GraphProto or ModelWrapper
+        # If it's a ModelWrapper, get the graph
+        if hasattr(graph_proto, 'graph'):
+            graph = graph_proto.graph
+        else:
+            graph = graph_proto
+            
+        for node in graph.node:
             if not self.node_filter(node):
                 continue
 
-            # Build the config key by prepending hierarchy if in a subgraph
+            # Build the config key by prepending hierarchy
             config_key = node.name if subgraph_hier is None else str(subgraph_hier) + "_" + node.name
 
             try:
-                node_config = model_config[config_key].copy()  # Make a copy to avoid modifying original
+                node_config = model_config[config_key].copy()
             except KeyError:
                 self.missing_configurations += [node.name]
                 node_config = {}
@@ -369,27 +375,27 @@ class ApplyConfig(Transformation):
                             default_values.append((key, val, op))
                             assert not (op == "all" and len(value) > 2)
                 default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
-                for attr, value in default_configs.items():
-                    inst.set_nodeattr(attr, value)
+                for attr_name, value in default_configs.items():
+                    inst.set_nodeattr(attr_name, value)
 
                 # set node attributes from specified configuration
-                for attr, value in node_config.items():
-                    inst.set_nodeattr(attr, value)
+                for attr_name, value in node_config.items():
+                    inst.set_nodeattr(attr_name, value)
             except Exception:
                 # Node is not a custom op, but it might have subgraphs
                 pass
 
-            # apply to subgraph (do this regardless of whether node is custom op)
+            # Recursively handle nested subgraphs
             for attr in node.attribute:
                 if attr.type == AttributeProto.GRAPH:
-                    # this is a subgraph, add it to the list
-                    subgraph = model.make_subgraph_modelwrapper(attr.g)
+                    # Build the subgraph hierarchy including the attribute name
                     if subgraph_hier is None:
                         new_hier = node.name
                     else:
                         new_hier = str(subgraph_hier) + "_" + node.name
-                    self.configure_network(subgraph, model_config, subgraph_hier=new_hier)
-
+                    # Include the subgraph attribute name in the hierarchy
+                    new_hier = new_hier + "_" + attr.name
+                    self.configure_network(attr.g, model_config, subgraph_hier=new_hier)
     def apply(self, model):
         if isinstance(self.config, dict):
             model_config = self.config
@@ -398,7 +404,7 @@ class ApplyConfig(Transformation):
                 model_config = json.load(f)
 
         # apply configuration on upper level
-        self.configure_network(model, model_config, subgraph_hier=None)
+        self.configure_network(model.model.graph, model_config, subgraph_hier=None)
 
         # Configuration verification
         # Remove duplicates from missing_configurations (can happen with shared subgraphs in If nodes)
