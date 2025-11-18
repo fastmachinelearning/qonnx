@@ -103,6 +103,7 @@ def make_im2col_test_model():
     assert im2col_node.name == nested_if_im2col_else_node.name
    
     expected_config = {}
+    expected_config["Defaults"] = {}
     expected_config.update(build_expected_config_from_node(im2col_node))
     expected_config.update(build_expected_config_from_node(if_im2col_then_node, prefix='n1_then_branch_'))
     expected_config.update(build_expected_config_from_node(if_im2col_else_node, prefix='n1_else_branch_'))
