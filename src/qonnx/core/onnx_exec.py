@@ -36,12 +36,7 @@ import warnings
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
 from qonnx.custom_op.registry import is_custom_op
-from qonnx.util.basic import (
-    get_preferred_qonnx_opset,
-    get_sanitize_quant_tensors,
-    qonnx_make_model,
-    sanitize_quant_values,
-)
+from qonnx.util.basic import get_preferred_qonnx_opset, get_sanitize_quant_tensors, qonnx_make_model, sanitize_quant_values
 
 
 def execute_node(node, context, graph, opset_version, return_full_exec_context=False):

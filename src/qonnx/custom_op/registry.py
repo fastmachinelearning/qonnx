@@ -122,7 +122,7 @@ def _discover_from_custom_op_dict(module, op_type: str, domain: str) -> Dict[int
     """
     versions = {}
 
-    if not (hasattr(module, 'custom_op') and isinstance(module.custom_op, dict)):
+    if not (hasattr(module, "custom_op") and isinstance(module.custom_op, dict)):
         return versions
 
     # Iterate all dict entries, filter by op_type
@@ -173,7 +173,7 @@ def _discover_custom_op_versions(domain: str, op_type: str) -> Dict[int, Type[Cu
         return versions
 
     # Fast path: use __all__ to find only matching classes
-    if hasattr(module, '__all__'):
+    if hasattr(module, "__all__"):
         # Filter __all__ to find all versions of THIS op_type
         # e.g., op_type="IntQuant" matches ["IntQuant", "IntQuant_v2", "IntQuant_v4"]
         candidates = []
@@ -241,8 +241,7 @@ def _discover_custom_op_versions(domain: str, op_type: str) -> Dict[int, Type[Cu
 
 
 def _resolve_version(
-    available_versions: Dict[int, Type[CustomOp]],
-    requested_version: Optional[int]
+    available_versions: Dict[int, Type[CustomOp]], requested_version: Optional[int]
 ) -> Tuple[int, Type[CustomOp]]:
     """Resolve which version to use given available and requested versions.
 
@@ -450,10 +449,9 @@ def hasCustomOp(domain: str, op_type: str) -> bool:
         True if the op exists, False otherwise
     """
     warnings.warn(
-        "hasCustomOp is deprecated and will be removed in QONNX v1.0. "
-        "Use is_custom_op instead.",
+        "hasCustomOp is deprecated and will be removed in QONNX v1.0. " "Use is_custom_op instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return is_custom_op(domain, op_type)
 
@@ -492,17 +490,14 @@ def get_ops_in_domain(domain: str) -> List[Tuple[str, Type[CustomOp]]]:
             module = importlib.import_module(module_path)
 
             # Use __all__ if available for efficiency
-            if hasattr(module, '__all__'):
-                candidates = [(name, getattr(module, name, None))
-                             for name in module.__all__]
+            if hasattr(module, "__all__"):
+                candidates = [(name, getattr(module, name, None)) for name in module.__all__]
                 candidates = [(n, obj) for n, obj in candidates if obj is not None]
             else:
                 candidates = inspect.getmembers(module, inspect.isclass)
 
             for name, obj in candidates:
-                if not (inspect.isclass(obj) and
-                       issubclass(obj, CustomOp) and
-                       obj is not CustomOp):
+                if not (inspect.isclass(obj) and issubclass(obj, CustomOp) and obj is not CustomOp):
                     continue
 
                 op_type = _get_op_type_for_class(obj)

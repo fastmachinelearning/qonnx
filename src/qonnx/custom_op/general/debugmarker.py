@@ -32,7 +32,6 @@ from qonnx.custom_op.base import CustomOp
 
 
 class DebugMarker(CustomOp):
-
     def get_nodeattr_types(self):
         return {"export_debug_name": ("s", True, "")}
 
