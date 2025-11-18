@@ -340,11 +340,11 @@ class ApplyConfig(Transformation):
     def configure_network(self, graph_proto, model_config, subgraph_hier):
         # Configure network - graph_proto can be a GraphProto or ModelWrapper
         # If it's a ModelWrapper, get the graph
-        if hasattr(graph_proto, 'graph'):
+        if hasattr(graph_proto, "graph"):
             graph = graph_proto.graph
         else:
             graph = graph_proto
-            
+
         for node in graph.node:
             if not self.node_filter(node):
                 continue
@@ -365,18 +365,19 @@ class ApplyConfig(Transformation):
 
             try:
                 inst = getCustomOp(node)
-                
-                # set specified defaults
-                default_values = []
-                for key, value in model_config["Defaults"].items():
-                    assert len(value) % 2 == 0
-                    if key not in model_config:
-                        for val, op in zip(value[::2], value[1::2]):
-                            default_values.append((key, val, op))
-                            assert not (op == "all" and len(value) > 2)
-                default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
-                for attr_name, value in default_configs.items():
-                    inst.set_nodeattr(attr_name, value)
+
+                if "Defaults" in model_config.keys():
+                    # set specified defaults
+                    default_values = []
+                    for key, value in model_config["Defaults"].items():
+                        assert len(value) % 2 == 0
+                        if key not in model_config:
+                            for val, op in zip(value[::2], value[1::2]):
+                                default_values.append((key, val, op))
+                                assert not (op == "all" and len(value) > 2)
+                    default_configs = {key: val for key, val, op in default_values if op == "all" or node.op_type in op}
+                    for attr_name, value in default_configs.items():
+                        inst.set_nodeattr(attr_name, value)
 
                 # set node attributes from specified configuration
                 for attr_name, value in node_config.items():
@@ -396,6 +397,7 @@ class ApplyConfig(Transformation):
                     # Include the subgraph attribute name in the hierarchy
                     new_hier = new_hier + "_" + attr.name
                     self.configure_network(attr.g, model_config, subgraph_hier=new_hier)
+
     def apply(self, model):
         if isinstance(self.config, dict):
             model_config = self.config
