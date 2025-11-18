@@ -32,7 +32,7 @@ from onnx import TensorProto, helper
 from qonnx.custom_op.channels_last.base_wrapped_op import ChannelsLastWrappedOp
 
 
-class BatchNormalization(ChannelsLastWrappedOp):
+class BatchNormalization_v1(ChannelsLastWrappedOp):
     def get_nodeattr_types(self):
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)
@@ -133,3 +133,13 @@ class BatchNormalization(ChannelsLastWrappedOp):
             )
 
         return info_messages
+
+
+class BatchNormalization_v9(BatchNormalization_v1):
+    # no relevant changes for channels-last wrapper
+    pass
+
+
+class BatchNormalization_v14(BatchNormalization_v9):
+    # no relevant changes for channels-last wrapper
+    pass

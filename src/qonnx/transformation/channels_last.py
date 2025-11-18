@@ -275,7 +275,9 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                 opset_imports = model.get_opset_imports()
                 # Ensure channels_last domain is imported in model
                 if "qonnx.custom_op.channels_last" not in opset_imports:
-                    onnx_opset = opset_imports[""]
+                    # use the same opset for channels last ops as the standard ONNX opset
+                    # (since they are defined based on the standard ops under the hood)
+                    onnx_opset = opset_imports[""] if "" in opset_imports.keys() else opset_imports["ai.onnx"]
                     model.model.opset_import.append(helper.make_opsetid("qonnx.custom_op.channels_last", onnx_opset))
                 # Set modified flag
                 graph_modified = True
