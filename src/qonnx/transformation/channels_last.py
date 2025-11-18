@@ -32,8 +32,8 @@ from copy import deepcopy
 from onnx import TensorProto, helper
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.custom_op.registry import get_ops_in_domain
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import SortGraph
@@ -44,7 +44,7 @@ from qonnx.util.basic import get_by_name
 from qonnx.util.onnx import is_eltwise_optype
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-_channelsLast_node_types = list(channels_last.custom_op.keys())
+_channelsLast_node_types = list([x[0] for x in get_ops_in_domain("qonnx.custom_op.channels_last")])
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
