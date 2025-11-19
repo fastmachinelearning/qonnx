@@ -35,23 +35,22 @@ from qonnx.custom_op.general.im2col import Im2Col
 from qonnx.custom_op.general.intquant import IntQuant
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
-from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.quant import Quant
+from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.trunc import Trunc
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
-# Legacy dictionary for backward compatibility
-custom_op = {
-    "DebugMarker": DebugMarker,
-    "QuantAvgPool2d": QuantAvgPool2d,
-    "MaxPoolNHWC": MaxPoolNHWC,
-    "GenericPartition": GenericPartition,
-    "MultiThreshold": MultiThreshold,
-    "XnorPopcountMatMul": XnorPopcountMatMul,
-    "Im2Col": Im2Col,
-    "IntQuant": IntQuant,
-    "Quant": IntQuant,  # Alias
-    "Trunc": Trunc,
-    "BipolarQuant": BipolarQuant,
-    "FloatQuant": FloatQuant,
-}
+__all__ = [
+    "BipolarQuant",
+    "DebugMarker",
+    "FloatQuant",
+    "GenericPartition",
+    "Im2Col",
+    "IntQuant",
+    "MaxPoolNHWC",
+    "MultiThreshold",
+    "Quant",
+    "QuantAvgPool2d",
+    "Trunc",
+    "XnorPopcountMatMul",
+]

@@ -41,19 +41,15 @@ def default_op_filter(op):
 
 class FixedPointQuantizeParamsFromDict(Transformation):
     """
-        Quantize model parameters to a given fixed-point representation.
-        The self.max_err dictionary stores the maximum error for each quantized input after calling.
-        Parameters:
-            fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point
-    <<<<<<< HEAD
-                           data type or its canonical name
-    =======
-                          data type or its canonical name
-    >>>>>>> 7dfc4b8 ([Lint] rerun linter, fix errors)
-            rounding_mode: Rounding mode used for conversion into fixed point.
-                           Default is "ROUND",
-                           possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
-                           "HALF_UP", "HALF_DOWN"]
+    Quantize model parameters to a given fixed-point representation.
+    The self.max_err dictionary stores the maximum error for each quantized input after calling.
+    Parameters:
+        fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point
+                       data type or its canonical name
+        rounding_mode: Rounding mode used for conversion into fixed point.
+                       Default is "ROUND",
+                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
+                       "HALF_UP", "HALF_DOWN"]
     """
 
     def __init__(self, fixedpt_dict, rounding_mode="ROUND"):

@@ -78,13 +78,15 @@ def is_finn_op(op_type):
     Use the registry-based is_custom_op for better accuracy and extensibility.
     """
     import warnings
+
     warnings.warn(
         "is_finn_op is deprecated and will be removed in QONNX v1.0. "
         "Use 'from qonnx.custom_op.registry import is_custom_op' instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     from qonnx.custom_op.registry import is_custom_op
+
     return is_custom_op(op_type)
 
 
