@@ -39,7 +39,7 @@ from onnx import TensorProto
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import DataType
-from qonnx.custom_op.registry import getCustomOp
+from qonnx.custom_op.registry import getCustomOp, is_custom_op
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
@@ -183,7 +183,7 @@ class ModelWrapper:
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
 
-        if apply_to_subgraphs and not use_preorder_traversal:
+        if apply_to_subgraphs and (use_preorder_traversal is False):
             transformed_model.transform_subgraphs(
                 transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
             )
@@ -632,11 +632,11 @@ class ModelWrapper:
 
     def get_finn_nodes(self):
         """Returns a list of nodes where domain == 'qonnx.*'."""
-        return list(filter(lambda x: util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: is_custom_op(x.domain), self.graph.node))
 
     def get_non_finn_nodes(self):
         """Returns a list of nodes where domain != 'qonnx.*'."""
-        return list(filter(lambda x: not util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: not is_custom_op(x.domain), self.graph.node))
 
     def get_node_index(self, node):
         """Returns current index of given node, or None if not found."""

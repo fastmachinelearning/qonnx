@@ -71,8 +71,23 @@ def qonnx_make_model(graph_proto, **kwargs):
 
 
 def is_finn_op(op_type):
-    "Return whether given op_type string is a QONNX or FINN custom op"
-    return op_type.startswith("finn") or op_type.startswith("qonnx.custom_op") or op_type.startswith("onnx.brevitas")
+    """Deprecated: Use is_custom_op from qonnx.custom_op.registry instead.
+
+    Return whether given op_type string is a QONNX or FINN custom op.
+    This function uses hard-coded string matching and will be removed in QONNX v1.0.
+    Use the registry-based is_custom_op for better accuracy and extensibility.
+    """
+    import warnings
+
+    warnings.warn(
+        "is_finn_op is deprecated and will be removed in QONNX v1.0. "
+        "Use 'from qonnx.custom_op.registry import is_custom_op' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    from qonnx.custom_op.registry import is_custom_op
+
+    return is_custom_op(op_type)
 
 
 def get_num_default_workers():

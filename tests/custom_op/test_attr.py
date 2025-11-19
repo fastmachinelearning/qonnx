@@ -29,10 +29,9 @@
 import numpy as np
 import onnx.parser as oprs
 
-import qonnx.custom_op.general as general
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.registry import getCustomOp
+from qonnx.custom_op.registry import add_op_to_domain, getCustomOp
 
 
 class AttrTestOp(CustomOp):
@@ -60,7 +59,7 @@ class AttrTestOp(CustomOp):
 
 
 def test_attr():
-    general.custom_op["AttrTestOp"] = AttrTestOp
+    add_op_to_domain("qonnx.custom_op.general", AttrTestOp)
     ishp = (1, 10)
     wshp = (1, 3)
     oshp = wshp

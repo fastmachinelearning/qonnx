@@ -35,13 +35,8 @@ import warnings
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
-from qonnx.util.basic import (
-    get_preferred_qonnx_opset,
-    get_sanitize_quant_tensors,
-    is_finn_op,
-    qonnx_make_model,
-    sanitize_quant_values,
-)
+from qonnx.custom_op.registry import is_custom_op
+from qonnx.util.basic import get_preferred_qonnx_opset, get_sanitize_quant_tensors, qonnx_make_model, sanitize_quant_values
 
 
 def execute_node(node, context, graph, opset_version, return_full_exec_context=False):
@@ -49,7 +44,7 @@ def execute_node(node, context, graph, opset_version, return_full_exec_context=F
 
     Input/output provided via context."""
 
-    if is_finn_op(node.domain):
+    if is_custom_op(node.domain, node.op_type):
         ex_cu_node.execute_custom_node(node, context, graph, onnx_opset_version=opset_version)
     else:
         # onnxruntime unfortunately does not implement run_node as defined by ONNX,

@@ -67,7 +67,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 if current_dtype.is_fixed_point():
                     warn(
                         f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. "
-                        f"Recasting to {tdtype.get_canonical_name()}"
+                        "Recasting to {tdtype.get_canonical_name()}"
                     )
 
                 in1_t_new = self.round_func(in1_t.astype(np.float32) / tdtype.scale_factor()) * tdtype.scale_factor()

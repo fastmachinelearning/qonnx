@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# Importing registers CustomOps in qonnx.custom_op.general domain
 from qonnx.custom_op.general.bipolar_quant import BipolarQuant
 from qonnx.custom_op.general.debugmarker import DebugMarker
 from qonnx.custom_op.general.floatquant import FloatQuant
@@ -34,36 +35,23 @@ from qonnx.custom_op.general.im2col import Im2Col
 from qonnx.custom_op.general.intquant import IntQuant
 from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
+from qonnx.custom_op.general.quant import Quant
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
 from qonnx.custom_op.general.trunc import Trunc_v1, Trunc_v2
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
-custom_op = dict()
-
-custom_op["DebugMarker"] = DebugMarker
-custom_op["QuantAvgPool2d"] = QuantAvgPool2d
-custom_op["MaxPoolNHWC"] = MaxPoolNHWC
-custom_op["GenericPartition"] = GenericPartition
-custom_op["MultiThreshold"] = MultiThreshold
-custom_op["XnorPopcountMatMul"] = XnorPopcountMatMul
-custom_op["Im2Col"] = Im2Col
-custom_op["IntQuant"] = IntQuant
-custom_op["Quant"] = IntQuant
-custom_op["Trunc"] = Trunc_v1
-custom_op["BipolarQuant"] = BipolarQuant
-custom_op["FloatQuant"] = FloatQuant
-
-custom_op["DebugMarker_v1"] = DebugMarker
-custom_op["QuantAvgPool2d_v1"] = QuantAvgPool2d
-custom_op["MaxPoolNHWC_v1"] = MaxPoolNHWC
-custom_op["GenericPartition_v1"] = GenericPartition
-custom_op["MultiThreshold_v1"] = MultiThreshold
-custom_op["XnorPopcountMatMul_v1"] = XnorPopcountMatMul
-custom_op["Im2Col_v1"] = Im2Col
-custom_op["IntQuant_v1"] = IntQuant
-custom_op["Quant_v1"] = IntQuant
-custom_op["Trunc_v1"] = Trunc_v1
-custom_op["BipolarQuant_v1"] = BipolarQuant
-custom_op["FloatQuant_v1"] = FloatQuant
-
-custom_op["Trunc_v2"] = Trunc_v2
+__all__ = [
+    "BipolarQuant",
+    "DebugMarker",
+    "FloatQuant",
+    "GenericPartition",
+    "Im2Col",
+    "IntQuant",
+    "MaxPoolNHWC",
+    "MultiThreshold",
+    "Quant",
+    "QuantAvgPool2d",
+    "Trunc_v1",
+    "Trunc_v2",
+    "XnorPopcountMatMul",
+]
