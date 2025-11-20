@@ -37,7 +37,7 @@ from qonnx.custom_op.general.maxpoolnhwc import MaxPoolNHWC
 from qonnx.custom_op.general.multithreshold import MultiThreshold
 from qonnx.custom_op.general.quant import Quant
 from qonnx.custom_op.general.quantavgpool2d import QuantAvgPool2d
-from qonnx.custom_op.general.trunc import Trunc
+from qonnx.custom_op.general.trunc import Trunc_v1, Trunc_v2
 from qonnx.custom_op.general.xnorpopcount import XnorPopcountMatMul
 
 __all__ = [
@@ -51,6 +51,7 @@ __all__ = [
     "MultiThreshold",
     "Quant",
     "QuantAvgPool2d",
-    "Trunc",
+    "Trunc_v1",
+    "Trunc_v2",
     "XnorPopcountMatMul",
 ]
