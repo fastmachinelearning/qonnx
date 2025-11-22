@@ -32,7 +32,7 @@ from onnx import helper as oh
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import get_by_name, copy_metadata_props
+from qonnx.util.basic import copy_metadata_props, get_by_name 
 
 
 class BatchNormToAffine(Transformation):

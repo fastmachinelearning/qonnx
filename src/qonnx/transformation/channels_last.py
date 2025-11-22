@@ -242,6 +242,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # channels last transpose
                     inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
                     graph.node.insert(running_node_index, inp_trans_node)
+                    copy_metadata_props(n, inp_trans_node)
                     running_node_index += 1
 
                     # Attach to original node
@@ -268,6 +269,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                         "Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim)
                     )
                     graph.node.insert(running_node_index, outp_trans_node)
+                    copy_metadata_props(n, outp_trans_node)
                     running_node_index += 1
 
                     # Attach to original node
@@ -570,7 +572,8 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                     axis=1,
                                 )
                                 graph.node.insert(node_ind, flat_node)
-
+                                copy_metadata_props(n, flat_node)
+                                
                                 graph_modified = True
                             else:
                                 warnings.warn(

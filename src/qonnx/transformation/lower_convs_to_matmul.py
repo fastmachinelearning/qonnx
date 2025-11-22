@@ -152,6 +152,7 @@ class LowerConvsToMatMul(Transformation):
             # create new nodes
             # NCHW -> NHWC
             inp_trans_node = helper.make_node("Transpose", [cnv_input], [inp_trans_out], perm=[0, 2, 3, 1])
+            copy_metadata_props(node, inp_trans_node)
             nodes_to_insert = [inp_trans_node]
 
             if need_im2col:
@@ -174,6 +175,7 @@ class LowerConvsToMatMul(Transformation):
                     dilations=dilation,
                 )
                 nodes_to_insert.append(im2col_node)
+                copy_metadata_props(node, im2col_node)
 
             matmul_input = im2col_out if need_im2col else inp_trans_out
             # do matmul
