@@ -354,3 +354,67 @@ def auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h
         return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
     else:
         raise Exception("Unsupported auto_pad: " + autopad_str)
+
+
+def get_tensor_metadata_prop(model, tensor_name, key):
+    """Get metadata property from a tensor (input/output/initializer/value_info).
+
+    Args:
+        model: ModelWrapper instance
+        tensor_name: Name of the tensor
+        key: Metadata key to retrieve
+
+    Returns:
+        str: Metadata value if found, None otherwise
+    """
+    # Search all possible tensor locations
+    tensor = get_by_name(model.graph.input, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.output, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.initializer, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.value_info, tensor_name)
+
+    if tensor is not None:
+        meta = get_by_name(tensor.metadata_props, key, "key")
+        return meta.value if meta is not None else None
+    return None
+
+
+def set_tensor_metadata_prop(model, tensor_name, key, value):
+    """Set metadata property on a tensor (input/output/initializer/value_info).
+
+    Args:
+        model: ModelWrapper instance
+        tensor_name: Name of the tensor
+        key: Metadata key to set
+        value: Metadata value (will be converted to string)
+
+    Returns:
+        bool: True if successful, False if tensor not found
+    """
+    import onnx
+
+    # Search all possible tensor locations
+    tensor = get_by_name(model.graph.input, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.output, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.initializer, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.value_info, tensor_name)
+
+    if tensor is not None:
+        meta = get_by_name(tensor.metadata_props, key, "key")
+        if meta is None:
+            # Create new metadata entry
+            meta = onnx.StringStringEntryProto()
+            meta.key = key
+            meta.value = str(value)
+            tensor.metadata_props.append(meta)
+        else:
+            # Update existing entry
+            meta.value = str(value)
+        return True
+    return False
