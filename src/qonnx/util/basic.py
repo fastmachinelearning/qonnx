@@ -51,11 +51,19 @@ def get_preferred_onnx_opset():
     return 11
 
 
+def get_preferred_qonnx_opset():
+    "Return preferred ONNX opset version for QONNX"
+    return 1
+
+
 def qonnx_make_model(graph_proto, **kwargs):
     "Wrapper around ONNX make_model with preferred qonnx opset version"
     opset_imports = kwargs.pop("opset_imports", None)
     if opset_imports is None:
-        opset_imports = [make_opsetid("", get_preferred_onnx_opset())]
+        opset_imports = [
+            make_opsetid("", get_preferred_onnx_opset()),
+            make_opsetid("qonnx.custom_op.general", get_preferred_qonnx_opset()),
+        ]
         kwargs["opset_imports"] = opset_imports
     else:
         kwargs["opset_imports"] = opset_imports
@@ -70,13 +78,15 @@ def is_finn_op(op_type):
     Use the registry-based is_custom_op for better accuracy and extensibility.
     """
     import warnings
+
     warnings.warn(
         "is_finn_op is deprecated and will be removed in QONNX v1.0. "
         "Use 'from qonnx.custom_op.registry import is_custom_op' instead.",
         DeprecationWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     from qonnx.custom_op.registry import is_custom_op
+
     return is_custom_op(op_type)
 
 

@@ -11,7 +11,7 @@
 <img align="left" src="https://xilinx.github.io/finn/img/TFC_1W2A.onnx.png" alt="QONNX example" style="margin-right: 20px" width="200"/>
 
 
-QONNX (Quantized ONNX) introduces several custom operators -- [`IntQuant`](docs/qonnx-custom-ops/intquant_op.md), [`FloatQuant`](docs/qonnx-custom-ops/floatquant_op.md), [`BipolarQuant`](docs/qonnx-custom-ops/bipolar_quant_op.md), and [`Trunc`](docs/qonnx-custom-ops/trunc_op.md) -- in order to represent arbitrary-precision integer and minifloat quantization in ONNX. This enables:
+QONNX (Quantized ONNX) introduces several [custom operators](docs/qonnx-custom-ops/overview.md) -- `IntQuant`, `FloatQuant`, `BipolarQuant`, and `Trunc` -- in order to represent arbitrary-precision integer and minifloat quantization in ONNX. This enables:
 * Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other integer/fixed-point quantization.
 * Representation of minifloat quantization with configurable exponent and mantissa bits.
 * Quantization is an operator itself, and can be applied to any parameter or layer input.
@@ -29,9 +29,7 @@ This repository contains a set of Python utilities to work with QONNX models, in
 
 ### Operator definitions
 
-* [Quant](docs/qonnx-custom-ops/quant_op.md) for 2-to-arbitrary-bit quantization, with scaling and zero-point
-* [BipolarQuant](docs/qonnx-custom-ops/bipolar_quant_op.md)  for 1-bit (bipolar) quantization, with scaling and zero-point
-* [Trunc](docs/qonnx-custom-ops/trunc_op.md) for truncating to a specified number of bits, with scaling and zero-point
+Please see the [custom operator overview](docs/qonnx-custom-ops/overview.md) table for more details.
 
 ### Installation
 
