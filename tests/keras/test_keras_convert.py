@@ -42,13 +42,13 @@ act_quantizers_relu_ids = list(range(len(act_quantizers_relu)))
 
 @pytest.mark.parametrize("quantizer", act_quantizers_relu, ids=act_quantizers_relu_ids)
 def test_qkeras_qactivation(quantizer, request):
-    x = x_in = Input((16), name="input")
+    x = x_in = Input(shape=(16,), name="input")
     x = QActivation(activation=quantizer, name="act_0")(x)
     model = Model(inputs=[x_in], outputs=[x])
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qactivation_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -118,7 +118,7 @@ def test_keras_conv2d_conversion():
 
 def test_keras_dense_conversion():
     ini = tf.keras.initializers.RandomUniform(minval=-1.0, maxval=1.0)
-    x = x_in = Input((15), name="input")
+    x = x_in = Input(shape=(15,), name="input")
     x = Dense(10, kernel_initializer=ini, bias_initializer=ini, name="dense1")(x)
     x = Activation("relu", name="act0_m")(x)
     x = Dense(10, kernel_initializer=ini, bias_initializer=ini, activation="relu", name="dense2")(x)
@@ -151,7 +151,7 @@ def test_qkeras_qdense_1(quantizers, request):
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
-    x = x_in = Input((16), name="input")
+    x = x_in = Input(shape=(16,), name="input")
     x = QDense(
         32,
         kernel_quantizer=kq,
@@ -164,7 +164,7 @@ def test_qkeras_qdense_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -186,7 +186,7 @@ def test_qkeras_qdense_2(quantizers, request):
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
-    x = x_in = Input((16), name="input")
+    x = x_in = Input(shape=(16,), name="input")
     x = QDense(
         32,
         kernel_quantizer=kq,
@@ -208,7 +208,7 @@ def test_qkeras_qdense_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -229,7 +229,7 @@ def test_qkeras_qdense_3(quantizers, request):
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
-    x = x_in = Input((16), name="input")
+    x = x_in = Input(shape=(16,), name="input")
     x = QDense(
         32,
         kernel_quantizer=kq,
@@ -253,7 +253,7 @@ def test_qkeras_qdense_3(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense3_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -274,7 +274,7 @@ def test_qkeras_qdense_4(quantizers, request):
     # Initialize the kernel & bias to RandonUniform within the range of the quantizers
     k_ini = tf.keras.initializers.RandomUniform(minval=kq.min(), maxval=kq.max())
     b_ini = tf.keras.initializers.RandomUniform(minval=bq.min(), maxval=bq.max())
-    x = x_in = Input((16), name="input")
+    x = x_in = Input(shape=(16,), name="input")
     x = QDense(
         32,
         kernel_quantizer=kq,
@@ -309,7 +309,7 @@ def test_qkeras_qdense_4(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qdense4_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -358,7 +358,7 @@ def test_qkeras_qconv2d_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -408,7 +408,7 @@ def test_qkeras_qconv2d_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -468,7 +468,7 @@ def test_qkeras_qconv2d_3(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 3)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d3_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -543,7 +543,7 @@ def test_qkeras_qconv2d_conversion_1(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d_conversion1_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -611,7 +611,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 28, 28, 1)).astype(dtype=np.float32)
     y_qkeras = model.predict(x_test)
 
-    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=9)
+    onnx_model, external_storage = from_keras(model, "test_qkeras_qconv2d_conversion", opset=13)
     assert external_storage is None
     model_path = f"model_test_qkeras_qconv2d_conversion2_{request.node.callspec.id}.onnx"
     onnx.save(onnx_model, model_path)
@@ -653,7 +653,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
 #     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
 #     y_qkeras = model.predict(x_test)
 
-#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=9)
+#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=13)
 #     assert external_storage is None
 #     model_path = f"test_qkeras_broken1{request.node.callspec.id}.onnx"
 #     onnx.save(onnx_model, model_path)
@@ -695,7 +695,7 @@ def test_qkeras_qconv2d_conversion_2(quantizers, request):
 #     x_test = np.random.uniform(low=-1.0, high=1.0, size=(1, 16)).astype(dtype=np.float32)
 #     y_qkeras = model.predict(x_test)
 
-#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=9)
+#     onnx_model, external_storage =from_keras(model, "test_qkeras_conversion", opset=13)
 #     assert external_storage is None
 #     model_path = f"test_qkeras_broken2{request.node.callspec.id}.onnx"
 #     onnx.save(onnx_model, model_path)

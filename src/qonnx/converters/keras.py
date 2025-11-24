@@ -135,6 +135,7 @@ def _strip_qkeras_model(model):
 
     def extract_quantizers(layer):
         keras_cls_name, layer_cfg, layer_quantizers = extract_quantizers_from_layer(layer)
+        layer_cfg.pop("mask", None)
         if layer_quantizers:
             layer_quantizers = {
                 k: None if v == "None" else v for k, v in layer_quantizers.items()
