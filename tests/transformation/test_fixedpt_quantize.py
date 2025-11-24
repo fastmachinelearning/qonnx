@@ -397,7 +397,10 @@ def test_fixedpt_quantize_from_dict(test_case):
             allowed_max_error /= 2
         assert fxp_transform.max_err[tname] <= allowed_max_error
 
-    os.unlink(dl_file)
+    try:
+        os.unlink(dl_file)
+    except FileNotFoundError:
+        pass
 
 
 fixedpt_details = {
