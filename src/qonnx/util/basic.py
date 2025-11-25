@@ -372,6 +372,14 @@ def copy_metadata_props(source_node, target_node, mode="overwrite"):
         metadata from all nodes will be merged into the target node.
     target_node : onnx.NodeProto
         Target node to which metadata_props will be copied.
+    mode : str, optional
+        Mode for handling existing metadata properties in the target node.
+        Options are:
+        - "overwrite": Existing properties in the target node will be overwritten
+          by those from the source node(s) if they share the same key.
+        - "keep_existing": Existing properties in the target node will be kept,
+          and only new properties from the source node(s) will be added.
+        Default is "overwrite".
     
     Returns
     -------
