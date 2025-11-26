@@ -63,7 +63,7 @@ def test_copy_metadata_props_bad_mode():
         
 
 from onnxscript import script
-from onnxscript import opset9 as op
+from onnxscript import opset17 as op
 from onnxscript import FLOAT
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.gemm_to_matmul import GemmToMatMul
@@ -86,6 +86,50 @@ def test_copy_metadata_props_gemm2matmul():
     
     transformed_mw = mw.transform(GemmToMatMul())
    
+    for node in transformed_mw.graph.node:
+        assert node.metadata_props[0].key == 'key1'
+        assert node.metadata_props[0].value == 'value1'
+        assert node.metadata_props[1].key == 'key2'
+        assert node.metadata_props[1].value == 'value2'
+        
+
+from onnx import helper as oh
+import numpy as np
+import onnxscript
+from onnxscript.ir.passes.common import LiftConstantsToInitializersPass
+    
+    
+def test_copy_metadata_props_batchnorm2affine():
+    @script()
+    def MyBatchNorm(X: FLOAT[1, 3, 4, 4]) -> FLOAT[1, 3, 4, 4]:
+        scale = op.Constant(value=[[1.0, 1.0, 1.0]])
+        B = op.Constant(value=[[0.0, 0.0, 0.0]])
+        var = op.Constant(value=[[1.0, 1.0, 1.0]])
+        mean = op.Constant(value=[[0.0, 0.0, 0.0]])
+        return op.BatchNormalization(X, scale, B, mean, var, epsilon=1e-5, momentum=0.9)
+    
+    # remove cast-like nodes
+    model_proto = onnxscript.optimizer.optimize(MyBatchNorm.to_model_proto())    
+    
+    # batchnorm_to_affine requires initializers for scale/mean/var/bias
+    model_ir = onnxscript.ir.serde.deserialize_model(model_proto)
+    pass_ = LiftConstantsToInitializersPass(lift_all_constants=True, size_limit=1)
+    PassResult = pass_.call(model_ir)
+    model_proto = onnxscript.ir.serde.serialize_model(PassResult.model)
+    
+    # Add metadata to BatchNorm node
+    bn_node = model_proto.graph.node[0]
+    bn_node.metadata_props.extend([
+       add_metadata("key1", "value1"),
+       add_metadata("key2", "value2")
+    ])
+    
+    # Create Model Wrapper
+    mw = ModelWrapper(model_proto)
+    from qonnx.transformation.batchnorm_to_affine import BatchNormToAffine
+    transformed_mw = mw.transform(BatchNormToAffine())
+    
+    # Check that metadata was copied
     for node in transformed_mw.graph.node:
         assert node.metadata_props[0].key == 'key1'
         assert node.metadata_props[0].value == 'value1'
