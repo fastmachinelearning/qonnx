@@ -104,19 +104,8 @@ def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mo
                 max_val = 2**bw_val - 2
             else:
                 max_val = 2**bw_val - 1
-
-        if isinstance(min_val, np.ndarray):
-            min_val = min_val.astype(np_dtype)
-        elif isinstance(min_val, int):
-            pass
-        elif isinstance(min_val, float):
-            min_val = int(min_val)
-        if isinstance(max_val, np.ndarray):
-            max_val = max_val.astype(np_dtype)
-        elif isinstance(max_val, int):
-            pass
-        elif isinstance(max_val, float):
-            max_val = int(max_val)
+        min_val = int(min_val)
+        max_val = int(max_val)
         c_min_val = helper.make_tensor("min_val", new_dtype, (), [min_val])
         c_max_val = helper.make_tensor("max_val", new_dtype, (), [max_val])
         min_val = op.Constant(value=c_min_val)
