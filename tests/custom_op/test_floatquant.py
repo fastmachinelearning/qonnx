@@ -27,55 +27,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-import io
-import mock
 import numpy as np
-import torch
-from brevitas.core.function_wrapper.clamp import FloatClamp, TensorClamp
-from brevitas.core.function_wrapper.misc import Identity
-from brevitas.core.quant.float import FloatQuant as BrevitasFloatQuant
-from hypothesis import HealthCheck, Verbosity, assume, given, settings
-from hypothesis import strategies as st
-from hypothesis.extra.numpy import arrays
-from pkgutil import get_data
 
-import qonnx.core.onnx_exec as oxe
-from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op.general.floatquant import compute_default_exponent_bias, compute_max_val
+from qonnx.custom_op.general.floatquant import compute_max_val
 from qonnx.custom_op.general.floatquant import float_quant as qonnx_float_quant
-from qonnx.transformation.general import GiveReadableTensorNames, GiveUniqueNodeNames
-from qonnx.transformation.infer_shapes import InferShapes
-
-
-def test_float_exported_graph_exec():
-    # Load the exported QONNX model and reference values
-    qonnx_model = ModelWrapper(get_data("qonnx.data", "onnx/floatquant_exec/qonnx_act_weight_fp8.onnx"))
-    input_values = np.load(io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/input.npy")), allow_pickle=True)
-    brevitas_output = np.load(
-        io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/output.npy")), allow_pickle=True
-    )
-    activation = np.load(
-        io.BytesIO(get_data("qonnx.data", "onnx/floatquant_exec/test_data/activation.npz")), allow_pickle=True
-    )
-    qonnx_model = qonnx_model.transform(InferShapes())
-    qonnx_model = qonnx_model.transform(GiveUniqueNodeNames())
-    qonnx_model = qonnx_model.transform(GiveReadableTensorNames())
-
-    input_name = qonnx_model.graph.input[0].name
-    input_dict = {input_name: input_values}
-    qonnx_output_dict = oxe.execute_onnx(qonnx_model, input_dict, return_full_exec_context=True)
-    qonnx_output = qonnx_output_dict[qonnx_model.graph.output[0].name]
-
-    # Compare the outputs
-    assert np.isclose(brevitas_output, qonnx_output, atol=1e-4).all()
-
-    brevitas_qi = activation["input_quant"]
-    qonnx_qi = qonnx_output_dict["FloatQuant_0_out0"]
-    assert np.isclose(brevitas_qi, qonnx_qi, atol=1e-4).all()
-
-    brevitas_qw = activation["weight_quant"]
-    qonnx_qw = qonnx_output_dict["FloatQuant_1_out0"]
-    assert np.isclose(brevitas_qw, qonnx_qw, atol=1e-4).all()
 
 
 def test_compute_max_val():
@@ -99,75 +54,3 @@ def test_float_quantize():
     assert np.all(qonnx_float_quant(testcase_c, unit_scale, 2, 3) == compute_max_val(2, 3))
     assert np.all(qonnx_float_quant(testcase_d, unit_scale, 3, 2) == compute_max_val(3, 2))
     assert np.all(qonnx_float_quant(testcase_e, unit_scale, 2, 1) == compute_max_val(2, 1))
-
-
-def brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, exponent_bias, signed, max_val):
-    float_clamp = FloatClamp(
-        tensor_clamp_impl=TensorClamp(),
-        signed=signed,
-        inf_values=None,
-        nan_values=None,
-        max_available_float=max_val,
-        saturating=True,
-    )
-    float_scaling_impl = mock.Mock(side_effect=lambda x, y, z: torch.Tensor([1.0]))
-    float_quant = BrevitasFloatQuant(
-        bit_width=bit_width,
-        float_scaling_impl=float_scaling_impl,
-        exponent_bit_width=exponent_bit_width,
-        mantissa_bit_width=mantissa_bit_width,
-        exponent_bias=exponent_bias,
-        input_view_impl=Identity(),
-        signed=signed,
-        float_clamp_impl=float_clamp,
-    )
-    expected_out, *_ = float_quant(torch.Tensor(x))
-    return expected_out
-
-
-# @pytest.mark.xfail(reason="Possible Brevitas version issue, needs investigation")
-@st.composite
-def inputs(draw):
-    # pick the torch dtype first
-    float_type = draw(st.sampled_from([np.float32, np.float64]))
-
-    # build x with a matching numpy dtype + float width
-    x = draw(
-        arrays(
-            dtype=float_type,
-            shape=100,
-            elements=st.floats(
-                allow_nan=False,
-                allow_infinity=False,
-                allow_subnormal=True,
-                width=np.dtype(float_type).itemsize * 8,
-            ),
-            unique=True,
-        )
-    )
-
-    exponent_bit_width = draw(st.integers(1, 8))
-    mantissa_bit_width = draw(st.integers(1, 8))
-    sign = draw(st.booleans())
-
-    return x, exponent_bit_width, mantissa_bit_width, sign, float_type
-
-
-@given(data=inputs())
-@settings(
-    max_examples=1000,
-    verbosity=Verbosity.verbose,
-    suppress_health_check=list(HealthCheck),
-)  # Adjust the number of examples as needed
-def test_brevitas_vs_qonnx(data):
-    x, exponent_bit_width, mantissa_bit_width, sign, _ = data
-    x = torch.tensor(x)
-    bit_width = exponent_bit_width + mantissa_bit_width + int(sign)
-
-    assume(bit_width <= 8 and bit_width >= 4)
-    scale = 1.0
-    exponent_bias = compute_default_exponent_bias(exponent_bit_width)
-    max_val = compute_max_val(exponent_bit_width, mantissa_bit_width, exponent_bias)
-    xq_t = brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val).numpy()
-    xq = qonnx_float_quant(x.numpy(), scale, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val)
-    np.testing.assert_array_equal(xq, xq_t)

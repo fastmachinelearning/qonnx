@@ -40,7 +40,7 @@ Please see the [custom operator overview](docs/qonnx-custom-ops/overview.md) tab
 The following quantization-aware training (QAT) frameworks support exporting to QONNX:
 
 * [Brevitas](https://github.com/Xilinx/brevitas)
-* [QKeras](https://github.com/google/qkeras) (beta, see [this PR](https://github.com/fastmachinelearning/qonnx/pull/7))
+* [QKeras](https://github.com/google/qkeras) - note: QKeras to QONNX conversion will be moved to another repository. Please use the older version `qonnx==0.4` until this is done.
 * [HAWQ](https://github.com/Zhen-Dong/HAWQ/tree/main/utils/export)
 * [<your NN quantization framework here? please get in touch!>](https://github.com/fastmachinelearning/qonnx/discussions)
 
@@ -122,7 +122,7 @@ cd qonnx
 virtualenv -p python3.10 venv
 source venv/bin/activate
 pip install --upgrade pip
-pip install -e .[qkeras,testing]
+pip install -e .[testing]
 ```
 
 ### Running tests

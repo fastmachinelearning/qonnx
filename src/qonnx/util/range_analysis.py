@@ -402,7 +402,7 @@ def range_analysis(
             range_calc_fxn = optype_to_range_calc[node.op_type]
             range_calc_fxn(node, model, range_dict)
             out_range = range_dict[node.output[0]]
-            tensor_stuck_chans = np.nonzero(out_range[0] == out_range[1])[0]
+            tensor_stuck_chans = np.nonzero(np.atleast_1d(out_range[0] == out_range[1]))[0]
             if len(tensor_stuck_chans) > 0:
                 list_stuck_chans = list(tensor_stuck_chans)
                 list_stuck_values = list(out_range[0][tensor_stuck_chans])
