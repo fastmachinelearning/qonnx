@@ -42,6 +42,7 @@ from qonnx.core.datatype import DataType
 from qonnx.custom_op.registry import getCustomOp, is_custom_op
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
+    GiveUniqueParameterTensors,
     RemoveStaticGraphInputs,
     RemoveUnusedTensors,
     SortCommutativeInputsInitializerLast,
@@ -209,6 +210,7 @@ class ModelWrapper:
             RemoveStaticGraphInputs(),
             SortGraph(),
             SortCommutativeInputsInitializerLast(),
+            GiveUniqueParameterTensors(),
         ]
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
