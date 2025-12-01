@@ -33,7 +33,7 @@ from onnx import TensorProto, helper
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.general.maxpoolnhwc import compute_pool_output_dim
-from qonnx.util.basic import qonnx_make_model
+from qonnx.util.basic import get_preferred_onnx_opset, qonnx_make_model
 
 
 class QuantAvgPool2d(CustomOp):
@@ -132,7 +132,7 @@ class QuantAvgPool2d(CustomOp):
             outputs=[outp],
         )
 
-        opset_version = self.onnx_opset_version
+        opset_version = get_preferred_onnx_opset()
         opset_imports = [helper.make_opsetid("", opset_version)]
         onnx_kwargs = {"opset_imports": opset_imports}
         model_avgpool = qonnx_make_model(graph_avgpool, **onnx_kwargs)

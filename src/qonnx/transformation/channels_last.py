@@ -32,8 +32,8 @@ from copy import deepcopy
 from onnx import TensorProto, helper
 
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_first_args, to_channels_last_args
+from qonnx.custom_op.registry import get_ops_in_domain
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.fold_constants import FoldConstants
 from qonnx.transformation.general import SortGraph
@@ -44,8 +44,7 @@ from qonnx.util.basic import get_by_name
 from qonnx.util.onnx import is_eltwise_optype
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
-# use the list of exported op names from the channels_last package
-_channelsLast_node_types = list(channels_last.__all__)
+_channelsLast_node_types = list([x[0] for x in get_ops_in_domain("qonnx.custom_op.channels_last")])
 
 # Nodes, which do not modify the shape of the tensor
 # And modify all values in the same way.
@@ -271,8 +270,15 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # Attach to original node
                     n.output[i] = outp_trans_in
 
-                # Modify domain
+                # Modify node domain
                 n.domain = "qonnx.custom_op.channels_last"
+                opset_imports = model.get_opset_imports()
+                # Ensure channels_last domain is imported in model
+                if "qonnx.custom_op.channels_last" not in opset_imports:
+                    # use the same opset for channels last ops as the standard ONNX opset
+                    # (since they are defined based on the standard ops under the hood)
+                    onnx_opset = opset_imports[""] if "" in opset_imports.keys() else opset_imports["ai.onnx"]
+                    model.model.opset_import.append(helper.make_opsetid("qonnx.custom_op.channels_last", onnx_opset))
                 # Set modified flag
                 graph_modified = True
 

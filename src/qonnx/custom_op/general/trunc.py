@@ -31,10 +31,99 @@ import onnx.helper as helper
 
 from qonnx.core.datatype import DataType
 from qonnx.custom_op.base import CustomOp
-from qonnx.custom_op.general.quant import resolve_rounding_mode
+from qonnx.custom_op.general.quant import max_int, min_int, resolve_rounding_mode
+from qonnx.util.basic import get_preferred_qonnx_opset
 
 
-def trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode):
+def trunc_v2(inp_tensor, scale, zeropt, input_bit_width, narrow, signed, output_scale, output_bit_width, rounding_mode):
+    # Port of TruncIntQuant class from Brevitas: https://bit.ly/3wzIpTR
+
+    # Scaling
+    y = inp_tensor / scale
+    y = y + zeropt
+    # Rounding
+    y = np.round(y)
+    # Rescale
+    trunc_scale = 2 ** np.round(
+        np.log2(output_scale / scale)
+    )  # Trunc scale should be a power-of-two - ensure that is the case
+    y = y / trunc_scale
+
+    # Clamping
+    min_int_val = min_int(signed, narrow, output_bit_width)
+    max_int_val = max_int(signed, narrow, output_bit_width)
+    y = np.where(y > max_int_val, max_int_val.astype(y.dtype), y)
+    y = np.where(y < min_int_val, min_int_val.astype(y.dtype), y)
+    # To int (truncate)
+    rounding_fx = resolve_rounding_mode(rounding_mode)
+    y = rounding_fx(y)
+
+    # Rescale
+    output_zeropt = zeropt / trunc_scale  # Rescale zero-point
+    y = y - output_zeropt
+    y = y * output_scale
+
+    return y
+
+
+class Trunc_v2(CustomOp):
+    """Generic truncation operation for QONNX. Takes four inputs:
+    - input tensor to truncate
+    - the scale
+    - the zero-point
+    - the truncation scale
+    - the truncation bit-width
+
+    The output is a tensor of the same shape as the input tensor, with truncated
+    values.
+    """
+
+    def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
+        super().__init__(onnx_node, onnx_opset_version)
+        # override any specified opset version, this instance is v2
+        self.onnx_opset_version = 2
+
+    def get_nodeattr_types(self):
+        return {
+            # The rounding mode, which is used for the trunc function
+            "rounding_mode": ("s", True, "FLOOR"),
+            "narrow": ("i", False, 0, {0, 1}),
+            "signed": ("i", False, 1, {0, 1}),
+        }
+
+    def make_shape_compatible_op(self, model):
+        node = self.onnx_node
+        return helper.make_node("Identity", [node.input[0]], [node.output[0]])
+
+    def infer_node_datatype(self, model):
+        node = self.onnx_node
+        model.set_tensor_datatype(node.output[0], DataType["FLOAT32"])
+
+    def execute_node(self, context, graph):
+        node = self.onnx_node
+        # save inputs
+        inp_tensor = context[node.input[0]]
+        scale = context[node.input[1]]
+        zeropt = context[node.input[2]]
+        input_bit_width = context[node.input[3]]
+        output_scale = context[node.input[4]]
+        output_bit_width = context[node.input[5]]
+        # save attributes
+        rounding_mode = self.get_nodeattr("rounding_mode")
+        narrow = self.get_nodeattr("narrow")
+        signed = self.get_nodeattr("signed")
+        # calculate output
+        ret = trunc_v2(
+            inp_tensor, scale, zeropt, input_bit_width, narrow, signed, output_scale, output_bit_width, rounding_mode
+        )
+        # set context according to output name
+        context[node.output[0]] = ret
+
+    def verify_node(self):
+        pass
+
+
+def trunc_v1(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode):
     # Port of TruncIntQuant class from Brevitas: https://bit.ly/3wzIpTR
 
     # Scaling
@@ -58,7 +147,7 @@ def trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding
     return y
 
 
-class Trunc(CustomOp):
+class Trunc_v1(CustomOp):
     """Generic truncation operation for QONNX. Takes four inputs:
     - input tensor to truncate
     - the scale
@@ -68,6 +157,11 @@ class Trunc(CustomOp):
     The output is a tensor of the same shape as the input tensor, with truncated
     values.
     """
+
+    def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
+        super().__init__(onnx_node, onnx_opset_version)
+        # override any specified opset version, this instance is v1
+        self.onnx_opset_version = 1
 
     def get_nodeattr_types(self):
         return {
@@ -94,7 +188,7 @@ class Trunc(CustomOp):
         # save attributes
         rounding_mode = self.get_nodeattr("rounding_mode")
         # calculate output
-        ret = trunc(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode)
+        ret = trunc_v1(inp_tensor, scale, zeropt, input_bit_width, output_bit_width, rounding_mode)
         # set context according to output name
         context[node.output[0]] = ret
 

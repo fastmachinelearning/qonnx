@@ -123,4 +123,7 @@ def test_qonnx_to_qcdq_to_qonnx(test_model):
     new_output_dict = oxe.execute_onnx(model, input_dict)
     roundtrip_result = new_output_dict[model.graph.output[0].name]
     assert np.isclose(golden_result, roundtrip_result).all()
-    os.unlink(dl_file)
+    try:
+        os.unlink(dl_file)
+    except FileNotFoundError:
+        pass

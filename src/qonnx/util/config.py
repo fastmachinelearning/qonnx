@@ -31,6 +31,7 @@ import onnx
 
 from qonnx.custom_op.registry import getCustomOp
 
+
 # update this code to handle export configs from subgraphs
 # where the subgraph is found in a node's attribute as a graph type
 def extract_model_config(model, attr_names_to_extract):

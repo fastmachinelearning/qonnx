@@ -30,15 +30,35 @@ import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
 
-from qonnx.util.basic import get_by_name, get_preferred_onnx_opset
+from qonnx.util.basic import get_by_name, get_preferred_qonnx_opset
 
 
 class CustomOp(ABC):
     """CustomOp class all custom op nodes are based on. Contains different functions
     every custom node should have. Some as abstract methods, these have to be
-    filled when writing a new custom op node."""
+    filled when writing a new custom op node.
 
-    def __init__(self, onnx_node, onnx_opset_version=get_preferred_onnx_opset()):
+    Opset Version Support:
+        CustomOp classes use "since version" semantics matching ONNX operators.
+        Version is determined by the class name using _vN suffix convention:
+
+        - No suffix (e.g., IntQuant): Version 1 (default)
+        - _vN suffix (e.g., IntQuant_v2): Version N
+
+        The registry automatically selects the highest version <= requested opset.
+
+        Example:
+            class IntQuant(CustomOp):
+                pass  # Version 1 (no suffix)
+
+            class IntQuant_v2(CustomOp):
+                pass  # Version 2, covers opset v2-v3 (if no v3 exists)
+
+            class IntQuant_v4(CustomOp):
+                pass  # Version 4, covers opset v4+
+    """
+
+    def __init__(self, onnx_node, onnx_opset_version=get_preferred_qonnx_opset()):
         super().__init__()
         self.onnx_node = onnx_node
         self.onnx_opset_version = onnx_opset_version

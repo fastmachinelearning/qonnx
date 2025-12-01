@@ -33,7 +33,7 @@ from pkgutil import get_data
 import qonnx.core.data_layout as DataLayout
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.util.basic import qonnx_make_model
+from qonnx.util.basic import get_preferred_onnx_opset, qonnx_make_model
 
 
 def test_modelwrapper():
@@ -68,6 +68,7 @@ def test_modelwrapper():
     inp_sparsity = {"dw": {"kernel_shape": [3, 3]}}
     model.set_tensor_sparsity(first_conv_iname, inp_sparsity)
     assert model.get_tensor_sparsity(first_conv_iname) == inp_sparsity
+    assert model.get_opset_imports() == {"": 8}
 
 
 def test_modelwrapper_set_get_rm_initializer():
@@ -230,3 +231,31 @@ def test_modelwrapper_set_tensor_shape_multiple_inputs():
     # check that order of inputs is preserved
     assert model.graph.input[0].name == "in1"
     assert model.graph.input[1].name == "in2"
+
+
+def test_modelwrapper_set_opset_import():
+    # Create a simple model
+    in1 = onnx.helper.make_tensor_value_info("in1", onnx.TensorProto.FLOAT, [4, 4])
+    out1 = onnx.helper.make_tensor_value_info("out1", onnx.TensorProto.FLOAT, [4, 4])
+    node = onnx.helper.make_node("Neg", inputs=["in1"], outputs=["out1"])
+    graph = onnx.helper.make_graph(
+        nodes=[node],
+        name="single_node_graph",
+        inputs=[in1],
+        outputs=[out1],
+    )
+    onnx_model = qonnx_make_model(graph, producer_name="opset-test-model")
+    model = ModelWrapper(onnx_model)
+
+    # Test setting new domain
+    model.set_opset_import("qonnx.custom_op.general", 1)
+    preferred_onnx_opset = get_preferred_onnx_opset()
+    assert model.get_opset_imports() == {"": preferred_onnx_opset, "qonnx.custom_op.general": 1}
+
+    # Test updating existing domain
+    model.set_opset_import("qonnx.custom_op.general", 2)
+    assert model.get_opset_imports() == {"": preferred_onnx_opset, "qonnx.custom_op.general": 2}
+
+    # Test setting ONNX main domain
+    model.set_opset_import("", 13)
+    assert model.get_opset_imports() == {"": 13, "qonnx.custom_op.general": 2}

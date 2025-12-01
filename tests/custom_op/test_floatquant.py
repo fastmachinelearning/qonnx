@@ -168,7 +168,6 @@ def test_brevitas_vs_qonnx(data):
     scale = 1.0
     exponent_bias = compute_default_exponent_bias(exponent_bit_width)
     max_val = compute_max_val(exponent_bit_width, mantissa_bit_width, exponent_bias)
-    xq_t = brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width,
-                                exponent_bias, sign, max_val).numpy()
+    xq_t = brevitas_float_quant(x, bit_width, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val).numpy()
     xq = qonnx_float_quant(x.numpy(), scale, exponent_bit_width, mantissa_bit_width, exponent_bias, sign, max_val)
     np.testing.assert_array_equal(xq, xq_t)
