@@ -32,7 +32,7 @@ from onnx import helper as oh
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name 
 
 
 class BatchNormToAffine(Transformation):
@@ -89,6 +89,9 @@ class BatchNormToAffine(Transformation):
                 # create Mul and Add nodes to replace the batchnorm
                 mul_node = oh.make_node("Mul", [bn_input, mul_const.name], [mul_output.name])
                 add_node = oh.make_node("Add", [mul_output.name, add_const.name], [bn_output])
+                # preserve metadata from original batchnorm node
+                copy_metadata_props(n, mul_node)
+                copy_metadata_props(n, add_node)
                 # insert where the batchnorm is to preserve topological ordering
                 graph.node.insert(node_ind, mul_node)
                 graph.node.insert(node_ind + 1, add_node)
