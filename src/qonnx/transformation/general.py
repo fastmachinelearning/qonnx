@@ -27,10 +27,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import numpy as np
+import onnx.helper as helper
 
 # Protobuf onnx graph node type
 from onnx import NodeProto  # noqa
-from onnx import mapping
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
@@ -56,7 +56,7 @@ class MovePadAttributeToTensor(Transformation):
             if padval is not None:
                 # non-float types will need type correction here
                 input_vi = model.get_tensor_valueinfo(pad_node.input[0])
-                pad_dtype = mapping.TENSOR_TYPE_TO_NP_TYPE[input_vi.type.tensor_type.elem_type]
+                pad_dtype = helper.tensor_dtype_to_np_dtype(input_vi.type.tensor_type.elem_type)
                 padval_t = np.asarray(padval.f, pad_dtype)
                 new_padval_name = model.make_new_valueinfo_name()
                 model.set_initializer(new_padval_name, padval_t)
