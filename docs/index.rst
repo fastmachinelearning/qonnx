@@ -4,9 +4,10 @@ QONNX
 
 .. note:: **QONNX** is currently under active development. APIs will likely change.
 
-QONNX (Quantized ONNX) introduces three new custom operators -- `Quant <docs/qonnx-custom-ops/quant_op_v1.md>`_, `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op_v1.md>`_ and `Trunc <docs/qonnx-custom-ops/trunc_op_v2.md>`_  -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
+QONNX (Quantized ONNX) introduces four new custom operators -- `IntQuant`_, `BipolarQuant`_, `FloatQuant`_, and `Trunc`_
+-- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
 
-* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
+* Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization, or quantized floating-point values.
 
 * Quantization is an operator itself, and can be applied to any parameter or layer input.
 
@@ -33,11 +34,13 @@ Quickstart
 Operator definitions
 +++++++++++++++++++++
 
-* `Quant <docs/qonnx-custom-ops/quant_op.md>`_ for 2-to-arbitrary-bit quantization, with scaling and zero-point
+* `IntQuant`_ for 2-to-arbitrary-bit quantization, with scaling and zero-point
 
-* `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_  for 1-bit (bipolar) quantization, with scaling and zero-point
+* `BipolarQuant`_  for 1-bit (bipolar) quantization, with scaling and zero-point
 
-* `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_ for truncating to a specified number of bits, with scaling and zero-point
+* `FloatQuant`_  for arbitrary-precision-float-quantized values
+
+* `Trunc`_ for truncating to a specified number of bits, with scaling and zero-point
 
 Installation
 +++++++++++++
@@ -90,11 +93,18 @@ QONNX also uses GitHub actions to run the full test suite on PRs.
 
    ONNX-Based Compiler Infrastructure <overview>
    Tutorials <tutorials>
+   qonnx-custom-ops/overview
    API <api/modules>
    License <license>
    Contributors <authors>
+   Change log <changelog>
    Index <genindex>
 
 
 * :ref:`modindex`
 * :ref:`search`
+
+.. _IntQuant: qonnx-custom-ops/intquant_v1.html
+.. _BipolarQuant: qonnx-custom-ops/bipolarquant_v1.html
+.. _FloatQuant: qonnx-custom-ops/floatquant_v1.html
+.. _Trunc: qonnx-custom-ops/trunc_v2.html
