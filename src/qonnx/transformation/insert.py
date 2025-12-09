@@ -57,8 +57,8 @@ class InsertIdentity(Transformation):
     the graph output will be replaced with a new tensor name <old_name>_identity
 
     Parameters:
-    tensor_name (str): The name of the tensor where the Identity node will be inserted.
-    producer_or_consumer (str): Indicates whether the Identity node will be inserted before ('producer')
+        tensor_name (str): The name of the tensor where the Identity node will be inserted.
+        producer_or_consumer (str): Indicates whether the Identity node will be inserted before ('producer')
                                 or after ('consumer') the tensor_name.
 
     """
