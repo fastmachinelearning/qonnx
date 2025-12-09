@@ -4,7 +4,7 @@ QONNX
 
 .. note:: **QONNX** is currently under active development. APIs will likely change.
 
-QONNX (Quantized ONNX) introduces three new custom operators -- `Quant <docs/qonnx-custom-ops/quant_op.md>`_, `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op.md>`_ and `Trunc <docs/qonnx-custom-ops/trunc_op.md>`_  -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
+QONNX (Quantized ONNX) introduces three new custom operators -- `Quant <docs/qonnx-custom-ops/quant_op_v1.md>`_, `BipolarQuant <docs/qonnx-custom-ops/bipolar_quant_op_v1.md>`_ and `Trunc <docs/qonnx-custom-ops/trunc_op_v2.md>`_  -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
 
 * Representation of binary, ternary, 3-bit, 4-bit, 6-bit or any other quantization.
 
