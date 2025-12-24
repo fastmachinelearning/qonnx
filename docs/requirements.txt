@@ -1,16 +1,16 @@
 bitstring>=3.1.7
-clize==4.1.1
+clize>=5.0.1
 importlib-metadata
-numpy==1.24.1
-onnx==1.11.0
-onnxruntime==1.11.1
-protobuf==3.20.1
+numpy>=1.24.1
+onnx>=1.13.0, <=1.16.1
+onnxruntime>=1.16.1, <=1.23.2
+protobuf>=3.20.3
 # Requirements file for ReadTheDocs, check .readthedocs.yml.
 # To build the module reference correctly, make sure every external package
 # under `install_requires` in `setup.cfg` is also listed here!
-sigtools==2.0.3
-sphinx==4.0.3
-sphinx_rtd_theme==1.1.1
-toposort==1.7.0
+sigtools>=4.0.1
+sphinx
+sphinx_rtd_theme
+toposort>=1.7.0
 myst_parser
 sphinx_github_changelog
