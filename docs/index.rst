@@ -98,8 +98,8 @@ QONNX also uses GitHub actions to run the full test suite on PRs.
    API <api/modules>
    License <license>
    Contributors <authors>
-   Read Me <readme>
-   Change log <changelog>
+   Read Me <readme_link>
+   Release Notes <changelog>
    Index <genindex>
 
 
