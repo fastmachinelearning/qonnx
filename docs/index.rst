@@ -2,7 +2,8 @@
 QONNX
 ======
 
-.. note:: **QONNX** is currently under active development. APIs will likely change.
+..
+   note:: **QONNX** is currently under active development. APIs will likely change.
 
 QONNX (Quantized ONNX) introduces four new custom operators -- `IntQuant`_, `BipolarQuant`_, `FloatQuant`_, and `Trunc`_
 -- in order to represent arbitrary-precision uniform quantization in ONNX. This enables:
@@ -97,6 +98,7 @@ QONNX also uses GitHub actions to run the full test suite on PRs.
    API <api/modules>
    License <license>
    Contributors <authors>
+   Read Me <readme>
    Change log <changelog>
    Index <genindex>
 
