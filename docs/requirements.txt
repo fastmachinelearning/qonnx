@@ -12,5 +12,5 @@ sigtools>=4.0.1
 sphinx
 sphinx_rtd_theme
 toposort>=1.7.0
-myst_parser
+myst_parser>=0.12.7
 sphinx_github_changelog
