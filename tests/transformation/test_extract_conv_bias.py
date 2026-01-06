@@ -44,7 +44,9 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 # depthwise or channelwise
 @pytest.mark.parametrize("dw", [True, False])
 # conv bias
-@pytest.mark.parametrize("bias", ["non_quant", "quant_scalar", "quant_channelwise", None])
+@pytest.mark.parametrize(
+    "bias", ["float", "int_quant_per_tensor", "int_quant_per_channel", "bp_quant_per_tensor", "bp_quant_per_channel", None]
+)
 def test_extract_conv_bias(dw, bias):
     ishape = (1, 32, 111, 111)
     if dw is True:
@@ -73,9 +75,9 @@ def test_extract_conv_bias(dw, bias):
 
     if bias is not None:
         bias_shape = (out_channels,)
-        if bias == "quant_channelwise":
+        if "quant_per_channel" in bias:
             scale_shape = (out_channels,)
-        elif bias == "quant_scalar":
+        elif "quant_per_tensor" in bias:
             scale_shape = (1,)
         B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
 
@@ -92,26 +94,31 @@ def test_extract_conv_bias(dw, bias):
     value_info = [W] if not bias else [W, B]
     # if the bias isn't quantized, we can directly wire up the Conv layer
     # otherwise an additional Quant node needs to be inserted
-    if bias in ["quant_channelwise", "quant_scalar"]:
+    if bias is not None and "quant" in bias:
+        if "bp" in bias:
+            optype = "BipolarQuant"
+        elif "int" in bias:
+            optype = "IntQuant"
         # inputs to Quant node
         param0 = oh.make_tensor_value_info("param0", TensorProto.FLOAT, bias_shape)
         param1 = oh.make_tensor_value_info("param1", TensorProto.FLOAT, scale_shape)
         param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, [1])
-        param3 = oh.make_tensor_value_info("param3", TensorProto.FLOAT, [1])
+        value_info.append(param0)
+        value_info.append(param1)
+        value_info.append(param2)
+        if "int" in bias:
+            param3 = oh.make_tensor_value_info("param3", TensorProto.FLOAT, [1])
+            value_info.append(param3)
         quant_node = oh.make_node(
-            "Quant",
+            optype,
             domain="qonnx.custom_op.general",
-            inputs=["param0", "param1", "param2", "param3"],
+            inputs=["param0", "param1", "param2", "param3"] if "int" in bias else ["param0", "param1", "param2"],
             outputs=["B"],
             narrow=0,
             rounding_mode="ROUND",
             signed=1,
         )
         nodes.append(quant_node)
-        value_info.append(param0)
-        value_info.append(param1)
-        value_info.append(param2)
-        value_info.append(param3)
     graph = oh.make_graph(
         nodes=nodes,
         name="cnv_graph",
@@ -131,12 +138,13 @@ def test_extract_conv_bias(dw, bias):
     if bias is not None:
         b_tensor = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
         # set B tensor directly or set first input of quant node
-        if bias in ["quant_channelwise", "quant_scalar"]:
+        if "quant" in bias:
             model.set_initializer("param0", b_tensor)
             scale = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
             model.set_initializer("param1", scale)
             model.set_initializer("param2", np.zeros(1))
-            model.set_initializer("param3", 8 * np.ones(1))
+            if "int" in bias:
+                model.set_initializer("param3", 8 * np.ones(1))
         else:
             model.set_initializer("B", b_tensor)
 
@@ -160,7 +168,9 @@ def test_extract_conv_bias(dw, bias):
 
 
 # conv transpose bias
-@pytest.mark.parametrize("bias", ["non_quant", "quant_scalar", "quant_channelwise", None])
+@pytest.mark.parametrize(
+    "bias", ["float", "int_quant_per_tensor", "int_quant_per_channel", "bp_quant_per_tensor", "bp_quant_per_channel", None]
+)
 def test_extract_conv_transpose_bias(bias):
     ishape = (1, 32, 111, 111)
     group = 1
@@ -181,9 +191,9 @@ def test_extract_conv_transpose_bias(bias):
 
     if bias is not None:
         bias_shape = (out_channels,)
-        if bias == "quant_channelwise":
+        if "quant_per_channel" in bias:
             scale_shape = (out_channels,)
-        elif bias == "quant_scalar":
+        elif "quant_per_tensor" in bias:
             scale_shape = (1,)
         B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
 
@@ -201,26 +211,31 @@ def test_extract_conv_transpose_bias(bias):
 
     # If the bias isn't quantized, we can directly wire up the ConvTranspose layer
     # Otherwise, an additional Quant node needs to be inserted
-    if bias in ["quant_channelwise", "quant_scalar"]:
+    if bias is not None and "quant" in bias:
+        if "bp" in bias:
+            optype = "BipolarQuant"
+        elif "int" in bias:
+            optype = "IntQuant"
         # Inputs to Quant node
         param0 = oh.make_tensor_value_info("param0", TensorProto.FLOAT, bias_shape)
         param1 = oh.make_tensor_value_info("param1", TensorProto.FLOAT, scale_shape)
         param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, [1])
-        param3 = oh.make_tensor_value_info("param3", TensorProto.FLOAT, [1])
+        value_info.append(param0)
+        value_info.append(param1)
+        value_info.append(param2)
+        if "int" in bias:
+            param3 = oh.make_tensor_value_info("param3", TensorProto.FLOAT, [1])
+            value_info.append(param3)
         quant_node = oh.make_node(
-            "Quant",
+            optype,
             domain="qonnx.custom_op.general",
-            inputs=["param0", "param1", "param2", "param3"],
+            inputs=["param0", "param1", "param2", "param3"] if "int" in bias else ["param0", "param1", "param2"],
             outputs=["B"],
             narrow=0,
             rounding_mode="ROUND",
             signed=1,
         )
         nodes.append(quant_node)
-        value_info.append(param0)
-        value_info.append(param1)
-        value_info.append(param2)
-        value_info.append(param3)
 
     graph = oh.make_graph(
         nodes=nodes,
@@ -241,12 +256,13 @@ def test_extract_conv_transpose_bias(bias):
     if bias is not None:
         b_tensor = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
         # Set B tensor directly or set first input of quant node
-        if bias in ["quant_channelwise", "quant_scalar"]:
+        if "quant" in bias:
             model.set_initializer("param0", b_tensor)
             scale = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
             model.set_initializer("param1", scale)
             model.set_initializer("param2", np.zeros(1))
-            model.set_initializer("param3", 8 * np.ones(1))
+            if "int" in bias:
+                model.set_initializer("param3", 8 * np.ones(1))
         else:
             model.set_initializer("B", b_tensor)
 

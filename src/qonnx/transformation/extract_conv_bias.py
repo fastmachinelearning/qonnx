@@ -53,7 +53,10 @@ class ExtractBiasFromConv(Transformation):
                         # then initializer would be empty but coming from a Quant node
                         producer = model.find_producer(n.input[2])
                         # only if producer is Quant node and has no predecessors continue with extraction
-                        if not (producer.op_type == "Quant" and not model.find_direct_predecessors(producer)):
+                        if not (
+                            producer.op_type in ["Quant", "IntQuant", "BipolarQuant"]
+                            and not model.find_direct_predecessors(producer)
+                        ):
                             warnings.warn(f"Could not extract bias from node {n}")
                             continue
 
