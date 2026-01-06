@@ -44,7 +44,7 @@ from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 # depthwise or channelwise
 @pytest.mark.parametrize("dw", [True, False])
 # conv bias
-@pytest.mark.parametrize("bias", ["float_scalar", "float_channelwise", "quant_scalar", "quant_channelwise", None])
+@pytest.mark.parametrize("bias", ["non_quant", "quant_scalar", "quant_channelwise", None])
 def test_extract_conv_bias(dw, bias):
     ishape = (1, 32, 111, 111)
     if dw is True:
@@ -73,9 +73,9 @@ def test_extract_conv_bias(dw, bias):
 
     if bias is not None:
         bias_shape = (out_channels,)
-        if bias in ["float_channelwise", "quant_channelwise"]:
+        if bias == "quant_channelwise":
             scale_shape = (out_channels,)
-        elif bias in ["float_scalar", "quant_scalar"]:
+        elif bias == "quant_scalar":
             scale_shape = (1,)
         B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
 
@@ -156,4 +156,114 @@ def test_extract_conv_bias(dw, bias):
     produced = output_dict[model.graph.output[0].name]
 
     # check if is close (fp calculation)
+    assert np.isclose(produced, expected, atol=1e-3).all()
+
+
+# conv transpose bias
+@pytest.mark.parametrize("bias", ["non_quant", "quant_scalar", "quant_channelwise", None])
+def test_extract_conv_transpose_bias(bias):
+    ishape = (1, 32, 111, 111)
+    group = 1
+    out_channels = 64
+    kernel_size = 1
+    padding = 0
+    stride = 1
+    w_shape = (32, 64, 1, 1)
+
+    wdt = idt = odt = DataType["FLOAT32"]
+
+    # Set up ONNX model
+    inp = oh.make_tensor_value_info("inp", TensorProto.FLOAT, ishape)
+    outp_shape = (ishape[0], out_channels, ishape[2], ishape[3])
+    outp = oh.make_tensor_value_info("outp", TensorProto.FLOAT, outp_shape)
+
+    W = oh.make_tensor_value_info("W", TensorProto.FLOAT, w_shape)
+
+    if bias is not None:
+        bias_shape = (out_channels,)
+        if bias == "quant_channelwise":
+            scale_shape = (out_channels,)
+        elif bias == "quant_scalar":
+            scale_shape = (1,)
+        B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
+
+    cnv_node = oh.make_node(
+        "ConvTranspose",
+        inputs=["inp", "W"] if not bias else ["inp", "W", "B"],
+        outputs=["outp"],
+        kernel_shape=[kernel_size, kernel_size],
+        pads=[padding, padding, padding, padding],
+        strides=[stride, stride],
+        group=group,
+    )
+    nodes = [cnv_node]
+    value_info = [W] if not bias else [W, B]
+
+    # If the bias isn't quantized, we can directly wire up the ConvTranspose layer
+    # Otherwise, an additional Quant node needs to be inserted
+    if bias in ["quant_channelwise", "quant_scalar"]:
+        # Inputs to Quant node
+        param0 = oh.make_tensor_value_info("param0", TensorProto.FLOAT, bias_shape)
+        param1 = oh.make_tensor_value_info("param1", TensorProto.FLOAT, scale_shape)
+        param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, [1])
+        param3 = oh.make_tensor_value_info("param3", TensorProto.FLOAT, [1])
+        quant_node = oh.make_node(
+            "Quant",
+            domain="qonnx.custom_op.general",
+            inputs=["param0", "param1", "param2", "param3"],
+            outputs=["B"],
+            narrow=0,
+            rounding_mode="ROUND",
+            signed=1,
+        )
+        nodes.append(quant_node)
+        value_info.append(param0)
+        value_info.append(param1)
+        value_info.append(param2)
+        value_info.append(param3)
+
+    graph = oh.make_graph(
+        nodes=nodes,
+        name="cnv_transpose_graph",
+        inputs=[inp],
+        outputs=[outp],
+        value_info=value_info,
+    )
+
+    model = qonnx_make_model(graph, producer_name="test-cnv-transpose-model")
+    model = ModelWrapper(model)
+    model.set_tensor_datatype("inp", idt)
+    model.set_tensor_datatype("outp", odt)
+    model.set_tensor_datatype("W", wdt)
+
+    w_tensor = gen_finn_dt_tensor(wdt, w_shape)
+
+    if bias is not None:
+        b_tensor = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
+        # Set B tensor directly or set first input of quant node
+        if bias in ["quant_channelwise", "quant_scalar"]:
+            model.set_initializer("param0", b_tensor)
+            scale = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
+            model.set_initializer("param1", scale)
+            model.set_initializer("param2", np.zeros(1))
+            model.set_initializer("param3", 8 * np.ones(1))
+        else:
+            model.set_initializer("B", b_tensor)
+
+    model.set_initializer("W", w_tensor)
+    model = model.transform(InferShapes())
+
+    input_tensor = gen_finn_dt_tensor(idt, ishape)
+    output_dict = oxe.execute_onnx(model, {model.graph.input[0].name: input_tensor})
+    expected = output_dict[model.graph.output[0].name]
+
+    model = model.transform(ExtractBiasFromConv())
+
+    if bias is not None:
+        assert len(model.get_nodes_by_op_type("Add")) > 0, "Bias wasn't extracted into add node"
+
+    output_dict = oxe.execute_onnx(model, {model.graph.input[0].name: input_tensor})
+    produced = output_dict[model.graph.output[0].name]
+
+    # Check if is close (fp calculation)
     assert np.isclose(produced, expected, atol=1e-3).all()
