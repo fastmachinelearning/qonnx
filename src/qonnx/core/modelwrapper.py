@@ -541,6 +541,14 @@ class ModelWrapper:
         names += [x.name for x in graph.output]
         return names
 
+    def get_global_in(self):
+        """Return the name of the global input tensor."""
+        return self.graph.input[0].name
+
+    def get_global_out(self):
+        """Return the name of the global output tensor."""
+        return self.graph.output[0].name
+
     def make_new_valueinfo_name(self):
         """Returns a name that can be used for a new value_info."""
         names = self.get_all_tensor_names()

@@ -259,3 +259,40 @@ def test_modelwrapper_set_opset_import():
     # Test setting ONNX main domain
     model.set_opset_import("", 13)
     assert model.get_opset_imports() == {"": 13, "qonnx.custom_op.general": 2}
+
+
+def test_modelwrapper_get_global_io():
+    # Create a simple model with single input and output
+    in1 = onnx.helper.make_tensor_value_info("global_in", onnx.TensorProto.FLOAT, [1, 4])
+    out1 = onnx.helper.make_tensor_value_info("global_out", onnx.TensorProto.FLOAT, [1, 4])
+    node = onnx.helper.make_node("Neg", inputs=["global_in"], outputs=["global_out"])
+    graph = onnx.helper.make_graph(
+        nodes=[node],
+        name="simple_graph",
+        inputs=[in1],
+        outputs=[out1],
+    )
+    onnx_model = qonnx_make_model(graph, producer_name="global-io-test-model")
+    model = ModelWrapper(onnx_model)
+
+    # Test get_global_in
+    assert model.get_global_in() == "global_in"
+
+    # Test get_global_out
+    assert model.get_global_out() == "global_out"
+
+    # Test with multi-input model (should still return first input)
+    in2 = onnx.helper.make_tensor_value_info("second_in", onnx.TensorProto.FLOAT, [1, 4])
+    add_node = onnx.helper.make_node("Add", inputs=["global_in", "second_in"], outputs=["global_out"])
+    graph_multi = onnx.helper.make_graph(
+        nodes=[add_node],
+        name="multi_input_graph",
+        inputs=[in1, in2],
+        outputs=[out1],
+    )
+    onnx_model_multi = qonnx_make_model(graph_multi, producer_name="global-io-multi-test")
+    model_multi = ModelWrapper(onnx_model_multi)
+
+    # Should still return first input/output
+    assert model_multi.get_global_in() == "global_in"
+    assert model_multi.get_global_out() == "global_out"
