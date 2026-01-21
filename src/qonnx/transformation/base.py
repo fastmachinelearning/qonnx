@@ -46,23 +46,25 @@ Guide to writing QONNX transformations
   you must declare this, return model_was_changed = False and let the user
   manually re-apply the transform.
 """
+from __future__ import annotations
 
 import copy
 import multiprocessing as mp
 from abc import ABC, abstractmethod
 
 from qonnx.util.basic import get_num_default_workers
+from qonnx.core.modelwrapper import ModelWrapper
 
 
 class Transformation(ABC):
     """Transformation class all transformations are based on. Contains only
     abstract method apply() every transformation has to fill."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     @abstractmethod
-    def apply(self, model):
+    def apply(self, model: ModelWrapper) -> tuple[ModelWrapper, bool]:
         pass
 
 
@@ -83,7 +85,7 @@ class NodeLocalTransformation(Transformation):
     * (any other int>0): set number of parallel workers
     """
 
-    def __init__(self, num_workers=None):
+    def __init__(self, num_workers: int | None=None) -> None:
         super().__init__()
         if num_workers is None:
             self._num_workers = get_num_default_workers()
@@ -97,7 +99,7 @@ class NodeLocalTransformation(Transformation):
     def applyNodeLocal(self, node):
         pass
 
-    def apply(self, model):
+    def apply(self, model: ModelWrapper) -> tuple[ModelWrapper, bool]:
         # make a detached copy of the input model that applyNodeLocal
         # can use for read-only access
         self.ref_input_model = copy.deepcopy(model)

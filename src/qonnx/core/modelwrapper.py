@@ -29,12 +29,17 @@
 
 import copy
 import inspect
+from pathlib import Path
 import onnx
 import onnx.helper as oh
 import onnx.numpy_helper as np_helper
 import os
 import warnings
-from onnx import TensorProto
+import numpy as np
+from typing import Any, Callable, Sequence, TypeVar, cast
+from onnx import GraphProto, ModelProto, NodeProto, TensorProto, ValueInfoProto
+from qonnx.transformation.base import Transformation
+
 
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
@@ -52,7 +57,7 @@ class ModelWrapper:
     """A wrapper around ONNX ModelProto that exposes some useful utility
     functions for graph manipulation and exploration."""
 
-    def __init__(self, onnx_model_proto, make_deepcopy=False, fix_float64=False, fix_missing_initializer_valueinfo=True):
+    def __init__(self, onnx_model_proto: str | bytes | ModelProto, make_deepcopy: bool = False, fix_float64: bool = False, fix_missing_initializer_valueinfo: bool = True) -> None:
         """Creates a ModelWrapper instance.
         onnx_model_proto can be either a ModelProto instance, or a string
         with the path to a stored .onnx file on disk, or serialized bytes.
@@ -79,7 +84,7 @@ class ModelWrapper:
             self.check_all_tensor_shapes_specified(fix_missing_init_shape=True)
         self.fix_float64 = fix_float64
 
-    def temporary_fix_oldstyle_domain(self):
+    def temporary_fix_oldstyle_domain(self) -> None:
         found_oldstyle = False
         for n in self.graph.node:
             if n.domain == "finn":
@@ -103,30 +108,32 @@ class ModelWrapper:
             )
 
     @property
-    def graph(self):
+    def graph(self) -> onnx.GraphProto:
         """Returns the graph of the model."""
         return self._model_proto.graph
 
     @graph.setter
-    def graph(self, value):
+    def graph(self, value: GraphProto) -> None:
         """Sets the graph of the model according to value"""
         self._model_proto.graph = value
 
     @property
-    def model(self):
+    def model(self) -> ModelProto:
         """Returns the model."""
         return self._model_proto
 
     @model.setter
-    def model(self, value):
+    def model(self, value: ModelProto) -> None:
         """Sets the model according to value."""
         self._model_proto = value
 
-    def save(self, filename):
+    def save(self, filename: str | Path) -> None:
         """Saves the wrapper ONNX ModelProto into a file with given name."""
         onnx.save(self._model_proto, filename)
 
-    def analysis(self, analysis_fxn, apply_to_subgraphs=False):
+    T = TypeVar('T')
+
+    def analysis(self, analysis_fxn: Callable[["ModelWrapper", bool], T] | Callable[["ModelWrapper"], T], apply_to_subgraphs: bool = False) -> T:
         """Runs given anaylsis_fxn on this model and return resulting dict."""
         if apply_to_subgraphs:
             assert "apply_to_subgraphs" in inspect.signature(
@@ -136,9 +143,7 @@ class ModelWrapper:
         else:
             return analysis_fxn(self)
 
-    def transform_subgraphs(
-        self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True
-    ):
+    def transform_subgraphs(self, transformation: Transformation, make_deepcopy: bool = True, cleanup: bool = True, apply_to_subgraphs: bool = False, use_preorder_traversal: bool = True) -> None:
         """Applies given Transformation to all subgraphs of this ModelWrapper instance.
 
         - make_deepcopy : operates on a new (deep)copy of model.
@@ -166,9 +171,7 @@ class ModelWrapper:
                 # add the new attribute
                 node.attribute.insert(idx, new_attr)
 
-    def transform(
-        self, transformation, make_deepcopy=True, cleanup=True, apply_to_subgraphs=False, use_preorder_traversal=True
-    ):
+    def transform(self, transformation: Transformation, make_deepcopy: bool = True, cleanup: bool = True, apply_to_subgraphs: bool = False, use_preorder_traversal: bool = True) -> "ModelWrapper":
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
@@ -200,7 +203,7 @@ class ModelWrapper:
 
         return transformed_model
 
-    def cleanup(self):
+    def cleanup(self) -> "ModelWrapper":
         "Run cleanup transformations on the model."
         transformed_model = self
         cleanup_transforms = [
@@ -213,10 +216,10 @@ class ModelWrapper:
             transformed_model = transformed_model.transform(trn, cleanup=False, make_deepcopy=False)
         return transformed_model
 
-    def make_subgraph_modelwrapper(self, subgraph):
+    def make_subgraph_modelwrapper(self, subgraph: GraphProto) -> "ModelWrapper":
         return ModelWrapper(util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import))
 
-    def get_tensor_datatype(self, tensor_name):
+    def get_tensor_datatype(self, tensor_name: str) -> DataType:
         """Returns the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
@@ -250,7 +253,7 @@ class ModelWrapper:
         else:
             return DataType["FLOAT32"]
 
-    def set_tensor_datatype(self, tensor_name, datatype):
+    def set_tensor_datatype(self, tensor_name: str, datatype: DataType | None) -> None:
         """Sets the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
@@ -276,7 +279,7 @@ class ModelWrapper:
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
 
-    def get_tensor_valueinfo(self, tensor_name):
+    def get_tensor_valueinfo(self, tensor_name: str) -> ValueInfoProto | None:
         """Returns ValueInfoProto of tensor with given name, if it has one."""
         graph = self._model_proto.graph
         vi_names = [(x.name, x) for x in graph.input]
@@ -291,7 +294,7 @@ class ModelWrapper:
         except ValueError:
             return None
 
-    def get_tensor_shape(self, tensor_name, fix_missing_init_shape=False):
+    def get_tensor_shape(self, tensor_name: str, fix_missing_init_shape: bool = False) -> list[int] | None:
         """Returns the shape of tensor with given name, if it has ValueInfoProto.
         If fix_missing_init_shape is specified, it will add a ValueInfoProto for initializers
         that are missing theirs."""
@@ -319,7 +322,7 @@ class ModelWrapper:
                 # use list return type to keep it consistent with ValueInfo case
                 return list(tensor_init.shape)
 
-    def set_tensor_shape(self, tensor_name, tensor_shape, dtype=None):
+    def set_tensor_shape(self, tensor_name: str, tensor_shape: Sequence[int], dtype: int | None = None) -> None:
         """Assigns shape in ValueInfoProto for tensor with given name. If override_dtype
         is None, it will try to preserve the existing datatype, otherwise defaults to
         single-precision float."""
@@ -355,7 +358,7 @@ class ModelWrapper:
         else:
             target_container.insert(ind, new_vi)
 
-    def set_initializer(self, tensor_name, tensor_value):
+    def set_initializer(self, tensor_name: str, tensor_value: np.ndarray) -> None:
         """Sets the initializer value for tensor with given name."""
         graph = self._model_proto.graph
         # convert tensor_value (numpy array) into TensorProto w/ correct name
@@ -375,7 +378,7 @@ class ModelWrapper:
         dtype = tensor_init_proto.data_type
         self.set_tensor_shape(tensor_name, list(tensor_value.shape), dtype)
 
-    def rename_tensor(self, old_name, new_name):
+    def rename_tensor(self, old_name: str, new_name: str) -> None:
         """Renames a tensor from old_name to new_name."""
         graph = self.graph
         # sweep over inputs
@@ -400,7 +403,7 @@ class ModelWrapper:
             if old_name in n.output:
                 n.output[list(n.output).index(old_name)] = new_name
 
-    def get_initializer(self, tensor_name, return_dtype=False):
+    def get_initializer(self, tensor_name: str, return_dtype: bool = False) -> np.ndarray | tuple[np.ndarray, int] | tuple[None, None] | None:
         """Gets the initializer value for tensor with given name, if any.
         ret_dtype can be set to True to retrieve the TensorProto.DataType of the
         initializer by returning it as a second element of a tuple."""
@@ -420,21 +423,21 @@ class ModelWrapper:
             else:
                 return None
 
-    def del_initializer(self, initializer_name):
+    def del_initializer(self, initializer_name: str) -> None:
         """Deletes an initializer from the model."""
         graph = self._model_proto.graph
         init = util.get_by_name(graph.initializer, initializer_name)
         if not (init is None):
             graph.initializer.remove(init)
 
-    def find_producer(self, tensor_name):
+    def find_producer(self, tensor_name: str) -> NodeProto | None:
         """Finds and returns the node that produces the tensor with given name."""
         for x in self._model_proto.graph.node:
             if tensor_name in x.output:
                 return x
         return None
 
-    def find_upstream(self, tensor_name, finder_fxn, keep_if_not_found=False):
+    def find_upstream(self, tensor_name: str, finder_fxn: Callable[[NodeProto], bool], keep_if_not_found: bool = False) -> list[NodeProto] | None:
         """Follow the producer chain upstream, calling finder_fxn on each upstream
         node until it returns True or there are no nodes left. Returns the list
         of nodes visited, or None if finder_fxn did not return True. If
@@ -457,7 +460,7 @@ class ModelWrapper:
                 else:
                     return visit_list if keep_if_not_found else None
 
-    def find_consumer(self, tensor_name):
+    def find_consumer(self, tensor_name: str) -> NodeProto | None:
         """Finds and returns the node that consumes the tensor with given name.
         If there are multiple consumers, only the first one is returned.
         If there are no consumers, returns None."""
@@ -470,7 +473,7 @@ class ModelWrapper:
             warnings.warn("find_consumer: found multiple consumers, returning first one")
             return ret[0]
 
-    def find_consumers(self, tensor_name):
+    def find_consumers(self, tensor_name: str) -> list[NodeProto]:
         """Finds and returns a list of the nodes that consume tensor with
         given name."""
         consumers = []
@@ -480,7 +483,7 @@ class ModelWrapper:
                     consumers.append(n)
         return consumers
 
-    def find_direct_successors(self, node):
+    def find_direct_successors(self, node: NodeProto) -> list[NodeProto] | None:
         """Finds and returns a list of the nodes that are successors of
         given node."""
         successors = []
@@ -494,7 +497,7 @@ class ModelWrapper:
         else:
             return None
 
-    def find_direct_predecessors(self, node):
+    def find_direct_predecessors(self, node: NodeProto) -> list[NodeProto] | None:
         """Finds and returns a list of the nodes that are predecessors of
         given node."""
         predecessors = []
@@ -507,7 +510,7 @@ class ModelWrapper:
         else:
             return None
 
-    def is_fork_node(self, node):
+    def is_fork_node(self, node: NodeProto) -> bool:
         """Checks if the given node is a fork, that is, the node has multiple
         direct successors"""
         direct_successors = self.find_direct_successors(node)
@@ -519,7 +522,7 @@ class ModelWrapper:
             is_fork = False if direct_successors is None else (len(direct_successors) > 1)
         return is_fork
 
-    def is_join_node(self, node):
+    def is_join_node(self, node: NodeProto) -> bool:
         """Checks if the given node is a join, that is, the node has multiple
         direct predecessors"""
         direct_predecessors = self.find_direct_predecessors(node)
@@ -531,7 +534,7 @@ class ModelWrapper:
             is_join = False if direct_predecessors is None else (len(direct_predecessors) > 1)
         return is_join
 
-    def get_all_tensor_names(self):
+    def get_all_tensor_names(self) -> list[str]:
         """Returns a list of all (input, output and value_info) tensor names
         in the graph."""
         graph = self.graph
@@ -540,7 +543,7 @@ class ModelWrapper:
         names += [x.name for x in graph.output]
         return names
 
-    def make_new_valueinfo_name(self):
+    def make_new_valueinfo_name(self) -> str:
         """Returns a name that can be used for a new value_info."""
         names = self.get_all_tensor_names()
         candidate = util.random_string()
@@ -548,7 +551,7 @@ class ModelWrapper:
             candidate = util.random_string()
         return candidate
 
-    def make_empty_exec_context(self):
+    def make_empty_exec_context(self) -> dict[str, np.ndarray | None]:
         """Creates an empty execution context for this model.
 
         The execution context is a dictionary of all tensors used for the
@@ -575,7 +578,7 @@ class ModelWrapper:
         execution_context[""] = None
         return execution_context
 
-    def check_all_tensor_shapes_specified(self, fix_missing_init_shape=False):
+    def check_all_tensor_shapes_specified(self, fix_missing_init_shape: bool = False) -> bool:
         """Checks whether all tensors have a specified shape (ValueInfo).
         The ONNX standard allows for intermediate activations to have no
         associated ValueInfo, but QONNX expects this.
@@ -595,7 +598,7 @@ class ModelWrapper:
                 ret = (self.get_tensor_shape(o, fix_missing_init_shape=fix_missing_init_shape) is not None) and ret
         return ret
 
-    def get_tensor_fanout(self, tensor_name):
+    def get_tensor_fanout(self, tensor_name: str) -> int:
         """Returns the number of nodes for which the tensor with given name is
         as input."""
         graph = self.graph
@@ -605,7 +608,7 @@ class ModelWrapper:
                 fanout += 1
         return fanout
 
-    def get_metadata_prop(self, key):
+    def get_metadata_prop(self, key: str) -> str | None:
         """Returns the value associated with metadata_prop with given key,
         or None otherwise."""
         metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
@@ -614,7 +617,7 @@ class ModelWrapper:
         else:
             return metadata_prop.value
 
-    def set_metadata_prop(self, key, value):
+    def set_metadata_prop(self, key: str, value: str) -> None:
         """Sets metadata property with given key to the given value."""
         metadata_prop = util.get_by_name(self.model.graph.metadata_props, key, "key")
         if metadata_prop is None:
@@ -625,19 +628,19 @@ class ModelWrapper:
         else:
             metadata_prop.value = value
 
-    def get_nodes_by_op_type(self, op_type):
+    def get_nodes_by_op_type(self, op_type: str) -> list[NodeProto]:
         """Returns a list of nodes with specified op_type."""
         return list(filter(lambda x: x.op_type == op_type, self.graph.node))
 
-    def get_finn_nodes(self):
+    def get_finn_nodes(self) -> list[NodeProto]:
         """Returns a list of nodes where domain == 'qonnx.*'."""
         return list(filter(lambda x: util.is_finn_op(x.domain), self.graph.node))
 
-    def get_non_finn_nodes(self):
+    def get_non_finn_nodes(self) -> list[NodeProto]:
         """Returns a list of nodes where domain != 'qonnx.*'."""
         return list(filter(lambda x: not util.is_finn_op(x.domain), self.graph.node))
 
-    def get_node_index(self, node):
+    def get_node_index(self, node: NodeProto) -> int | None:
         """Returns current index of given node, or None if not found."""
         n_ind = 0
         try:
@@ -649,7 +652,7 @@ class ModelWrapper:
             return None
         return None
 
-    def get_node_from_name(self, node_name):
+    def get_node_from_name(self, node_name: str) -> NodeProto | None:
         """Returns the node with the specified name, or None if not found."""
         try:
             for node in self.graph.node:
@@ -659,7 +662,7 @@ class ModelWrapper:
             return None
         return None
 
-    def get_tensor_layout(self, tensor_name):
+    def get_tensor_layout(self, tensor_name: str) -> list[str] | None:
         """Returns the data layout annotation of tensor with given name.
         The data layout is expressed as a list of strings with as many
         elements as the number of dimensions in the tensor shape. Each
@@ -679,7 +682,7 @@ class ModelWrapper:
                 return eval(ret.value)
         return None
 
-    def set_tensor_layout(self, tensor_name, data_layout):
+    def set_tensor_layout(self, tensor_name: str, data_layout: list[str]) -> None:
         """Sets the data layout annotation of tensor with given name. See
         get_tensor_layout for examples."""
         assert type(data_layout) == list, "data_layout must be a list"
@@ -704,7 +707,7 @@ class ModelWrapper:
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
 
-    def get_tensor_sparsity(self, tensor_name):
+    def get_tensor_sparsity(self, tensor_name: str) -> dict[str, Any] | None:
         """Returns the sparsity of a given tensor as dictionary."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
@@ -715,7 +718,7 @@ class ModelWrapper:
                 return eval(ret.value)
         return None
 
-    def set_tensor_sparsity(self, tensor_name, sparsity_dict):
+    def set_tensor_sparsity(self, tensor_name: str, sparsity_dict: dict[str, Any]) -> None:
         """Sets the sparsity annotation of a tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation

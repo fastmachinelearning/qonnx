@@ -28,10 +28,13 @@
 
 import importlib
 
+from onnx import NodeProto
+
+from qonnx.custom_op.base import CustomOp
 from qonnx.util.basic import get_preferred_onnx_opset
 
 
-def getCustomOp(node, onnx_opset_version=get_preferred_onnx_opset(), brevitas_exception=True):
+def getCustomOp(node: NodeProto, onnx_opset_version: int = get_preferred_onnx_opset(), brevitas_exception: bool = True) -> CustomOp:
     "Return a QONNX CustomOp instance for the given ONNX node, if it exists."
     op_type = node.op_type
     domain = node.domain

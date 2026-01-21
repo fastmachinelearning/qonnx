@@ -29,8 +29,15 @@
 import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Sequence
+
+import numpy.typing as npt
+from onnx import NodeProto, GraphProto
 
 from qonnx.util.basic import get_by_name, get_preferred_onnx_opset
+
+if TYPE_CHECKING:
+    from qonnx.core.modelwrapper import ModelWrapper
 
 
 class CustomOp(ABC):
@@ -38,15 +45,15 @@ class CustomOp(ABC):
     every custom node should have. Some as abstract methods, these have to be
     filled when writing a new custom op node."""
 
-    def __init__(self, onnx_node, onnx_opset_version=get_preferred_onnx_opset()):
+    def __init__(self, onnx_node: NodeProto, onnx_opset_version: int = get_preferred_onnx_opset()) -> None:
         super().__init__()
-        self.onnx_node = onnx_node
-        self.onnx_opset_version = onnx_opset_version
+        self.onnx_node: NodeProto = onnx_node
+        self.onnx_opset_version: int = onnx_opset_version
 
-    def get_nodeattr_def(self, name):
+    def get_nodeattr_def(self, name: str) -> tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None]:
         """Return 4-tuple (dtype, required, default_val, allowed_values) for attribute
         with name. allowed_values will be None if not specified."""
-        allowed_values = None
+        allowed_values: set | None = None
         attrdef = self.get_nodeattr_types()[name]
         if len(attrdef) == 3:
             (dtype, req, def_val) = attrdef
@@ -56,11 +63,11 @@ class CustomOp(ABC):
             raise Exception("Unexpected length %d n-tuple from get_nodeattr_types" % len(attrdef))
         return (dtype, req, def_val, allowed_values)
 
-    def get_nodeattr_allowed_values(self, name):
+    def get_nodeattr_allowed_values(self, name: str) -> str | bool | int | float | npt.NDArray | list | set | None:
         "Return set of allowed values for given attribute, None if not specified."
         return self.get_nodeattr_def(name)[3]
 
-    def get_nodeattr(self, name):
+    def get_nodeattr(self, name: str) -> int | float | str | bool | npt.NDArray | list | None:
         """Get a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types.
         Default value is returned if attribute is not set."""
@@ -101,9 +108,9 @@ class CustomOp(ABC):
                     # not set, return default value
                     return def_val
         except KeyError:
-            raise AttributeError("Op has no such attribute: " + name)
+            raise AttributeError(f"{self.onnx_node.name} has no such attribute: " + name)
 
-    def set_nodeattr(self, name, value):
+    def set_nodeattr(self, name: str, value: int | float | str | bool | npt.NDArray | list | None) -> None:
         """Set a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types."""
         try:
@@ -147,7 +154,7 @@ class CustomOp(ABC):
         except KeyError:
             raise AttributeError("Op has no such attribute: " + name)
 
-    def make_const_shape_op(self, shape):
+    def make_const_shape_op(self, shape: Sequence[int] | npt.NDArray) -> NodeProto:
         """Return an ONNX node that generates the desired output shape for
         shape inference."""
         return helper.make_node(
@@ -161,7 +168,13 @@ class CustomOp(ABC):
         )
 
     @abstractmethod
-    def get_nodeattr_types(self):
+    def get_nodeattr_types(self) -> dict[
+        str,
+        tuple[str,
+              bool,
+              int | float | str | bool | npt.NDArray | list]
+        | tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None],
+    ]:
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)
         - dtype indicates which member of the ONNX AttributeProto
@@ -176,25 +189,25 @@ class CustomOp(ABC):
         pass
 
     @abstractmethod
-    def make_shape_compatible_op(self, model):
+    def make_shape_compatible_op(self, model: "ModelWrapper") -> NodeProto:
         """Returns a standard ONNX op which is compatible with this CustomOp
         for performing shape inference."""
         pass
 
     @abstractmethod
-    def infer_node_datatype(self, model):
+    def infer_node_datatype(self, model: "ModelWrapper") -> None:
         """Set the DataType annotations corresponding to the outputs of this
         node."""
         pass
 
     @abstractmethod
-    def execute_node(self, context, graph):
+    def execute_node(self, context: dict[str, npt.NDArray], graph: GraphProto) -> None:
         """Execute this CustomOp instance, given the execution context and
         ONNX graph."""
         pass
 
     @abstractmethod
-    def verify_node(self):
+    def verify_node(self) -> None:
         """Verifies that all attributes the node needs are there and
         that particular attributes are set correctly. Also checks if
         the number of inputs is equal to the expected number."""
