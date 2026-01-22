@@ -35,21 +35,16 @@ import warnings
 
 import qonnx.analysis.topology as ta
 import qonnx.core.execute_custom_node as ex_cu_node
-from qonnx.util.basic import (
-    get_preferred_onnx_opset,
-    get_sanitize_quant_tensors,
-    is_finn_op,
-    qonnx_make_model,
-    sanitize_quant_values,
-)
+from qonnx.custom_op.registry import is_custom_op
+from qonnx.util.basic import get_preferred_qonnx_opset, get_sanitize_quant_tensors, qonnx_make_model, sanitize_quant_values
 
 
-def execute_node(node, context, graph, return_full_exec_context=False, opset_version=get_preferred_onnx_opset()):
+def execute_node(node, context, graph, opset_version, return_full_exec_context=False):
     """Executes a single node by using onnxruntime or with a custom function.
 
     Input/output provided via context."""
 
-    if is_finn_op(node.domain):
+    if is_custom_op(node.domain, node.op_type):
         ex_cu_node.execute_custom_node(node, context, graph, onnx_opset_version=opset_version)
     else:
         # onnxruntime unfortunately does not implement run_node as defined by ONNX,
@@ -161,7 +156,7 @@ def execute_onnx(model, input_dict, return_full_exec_context=False, start_node=N
     model_exec_mode = model.get_metadata_prop("exec_mode")
     if (model_exec_mode is None) or (model_exec_mode == ""):
         # extract opset version for node-by-node execution
-        opset_version = model.model.opset_import[0].version
+        opset_imports = model.get_opset_imports()
         # execute the model node by node
         # we can simply walk down the list since the ONNX spec guarantees that it is
         # topologically sorted
@@ -179,7 +174,11 @@ def execute_onnx(model, input_dict, return_full_exec_context=False, start_node=N
             if get_sanitize_quant_tensors() != 0:
                 # round input values to match quantization annotation
                 execution_context = sanitize_quant_values(model, node.input, execution_context)
-            execute_node(node, execution_context, graph, return_full_exec_context, opset_version)
+            if node.domain in opset_imports:
+                opset_version = opset_imports[node.domain]
+            else:
+                opset_version = get_preferred_qonnx_opset()
+            execute_node(node, execution_context, graph, opset_version, return_full_exec_context)
             if get_sanitize_quant_tensors() != 0:
                 # round output values to quantization annotation
                 execution_context = sanitize_quant_values(model, node.output, execution_context)

@@ -97,10 +97,7 @@ class MaxPoolNHWC(CustomOp):
         inp_vi = helper.make_tensor_value_info(inp_name, TensorProto.FLOAT, inp.shape)
         out_vi = helper.make_tensor_value_info(out_name, TensorProto.FLOAT, dummy_out.shape)
         tmp_graph = helper.make_graph(nodes=[node], name="tmp_graph", inputs=[inp_vi], outputs=[out_vi])
-        opset_version = self.onnx_opset_version
-        opset_imports = [helper.make_opsetid("", opset_version)]
-        onnx_kwargs = {"opset_imports": opset_imports}
-        tmp_model = qonnx_make_model(tmp_graph, producer_name="finn", **onnx_kwargs)
+        tmp_model = qonnx_make_model(tmp_graph, producer_name="finn")
         tmp_model = ModelWrapper(tmp_model)
         new_ctx = {inp_name: inp}
         from qonnx.core.onnx_exec import execute_onnx

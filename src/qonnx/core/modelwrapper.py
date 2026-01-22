@@ -44,6 +44,7 @@ from qonnx.transformation.base import Transformation
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
 from qonnx.core.datatype import BaseDataType, DataType
+from qonnx.custom_op.registry import getCustomOp, is_custom_op
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
@@ -185,7 +186,7 @@ class ModelWrapper:
         if self.fix_float64:
             (transformed_model, model_was_changed) = DoubleToSingleFloat().apply(transformed_model)
 
-        if apply_to_subgraphs and not use_preorder_traversal:
+        if apply_to_subgraphs and (use_preorder_traversal is False):
             transformed_model.transform_subgraphs(
                 transformation, make_deepcopy, cleanup, apply_to_subgraphs, use_preorder_traversal
             )
@@ -641,11 +642,11 @@ class ModelWrapper:
 
     def get_finn_nodes(self) -> list[NodeProto]:
         """Returns a list of nodes where domain == 'qonnx.*'."""
-        return list(filter(lambda x: util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: is_custom_op(x.domain), self.graph.node))
 
     def get_non_finn_nodes(self) -> list[NodeProto]:
         """Returns a list of nodes where domain != 'qonnx.*'."""
-        return list(filter(lambda x: not util.is_finn_op(x.domain), self.graph.node))
+        return list(filter(lambda x: not is_custom_op(x.domain), self.graph.node))
 
     def get_node_index(self, node: NodeProto) -> int | None:
         """Returns current index of given node, or None if not found."""
@@ -747,3 +748,44 @@ class ModelWrapper:
             qa.tensor_name = tensor_name
             qa.quant_parameter_tensor_names.append(dt)
             qnt_annotations.append(qa)
+
+    def get_opset_imports(self):
+        """Returns a list of imported opsets as a {domain, version} dictionary."""
+        return {opset.domain: opset.version for opset in self._model_proto.opset_import}
+
+    def get_customop_wrapper(self, node, fallback_customop_version=util.get_preferred_qonnx_opset()):
+        """Return CustomOp instance for given node, respecting the
+        imported opset version in the model protobuf. If the node's domain
+        is not found in the model's opset imports, fallback_customop_version
+        will be used."""
+        opset_imports = self.get_opset_imports()
+        try:
+            opset_import = opset_imports[node.domain]
+            return getCustomOp(node, onnx_opset_version=opset_import)
+        except KeyError:
+            # domain not found in imports, use fallback version
+            warnings.warn(
+                f"Domain {node.domain} not found in model opset imports, "
+                f"using fallback_customop_version={fallback_customop_version}"
+            )
+            return getCustomOp(node, onnx_opset_version=fallback_customop_version)
+
+    def set_opset_import(self, domain, version):
+        """Sets the opset version for a given domain in the model's opset imports.
+        If the domain already exists, its version will be updated. If not, a new
+        opset import will be added.
+
+        Args:
+            domain (str): The domain name (e.g. "qonnx.custom_op.general")
+            version (int): The opset version number
+        """
+        # find if domain already exists in opset imports
+        for opset in self._model_proto.opset_import:
+            if opset.domain == domain:
+                opset.version = version
+                return
+        # domain not found, add new opset import
+        new_opset = onnx.OperatorSetIdProto()
+        new_opset.domain = domain
+        new_opset.version = version
+        self._model_proto.opset_import.append(new_opset)

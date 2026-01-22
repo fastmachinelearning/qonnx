@@ -33,8 +33,7 @@ from qonnx.custom_op.registry import getCustomOp
 
 def extract_model_config_to_json(model, json_filename, attr_names_to_extract):
     """Create a json file with layer name -> attribute mappings extracted from the
-    model. The created json file can be later applied on a model with
-    qonnx.transform.general.ApplyConfig."""
+    model."""
 
     cfg = dict()
     cfg["Defaults"] = dict()

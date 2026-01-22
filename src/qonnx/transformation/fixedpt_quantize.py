@@ -48,7 +48,8 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                        data type or its canonical name
         rounding_mode: Rounding mode used for conversion into fixed point.
                        Default is "ROUND",
-                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN", "HALF_UP", "HALF_DOWN"]
+                       possible values: ["ROUND", "HALF_EVEN", "CEIL", "FLOOR", "UP", "DOWN",
+                       "HALF_UP", "HALF_DOWN"]
     """
 
     def __init__(self, fixedpt_dict, rounding_mode="ROUND"):
@@ -66,7 +67,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
                 if current_dtype.is_fixed_point():
                     warn(
                         f"Tensor {tname} is already a {current_dtype.get_canonical_name()} type. "
-                        f"Recasting to {tdtype.get_canonical_name()}"
+                        "Recasting to {tdtype.get_canonical_name()}"
                     )
 
                 in1_t_new = self.round_func(in1_t.astype(np.float32) / tdtype.scale_factor()) * tdtype.scale_factor()
