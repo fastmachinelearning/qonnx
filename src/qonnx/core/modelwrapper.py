@@ -27,6 +27,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+from __future__ import annotations
+
 import copy
 import inspect
 from pathlib import Path
@@ -162,7 +164,7 @@ class ModelWrapper:
 
     def transform_subgraphs(
         self,
-        transformation: "Transformation",
+        transformation: Transformation,
         make_deepcopy: bool = True,
         cleanup: bool = True,
         apply_to_subgraphs: bool = False,
@@ -206,12 +208,12 @@ class ModelWrapper:
 
     def transform(
         self,
-        transformation: "Transformation",
+        transformation: Transformation,
         make_deepcopy: bool = True,
         cleanup: bool = True,
         apply_to_subgraphs: bool = False,
         use_preorder_traversal: bool = True,
-    ) -> "ModelWrapper":
+    ) -> ModelWrapper:
         """Applies given Transformation repeatedly until no more changes can be made
         and returns a transformed ModelWrapper instance.
 
@@ -255,7 +257,7 @@ class ModelWrapper:
 
         return transformed_model
 
-    def cleanup(self) -> "ModelWrapper":
+    def cleanup(self) -> ModelWrapper:
         "Run cleanup transformations on the model."
         transformed_model = self
         cleanup_transforms = [
@@ -270,7 +272,7 @@ class ModelWrapper:
             )
         return transformed_model
 
-    def make_subgraph_modelwrapper(self, subgraph: GraphProto) -> "ModelWrapper":
+    def make_subgraph_modelwrapper(self, subgraph: GraphProto) -> ModelWrapper:
         return ModelWrapper(
             util.qonnx_make_model(
                 subgraph, opset_imports=self._model_proto.opset_import
