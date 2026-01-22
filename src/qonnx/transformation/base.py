@@ -51,6 +51,9 @@ from __future__ import annotations
 import copy
 import multiprocessing as mp
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from onnx import NodeProto
 
 from qonnx.util.basic import get_num_default_workers
 from qonnx.core.modelwrapper import ModelWrapper
@@ -96,7 +99,7 @@ class NodeLocalTransformation(Transformation):
             self._num_workers = mp.cpu_count()
 
     @abstractmethod
-    def applyNodeLocal(self, node):
+    def applyNodeLocal(self, node) -> tuple[NodeProto, bool]:
         pass
 
     def apply(self, model: ModelWrapper) -> tuple[ModelWrapper, bool]:
@@ -104,7 +107,7 @@ class NodeLocalTransformation(Transformation):
         # can use for read-only access
         self.ref_input_model = copy.deepcopy(model)
         # Remove old nodes from the current model
-        old_nodes = []
+        old_nodes : list[NodeProto] = []
         for i in range(len(model.graph.node)):
             old_nodes.append(model.graph.node.pop())
 

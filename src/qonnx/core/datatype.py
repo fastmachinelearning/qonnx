@@ -77,7 +77,7 @@ class BaseDataType(ABC):
         pass
 
     @abstractmethod
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         """Check whether given value is allowed for this DataType.
 
         * value (float32): value to be checked"""
@@ -119,12 +119,12 @@ class FloatType(BaseDataType):
         return 32
 
     def min(self) -> float:
-        return np.finfo(np.float32).min
+        return float(np.finfo(np.float32).min)
 
     def max(self) -> float:
-        return np.finfo(np.float32).max
+        return float(np.finfo(np.float32).max)
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         return True
 
     def get_num_possible_values(self) -> int:
@@ -140,14 +140,19 @@ class FloatType(BaseDataType):
         return "float"
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.float32
+        return np.dtype(np.float32)
 
     def get_canonical_name(self) -> str:
         return "FLOAT32"
 
 
 class ArbPrecFloatType(BaseDataType):
-    def __init__(self, exponent_bits: int, mantissa_bits: int, exponent_bias: Union[int, float, None] = None) -> None:
+    def __init__(
+        self,
+        exponent_bits: int,
+        mantissa_bits: int,
+        exponent_bias: Union[int, float, None] = None,
+    ) -> None:
         self._exponent_bits = exponent_bits
         self._mantissa_bits = mantissa_bits
 
@@ -182,26 +187,38 @@ class ArbPrecFloatType(BaseDataType):
         exponent_bitwidth = self.exponent_bits()
         mantissa_bitwidth = self.mantissa_bits()
         max_exponent = (2.0**exponent_bitwidth) - 1.0 - exponent_bias
-        max_mantissa = np.sum((2.0 ** np.arange(0, -1.0 * mantissa_bitwidth - 1.0, -1.0)))
+        max_mantissa = np.sum(
+            (2.0 ** np.arange(0, -1.0 * mantissa_bitwidth - 1.0, -1.0))
+        )
         max_val = max_mantissa * (2**max_exponent)
-        return max_val
+        return float(max_val)
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         # fp32 format parameters
         fp32_exponent_bias = 127
         fp32_mantissa_bitwidth = 23
-        fp32_nrm_mantissa_bitwidth = fp32_mantissa_bitwidth + 1  # width of normalized mantissa with implicit 1
+        fp32_nrm_mantissa_bitwidth = (
+            fp32_mantissa_bitwidth + 1
+        )  # width of normalized mantissa with implicit 1
         # minifloat format parameters
         exponent_bias = self.exponent_bias()
-        min_exponent = -exponent_bias + 1  # minimum exponent if IEEE-style denormals are supported
+        min_exponent = (
+            -exponent_bias + 1
+        )  # minimum exponent if IEEE-style denormals are supported
         mantissa_bitwidth = self.mantissa_bits()
-        nrm_mantissa_bitwidth = mantissa_bitwidth + 1  # width of normalized mantissa with implicit 1
+        nrm_mantissa_bitwidth = (
+            mantissa_bitwidth + 1
+        )  # width of normalized mantissa with implicit 1
         # extract fields from fp32 representation
         bin_val = np.float32(value).view(np.uint32)
         exp = (bin_val & 0b01111111100000000000000000000000) >> fp32_mantissa_bitwidth
         mant = bin_val & 0b00000000011111111111111111111111
-        exp_biased = exp - fp32_exponent_bias  # bias the extracted raw exponent (assume not denormal)
-        mant_normalized = mant + int((2**fp32_mantissa_bitwidth) * (exp != 0))  # append implicit 1
+        exp_biased = (
+            exp - fp32_exponent_bias
+        )  # bias the extracted raw exponent (assume not denormal)
+        mant_normalized = mant + int(
+            (2**fp32_mantissa_bitwidth) * (exp != 0)
+        )  # append implicit 1
         # for this value to be representable as this ArbPrecFloatType:
         # the value must be within the representable range
         range_ok = (value <= self.max()) and (value >= self.min())
@@ -209,8 +226,12 @@ class ArbPrecFloatType(BaseDataType):
         # no set bits in the mantissa beyond the allowed number of bits (assume value is not denormal in fp32)
         # compute bits of precision lost to tapered precision if denormal, clamp to: 0 <= dnm_shift <= nrm_mantissa_bitwidth
         dnm_shift = int(min(max(0, min_exponent - exp_biased), nrm_mantissa_bitwidth))
-        available_bits = nrm_mantissa_bitwidth - dnm_shift  # number of bits of precision available
-        mantissa_mask = "0" * available_bits + "1" * (fp32_nrm_mantissa_bitwidth - available_bits)
+        available_bits = (
+            nrm_mantissa_bitwidth - dnm_shift
+        )  # number of bits of precision available
+        mantissa_mask = "0" * available_bits + "1" * (
+            fp32_nrm_mantissa_bitwidth - available_bits
+        )
         mantissa_ok = (mant_normalized & int(mantissa_mask, base=2)) == 0
         return bool(mantissa_ok and range_ok)
 
@@ -224,10 +245,14 @@ class ArbPrecFloatType(BaseDataType):
         assert False, "get_hls_datatype_str() not yet implemented for ArbPrecFloatType"
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.float32
+        return np.dtype(np.float32)
 
     def get_canonical_name(self) -> str:
-        return "FLOAT<%d,%d,%d>" % (self.exponent_bits(), self.mantissa_bits(), self.exponent_bias())
+        return "FLOAT<%d,%d,%d>" % (
+            self.exponent_bits(),
+            self.mantissa_bits(),
+            self.exponent_bias(),
+        )
 
     def get_num_possible_values(self) -> int:
         # TODO: consider -0 and +0 as different values?
@@ -240,12 +265,12 @@ class Float16Type(BaseDataType):
         return 16
 
     def min(self) -> float:
-        return np.finfo(np.float16).min
+        return float(np.finfo(np.float16).min)
 
     def max(self) -> float:
-        return np.finfo(np.float16).max
+        return float(np.finfo(np.float16).max)
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         return True
 
     def get_num_possible_values(self) -> int:
@@ -261,7 +286,7 @@ class Float16Type(BaseDataType):
         return "half"
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.float16
+        return np.dtype(np.float16)
 
     def get_canonical_name(self) -> str:
         return "FLOAT16"
@@ -276,21 +301,31 @@ class IntType(BaseDataType):
     def bitwidth(self) -> int:
         return self._bitwidth
 
-    def min(self) -> int:
+    def min(self) -> Union[int, float]:
         unsigned_min = 0
         signed_min = -(2 ** (self.bitwidth() - 1))
         return signed_min if self._signed else unsigned_min
 
-    def max(self) -> int:
+    def max(self) -> Union[int, float]:
         unsigned_max = (2 ** (self.bitwidth())) - 1
         signed_max = (2 ** (self.bitwidth() - 1)) - 1
         return signed_max if self._signed else unsigned_max
 
-    def allowed(self, value: Union[int, float]) -> bool:
-        return (self.min() <= value) and (value <= self.max()) and float(value).is_integer()
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
+        if isinstance(value, np.ndarray):
+            return bool(
+                (self.min() <= value).all()
+                and (value <= self.max()).all()
+                and np.allclose(value, np.round(value))
+            )
+        return (
+            (self.min() <= value)
+            and (value <= self.max())
+            and float(value).is_integer()
+        )
 
     def get_num_possible_values(self) -> int:
-        return abs(self.min()) + abs(self.max()) + 1
+        return int(abs(self.min()) + abs(self.max()) + 1)
 
     def is_integer(self) -> bool:
         return True
@@ -306,13 +341,13 @@ class IntType(BaseDataType):
 
     def to_numpy_dt(self) -> np.dtype:
         if self.bitwidth() <= 8:
-            return np.int8 if self.signed() else np.uint8
+            return np.dtype(np.int8 if self.signed() else np.uint8)
         elif self.bitwidth() <= 16:
-            return np.int16 if self.signed() else np.uint16
+            return np.dtype(np.int16 if self.signed() else np.uint16)
         elif self.bitwidth() <= 32:
-            return np.int32 if self.signed() else np.uint32
+            return np.dtype(np.int32 if self.signed() else np.uint32)
         elif self.bitwidth() <= 64:
-            return np.int64 if self.signed() else np.uint64
+            return np.dtype(np.int64 if self.signed() else np.uint64)
         else:
             raise Exception("Unknown numpy dtype for " + str(self))
 
@@ -334,7 +369,9 @@ class BipolarType(BaseDataType):
     def max(self) -> int:
         return +1
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
+        if isinstance(value, np.ndarray):
+            return bool(np.isin(value, [-1, +1]).all())
         return value in [-1, +1]
 
     def get_num_possible_values(self) -> int:
@@ -350,7 +387,7 @@ class BipolarType(BaseDataType):
         return "ap_int<1>"
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.int8
+        return np.dtype(np.int8)
 
     def get_canonical_name(self) -> str:
         return "BIPOLAR"
@@ -366,7 +403,9 @@ class TernaryType(BaseDataType):
     def max(self) -> int:
         return +1
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
+        if isinstance(value, np.ndarray):
+            return bool(np.isin(value, [-1, 0, +1]).all())
         return value in [-1, 0, +1]
 
     def get_num_possible_values(self) -> int:
@@ -382,7 +421,7 @@ class TernaryType(BaseDataType):
         return "ap_int<2>"
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.int8
+        return np.dtype(np.int8)
 
     def get_canonical_name(self) -> str:
         return "TERNARY"
@@ -409,7 +448,7 @@ class FixedPointType(IntType):
     def max(self) -> float:
         return super().max() * self.scale_factor()
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         int_value = value / self.scale_factor()
         return IntType(self._bitwidth, True).allowed(int_value)
 
@@ -423,7 +462,7 @@ class FixedPointType(IntType):
         return "ap_fixed<%d, %d>" % (self.bitwidth(), self.int_bits())
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.float32
+        return np.dtype(np.float32)
 
     def get_canonical_name(self) -> str:
         return "FIXED<%d,%d>" % (self.bitwidth(), self.int_bits())
@@ -442,7 +481,7 @@ class ScaledIntType(IntType):
     def max(self) -> int:
         raise Exception("Undefined for ScaledIntType")
 
-    def allowed(self, value: Union[int, float]) -> bool:
+    def allowed(self, value: Union[int, float, np.ndarray]) -> bool:
         raise Exception("Undefined for ScaledIntType")
 
     def is_integer(self) -> bool:
@@ -455,7 +494,7 @@ class ScaledIntType(IntType):
         raise Exception("Undefined for ScaledIntType")
 
     def to_numpy_dt(self) -> np.dtype:
-        return np.float32
+        return np.dtype(np.float32)
 
     def signed(self) -> bool:
         "Returns whether this DataType can represent negative numbers."
@@ -467,7 +506,9 @@ class ScaledIntType(IntType):
 
 def resolve_datatype(name: str) -> BaseDataType:
     if not isinstance(name, str):
-        raise TypeError(f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'")
+        raise TypeError(
+            f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'"
+        )
 
     _special_types = {
         "BINARY": IntType(1, False),

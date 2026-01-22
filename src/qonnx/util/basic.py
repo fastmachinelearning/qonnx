@@ -31,22 +31,14 @@ import os
 import random
 import string
 import warnings
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from onnx import GraphProto, ModelProto
 
-from qonnx.core.datatype import DataType
+from qonnx.core.datatype import BaseDataType, DataType, FixedPointType
+if TYPE_CHECKING:
+    from qonnx.core.modelwrapper import ModelWrapper
 
-# TODO solve by moving onnx-dependent fxns to onnx.py
-# finn-examples uses parts of qonnx without having
-# onnx installed and doesn't use this functionality
-# workaround to avoid import errors when onnx isn't
-# installed:
-try:
-    from onnx.helper import make_model, make_opsetid
-except ModuleNotFoundError:
-    make_model = None
-    make_opsetid = None
 
 
 def get_preferred_onnx_opset() -> int:
@@ -56,6 +48,7 @@ def get_preferred_onnx_opset() -> int:
 
 def qonnx_make_model(graph_proto: GraphProto, **kwargs: object) -> ModelProto:
     "Wrapper around ONNX make_model with preferred qonnx opset version"
+    from onnx.helper import make_model, make_opsetid
     opset_imports = kwargs.pop("opset_imports", None)
     if opset_imports is None:
         opset_imports = [make_opsetid("", get_preferred_onnx_opset())]
@@ -132,7 +125,7 @@ def random_string(stringLength: int = 6) -> str:
 def interleave_matrix_outer_dim_from_partitions(matrix: np.ndarray, n_partitions: int) -> np.ndarray:
     """Interleave the outermost dimension of a matrix from given
     partitions (n_partitions)."""
-    if type(matrix) != np.ndarray or matrix.dtype not in [np.float32, np.float16]:
+    if type(matrix) is not np.ndarray or matrix.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         matrix = np.asarray(matrix, dtype=np.float32)
     shp = matrix.shape
@@ -181,7 +174,7 @@ def pad_tensor_to_multiple_of(ndarray: np.ndarray, pad_to_dims: Sequence[int], v
     will be inserted after the existing values; otherwise it will be split
     evenly between before and after the existing values, with one extra value
     inserted after if the padding amount is not divisible by two."""
-    if type(ndarray) != np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
+    if type(ndarray) is not np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         ndarray = np.asarray(ndarray, dtype=np.float32)
     assert ndarray.ndim == len(
@@ -210,7 +203,7 @@ def pad_tensor_to_multiple_of(ndarray: np.ndarray, pad_to_dims: Sequence[int], v
     return ret
 
 
-def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType) -> tuple[float, float]:
+def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: BaseDataType) -> tuple[float, float]:
     """Calculate the minimum and maximum possible result (accumulator) values for a dot product x * A,
     given matrix A of dims (MW, MH), and vector (1, MW) with datatype vec_dt. Returns (acc_min, acc_max)."""
     max_vectors = np.where(matrix > 0, vec_dt.max(), vec_dt.min())
@@ -220,9 +213,9 @@ def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType) -> 
     return (min_value, max_value)
 
 
-def gen_finn_dt_tensor(finn_dt: DataType, tensor_shape: tuple[int, ...] | list[int]) -> np.ndarray:
+def gen_finn_dt_tensor(finn_dt: BaseDataType, tensor_shape: tuple[int, ...] | list[int]) -> np.ndarray:
     """Generates random tensor in given shape and with given QONNX DataType."""
-    if type(tensor_shape) == list:
+    if type(tensor_shape) is list:
         tensor_shape = tuple(tensor_shape)
     if finn_dt == DataType["BIPOLAR"]:
         tensor_values = np.random.randint(2, size=tensor_shape)
@@ -230,10 +223,11 @@ def gen_finn_dt_tensor(finn_dt: DataType, tensor_shape: tuple[int, ...] | list[i
     elif finn_dt == DataType["BINARY"]:
         tensor_values = np.random.randint(2, size=tensor_shape)
     elif "INT" in finn_dt.name or finn_dt == DataType["TERNARY"]:
-        tensor_values = np.random.randint(finn_dt.min(), high=finn_dt.max() + 1, size=tensor_shape)
+        tensor_values = np.random.randint(int(finn_dt.min()), high=int(finn_dt.max()) + 1, size=tensor_shape)
     elif "FIXED" in finn_dt.name:
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
-        tensor_values = np.random.randint(int_dt.min(), high=int_dt.max() + 1, size=tensor_shape)
+        tensor_values = np.random.randint(int(int_dt.min()), high=int(int_dt.max()) + 1, size=tensor_shape)
+        assert isinstance(finn_dt, FixedPointType)
         tensor_values = tensor_values * finn_dt.scale_factor()
     elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         tensor_values = np.random.randn(*tensor_shape)
@@ -246,7 +240,7 @@ def gen_finn_dt_tensor(finn_dt: DataType, tensor_shape: tuple[int, ...] | list[i
         return tensor_values.astype(np.float32)
 
 
-def calculate_signed_dot_prod_range(dt_a: DataType, dt_b: DataType, len: int) -> tuple[int, int]:
+def calculate_signed_dot_prod_range(dt_a: BaseDataType, dt_b: BaseDataType, len: int) -> tuple[int | float, int | float]:
     """Returns the (min,max) values a dot product between two signed vectors of
     types dt_a and dt_b of len elements can take."""
     assert (
@@ -283,7 +277,7 @@ def sanitize_quant_values(model: "ModelWrapper", node_tensors: list[str], execut
     """
 
     for tensor_name in node_tensors:
-        dtype = model.get_tensor_datatype(tensor_name)
+        dtype: BaseDataType = model.get_tensor_datatype(tensor_name)  # type: ignore[assignment]
         # non-integers don't need sanitization, skip to next
         # introduces less overhead and quicker runtime
         if not dtype.is_integer():

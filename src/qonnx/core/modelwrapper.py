@@ -43,7 +43,7 @@ from qonnx.transformation.base import Transformation
 
 import qonnx.util.basic as util
 import qonnx.util.onnx as onnxutil
-from qonnx.core.datatype import DataType
+from qonnx.core.datatype import BaseDataType, DataType
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
     RemoveStaticGraphInputs,
@@ -71,14 +71,14 @@ class ModelWrapper:
         """
         if isinstance(onnx_model_proto, str):
             assert os.path.isfile(onnx_model_proto), f"File not found: {onnx_model_proto}"
-            self._model_proto = onnx.load(onnx_model_proto)
+            self._model_proto : ModelProto = onnx.load(onnx_model_proto)
         elif isinstance(onnx_model_proto, bytes):
-            self._model_proto = onnx.load_from_string(onnx_model_proto)
+            self._model_proto : ModelProto = onnx.load_from_string(onnx_model_proto)
         else:
             if make_deepcopy:
-                self._model_proto = copy.deepcopy(onnx_model_proto)
+                self._model_proto : ModelProto = copy.deepcopy(cast(ModelProto, onnx_model_proto))
             else:
-                self._model_proto = onnx_model_proto
+                self._model_proto : ModelProto = cast(ModelProto, onnx_model_proto)
         self.temporary_fix_oldstyle_domain()
         if fix_missing_initializer_valueinfo:
             self.check_all_tensor_shapes_specified(fix_missing_init_shape=True)
@@ -115,7 +115,7 @@ class ModelWrapper:
     @graph.setter
     def graph(self, value: GraphProto) -> None:
         """Sets the graph of the model according to value"""
-        self._model_proto.graph = value
+        self._model_proto.graph = value # type: ignore
 
     @property
     def model(self) -> ModelProto:
@@ -138,10 +138,10 @@ class ModelWrapper:
         if apply_to_subgraphs:
             assert "apply_to_subgraphs" in inspect.signature(
                 analysis_fxn
-            ), "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
-            return analysis_fxn(self, apply_to_subgraphs)
+            ).parameters, "analysis_fxn must have 'apply_to_subgraphs' argument when apply_to_subgraphs == True"
+            return analysis_fxn(self, apply_to_subgraphs) # type: ignore[call-arg]
         else:
-            return analysis_fxn(self)
+            return analysis_fxn(self) # type: ignore
 
     def transform_subgraphs(self, transformation: Transformation, make_deepcopy: bool = True, cleanup: bool = True, apply_to_subgraphs: bool = False, use_preorder_traversal: bool = True) -> None:
         """Applies given Transformation to all subgraphs of this ModelWrapper instance.
@@ -219,7 +219,7 @@ class ModelWrapper:
     def make_subgraph_modelwrapper(self, subgraph: GraphProto) -> "ModelWrapper":
         return ModelWrapper(util.qonnx_make_model(subgraph, opset_imports=self._model_proto.opset_import))
 
-    def get_tensor_datatype(self, tensor_name: str) -> DataType:
+    def get_tensor_datatype(self, tensor_name: str) -> BaseDataType:
         """Returns the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
@@ -245,11 +245,11 @@ class ModelWrapper:
         tensor_vi = self.get_tensor_valueinfo(tensor_name)
         if tensor_vi is None:
             # some initialized tensors don't get ValueInfo even after shape inference
-            _, onnx_dtype = self.get_initializer(tensor_name, return_dtype=True)
+            _, onnx_dtype = self.get_initializer(tensor_name, return_dtype=True) # type: ignore
         else:
             onnx_dtype = tensor_vi.type.tensor_type.elem_type
         if onnx_dtype in onnx_dtype_to_qonnx_dtype.keys():
-            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]]
+            return DataType[onnx_dtype_to_qonnx_dtype[onnx_dtype]] # type: ignore
         else:
             return DataType["FLOAT32"]
 
@@ -312,7 +312,7 @@ class ModelWrapper:
         except ValueError:
             # no ValueInfo found for tensor, check initializer
             # (see https://github.com/onnx/onnx/issues/2874)
-            tensor_init, tensor_init_dtype = self.get_initializer(tensor_name, return_dtype=True)
+            tensor_init, tensor_init_dtype = self.get_initializer(tensor_name, return_dtype=True) # type: ignore
             if tensor_init is None:
                 # no shape defined for this tensor
                 return None
@@ -339,6 +339,7 @@ class ModelWrapper:
         # find what container this tensor's ValueInfo lives in
         # if not found anywhere, we assume it's a new value_info
         target_container = self.graph.value_info
+        ind = None
         if util.get_by_name(self.graph.input, tensor_name) is not None:
             target_container = self.graph.input
             # create list from inputs to find index
@@ -356,6 +357,7 @@ class ModelWrapper:
         if target_container == self.graph.value_info:
             target_container.append(new_vi)
         else:
+            assert ind is not None, "set_tensor_shape: ind should not be None here"
             target_container.insert(ind, new_vi)
 
     def set_initializer(self, tensor_name: str, tensor_value: np.ndarray) -> None:
@@ -382,20 +384,25 @@ class ModelWrapper:
         """Renames a tensor from old_name to new_name."""
         graph = self.graph
         # sweep over inputs
-        if util.get_by_name(graph.input, old_name) is not None:
-            util.get_by_name(graph.input, old_name).name = new_name
+        input = util.get_by_name(graph.input, old_name)
+        if input is not None:
+            input.name = new_name
         # sweep over outputs
-        if util.get_by_name(graph.output, old_name) is not None:
-            util.get_by_name(graph.output, old_name).name = new_name
+        output = util.get_by_name(graph.output, old_name)
+        if output is not None:
+            output.name = new_name
         # sweep over value_info
-        if util.get_by_name(graph.value_info, old_name) is not None:
-            util.get_by_name(graph.value_info, old_name).name = new_name
+        value_info = util.get_by_name(graph.value_info, old_name)
+        if value_info is not None:
+            value_info.name = new_name
         # sweep over initializers
-        if util.get_by_name(graph.initializer, old_name) is not None:
-            util.get_by_name(graph.initializer, old_name).name = new_name
+        initializer = util.get_by_name(graph.initializer, old_name)
+        if initializer is not None:
+            initializer.name = new_name
         # sweep over quantization annotations
-        if util.get_by_name(graph.quantization_annotation, old_name, "tensor_name") is not None:
-            util.get_by_name(graph.quantization_annotation, old_name, "tensor_name").tensor_name = new_name
+        quant_annotation = util.get_by_name(graph.quantization_annotation, old_name, "tensor_name")
+        if quant_annotation is not None:
+            quant_annotation.tensor_name = new_name
         # sweep over node i/o
         for n in graph.node:
             if old_name in n.input:
@@ -427,7 +434,7 @@ class ModelWrapper:
         """Deletes an initializer from the model."""
         graph = self._model_proto.graph
         init = util.get_by_name(graph.initializer, initializer_name)
-        if not (init is None):
+        if init is not None:
             graph.initializer.remove(init)
 
     def find_producer(self, tensor_name: str) -> NodeProto | None:
@@ -685,7 +692,7 @@ class ModelWrapper:
     def set_tensor_layout(self, tensor_name: str, data_layout: list[str]) -> None:
         """Sets the data layout annotation of tensor with given name. See
         get_tensor_layout for examples."""
-        assert type(data_layout) == list, "data_layout must be a list"
+        assert type(data_layout) is list, "data_layout must be a list"
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
         ret = util.get_by_name(qnt_annotations, tensor_name, "tensor_name")

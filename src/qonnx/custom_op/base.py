@@ -29,7 +29,7 @@
 import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy.typing as npt
 from onnx import NodeProto, GraphProto
@@ -45,12 +45,16 @@ class CustomOp(ABC):
     every custom node should have. Some as abstract methods, these have to be
     filled when writing a new custom op node."""
 
-    def __init__(self, onnx_node: NodeProto, onnx_opset_version: int = get_preferred_onnx_opset()) -> None:
+    def __init__(
+        self, onnx_node: NodeProto, onnx_opset_version: int = get_preferred_onnx_opset()
+    ) -> None:
         super().__init__()
         self.onnx_node: NodeProto = onnx_node
         self.onnx_opset_version: int = onnx_opset_version
 
-    def get_nodeattr_def(self, name: str) -> tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None]:
+    def get_nodeattr_def(
+        self, name: str
+    ) -> tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None]:
         """Return 4-tuple (dtype, required, default_val, allowed_values) for attribute
         with name. allowed_values will be None if not specified."""
         allowed_values: set | None = None
@@ -60,14 +64,20 @@ class CustomOp(ABC):
         elif len(attrdef) == 4:
             (dtype, req, def_val, allowed_values) = attrdef
         else:
-            raise Exception("Unexpected length %d n-tuple from get_nodeattr_types" % len(attrdef))
+            raise Exception(
+                "Unexpected length %d n-tuple from get_nodeattr_types" % len(attrdef)
+            )
         return (dtype, req, def_val, allowed_values)
 
-    def get_nodeattr_allowed_values(self, name: str) -> str | bool | int | float | npt.NDArray | list | set | None:
+    def get_nodeattr_allowed_values(
+        self, name: str
+    ) -> str | bool | int | float | npt.NDArray | list | set | None:
         "Return set of allowed values for given attribute, None if not specified."
         return self.get_nodeattr_def(name)[3]
 
-    def get_nodeattr(self, name: str) -> int | float | str | bool | npt.NDArray | list | None:
+    def get_nodeattr(
+        self, name: str
+    ) -> int | float | str | bool | npt.NDArray | list | None:
         """Get a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types.
         Default value is returned if attribute is not set."""
@@ -108,9 +118,13 @@ class CustomOp(ABC):
                     # not set, return default value
                     return def_val
         except KeyError:
-            raise AttributeError(f"{self.onnx_node.name} has no such attribute: " + name)
+            raise AttributeError(
+                f"{self.onnx_node.name} has no such attribute: " + name
+            )
 
-    def set_nodeattr(self, name: str, value: int | float | str | bool | npt.NDArray | list | None) -> None:
+    def set_nodeattr(
+        self, name: str, value: int | float | str | bool | npt.NDArray | list | None
+    ) -> None:
         """Set a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types."""
         try:
@@ -122,24 +136,28 @@ class CustomOp(ABC):
                     str(allowed_values),
                 )
             attr = get_by_name(self.onnx_node.attribute, name)
+            tensor_value = None
             if dtype == "t":
                 # convert numpy array to TensorProto
-                value = np_helper.from_array(value)
+                tensor_value = np_helper.from_array(cast(npt.NDArray, value))
             if attr is not None:
                 # dtype indicates which ONNX Attribute member to use
                 # (such as i, f, s...)
                 if dtype == "s":
                     # encode string attributes
-                    value = value.encode("utf-8")
-                    attr.__setattr__(dtype, value)
+                    val = cast(str, value).encode("utf-8")
+                    attr.__setattr__(dtype, val)
                 elif dtype == "strings":
-                    attr.strings[:] = [x.encode("utf-8") for x in value]
+                    attr.strings[:] = [
+                        x.encode("utf-8") for x in cast(list[str], value)
+                    ]
                 elif dtype == "floats":  # list of floats
-                    attr.floats[:] = value
+                    attr.floats[:] = cast(list[float], value)
                 elif dtype == "ints":  # list of integers
-                    attr.ints[:] = value
+                    attr.ints[:] = cast(list[int], value)
                 elif dtype == "t":  # single tensor
-                    attr.t.CopyFrom(value)
+                    assert tensor_value is not None
+                    attr.t.CopyFrom(tensor_value)
                 elif dtype in ["tensors", "graphs", "sparse_tensors"]:
                     # untested / unsupported attribute types
                     # add testcases & appropriate getters before enabling
@@ -149,7 +167,8 @@ class CustomOp(ABC):
                     attr.__setattr__(dtype, value)
             else:
                 # not set, create and insert AttributeProto
-                attr_proto = helper.make_attribute(name, value)
+                attr_value = tensor_value if tensor_value is not None else value
+                attr_proto = helper.make_attribute(name, attr_value)
                 self.onnx_node.attribute.append(attr_proto)
         except KeyError:
             raise AttributeError("Op has no such attribute: " + name)
@@ -168,11 +187,11 @@ class CustomOp(ABC):
         )
 
     @abstractmethod
-    def get_nodeattr_types(self) -> dict[
+    def get_nodeattr_types(
+        self,
+    ) -> dict[
         str,
-        tuple[str,
-              bool,
-              int | float | str | bool | npt.NDArray | list]
+        tuple[str, bool, int | float | str | bool | npt.NDArray | list]
         | tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None],
     ]:
         """Returns a dict of permitted attributes for node, where:
