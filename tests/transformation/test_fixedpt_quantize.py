@@ -28,11 +28,15 @@
 
 import pytest
 
+import numpy as np
 import os
 
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.fixedpt_quantize import FixedPointQuantizeParams, FixedPointQuantizeParamsFromDict
+from qonnx.transformation.fixedpt_quantize import (
+    FixedPointQuantizeParams,
+    FixedPointQuantizeParamsFromDict,
+)
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.test import download_model
 
@@ -376,7 +380,9 @@ def test_fixedpt_quantize_from_dict(test_case):
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
     # test Fixedpt conversion
-    fxp_transform = FixedPointQuantizeParamsFromDict(test_details["quant_dict"], rounding_mode=test_details["rounding_mode"])
+    fxp_transform = FixedPointQuantizeParamsFromDict(
+        test_details["quant_dict"], rounding_mode=test_details["rounding_mode"]
+    )
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
 
@@ -388,7 +394,7 @@ def test_fixedpt_quantize_from_dict(test_case):
         assert tdata is not None
 
         # Check if all values of the tensor are allowed with the target datatype
-        assert tdtype.allowed(tdata).all()
+        assert np.all(tdtype.allowed(tdata))
 
         # Check if the maximum error is within the LSB bound of the datatype
         allowed_max_error = tdtype.scale_factor()
@@ -452,7 +458,9 @@ def test_fixedpt_quantize(test_case):
     model = cleanup_model(model)
 
     tdtype = test_details["dtype"]
-    fxp_transform = FixedPointQuantizeParams(tdtype, rounding_mode=test_details["rounding_mode"])
+    fxp_transform = FixedPointQuantizeParams(
+        tdtype, rounding_mode=test_details["rounding_mode"]
+    )
     tdtype = DataType[tdtype]
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
@@ -469,7 +477,7 @@ def test_fixedpt_quantize(test_case):
         assert tdata is not None
 
         # Check if all values of the tensor are allowed with the target datatype
-        assert tdtype.allowed(tdata).all()
+        assert np.all(tdtype.allowed(tdata))
 
         # Check if the maximum error is within the LSB bound of the datatype
         assert fxp_transform.max_err[tname] <= allowed_max_error

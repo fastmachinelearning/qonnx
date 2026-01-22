@@ -29,6 +29,7 @@
 import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Sequence, cast
 
 import numpy.typing as npt
@@ -66,7 +67,9 @@ class CustomOp(ABC):
     """
 
     def __init__(
-        self, onnx_node: NodeProto, onnx_opset_version: int = get_preferred_qonnx_opset()
+        self,
+        onnx_node: NodeProto,
+        onnx_opset_version: int = get_preferred_qonnx_opset(),
     ) -> None:
         super().__init__()
         self.onnx_node: NodeProto = onnx_node
@@ -74,7 +77,7 @@ class CustomOp(ABC):
 
     def get_nodeattr_def(
         self, name: str
-    ) -> tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None]:
+    ) -> tuple[str, bool, int | float | str | bool | npt.NDArray | list[str | int | float], set | None]:
         """Return 4-tuple (dtype, required, default_val, allowed_values) for attribute
         with name. allowed_values will be None if not specified."""
         allowed_values: set | None = None
@@ -91,13 +94,13 @@ class CustomOp(ABC):
 
     def get_nodeattr_allowed_values(
         self, name: str
-    ) -> str | bool | int | float | npt.NDArray | list | set | None:
+    ) -> str | bool | int | float | npt.NDArray | list[str | int | float] | set | None:
         "Return set of allowed values for given attribute, None if not specified."
         return self.get_nodeattr_def(name)[3]
 
     def get_nodeattr(
         self, name: str
-    ) -> int | float | str | bool | npt.NDArray | list | None:
+    ) -> int | float | str | bool | npt.NDArray | list[str | int | float] | None:
         """Get a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types.
         Default value is returned if attribute is not set."""
@@ -143,7 +146,7 @@ class CustomOp(ABC):
             )
 
     def set_nodeattr(
-        self, name: str, value: int | float | str | bool | npt.NDArray | list | None
+        self, name: str, value: int | float | str | bool | npt.NDArray | list[str | int | float] | None
     ) -> None:
         """Set a node attribute by name. Data is stored inside the ONNX node's
         AttributeProto container. Attribute must be part of get_nodeattr_types."""
@@ -209,10 +212,10 @@ class CustomOp(ABC):
     @abstractmethod
     def get_nodeattr_types(
         self,
-    ) -> dict[
+    ) -> Mapping[
         str,
-        tuple[str, bool, int | float | str | bool | npt.NDArray | list]
-        | tuple[str, bool, int | float | str | bool | npt.NDArray | list, set | None],
+        tuple[str, bool, int | float | str | bool | npt.NDArray | list[str | int | float]]
+        | tuple[str, bool, int | float | str | bool | npt.NDArray | list[str | int | float], set | None],
     ]:
         """Returns a dict of permitted attributes for node, where:
         ret_dict[attribute_name] = (dtype, require, default_value, <allowed_values>)

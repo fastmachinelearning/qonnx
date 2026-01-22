@@ -315,7 +315,7 @@ class ModelWrapper:
         else:
             return DataType["FLOAT32"]
 
-    def set_tensor_datatype(self, tensor_name: str, datatype: DataType | None) -> None:
+    def set_tensor_datatype(self, tensor_name: str, datatype: BaseDataType | None) -> None:
         """Sets the QONNX DataType of tensor with given name."""
         graph = self._model_proto.graph
         qnt_annotations = graph.quantization_annotation
