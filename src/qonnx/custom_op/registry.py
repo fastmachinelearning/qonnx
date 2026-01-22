@@ -30,10 +30,8 @@ import importlib
 import inspect
 import warnings
 from threading import RLock
-from typing import Dict, List, Optional, Tuple, Type, TYPE_CHECKING
-if TYPE_CHECKING:
-    from onnx import NodeProto
-
+from typing import Dict, List, Optional, Tuple, Type
+from onnx import NodeProto
 from qonnx.custom_op.base import CustomOp
 
 # Nested registry for O(1) lookups: domain -> op_type -> version -> CustomOp class
