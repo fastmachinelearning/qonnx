@@ -92,7 +92,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'qonnx'
-copyright = u'2021-2025 QONNX Contributors'
+copyright = u'2021-2026 QONNX Contributors'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
