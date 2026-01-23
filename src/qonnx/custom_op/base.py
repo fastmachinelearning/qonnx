@@ -99,13 +99,17 @@ class CustomOp(ABC):
                     ret = ret.decode("utf-8")
                 elif dtype == "strings":
                     ret = [x.decode("utf-8") for x in ret]
-                elif dtype == "t":
-                    # use numpy helper to convert TensorProto -> np array
-                    ret = np_helper.to_array(ret)
+                elif dtype == "floats":
+                    # convert from RepeatedScalarContainer to list
+                    # gives e.g. JSON serializability
+                    ret = [x for x in ret]
                 elif dtype == "ints":
                     # convert from RepeatedScalarContainer to list
                     # gives e.g. JSON serializability
                     ret = [x for x in ret]
+                elif dtype == "t":
+                    # use numpy helper to convert TensorProto -> np array
+                    ret = np_helper.to_array(ret)
                 if allowed_values is not None:
                     assert ret in allowed_values, "%s = %s not in %s" % (
                         str(name),
