@@ -80,7 +80,8 @@ class BaseDataType(ABC):
     def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         """Check whether given value is allowed for this DataType.
 
-        * value (float32): value to be checked"""
+        * value (float32): value to be checked
+        * returns: bool if input is scalar, ndarray of bools if input is ndarray"""
         pass
 
     @abstractmethod
