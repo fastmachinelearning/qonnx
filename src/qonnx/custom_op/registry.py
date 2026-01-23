@@ -31,7 +31,7 @@ import inspect
 import warnings
 from threading import RLock
 from typing import Dict, List, Optional, Tuple, Type
-
+from onnx import NodeProto
 from qonnx.custom_op.base import CustomOp
 
 # Nested registry for O(1) lookups: domain -> op_type -> version -> CustomOp class
@@ -320,7 +320,7 @@ def add_op_to_domain(domain: str, op_class: Type[CustomOp]) -> None:
         _OP_REGISTRY[domain][op_type][op_version] = op_class
 
 
-def getCustomOp(node, onnx_opset_version=None):
+def getCustomOp(node: NodeProto, onnx_opset_version: int | None = None) -> CustomOp:
     """Get a custom op instance for an ONNX node.
 
     Uses "since version" semantics: selects highest version <= requested opset.
