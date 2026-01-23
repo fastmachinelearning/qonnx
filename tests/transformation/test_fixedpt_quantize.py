@@ -31,7 +31,7 @@ import pytest
 import numpy as np
 import os
 
-from qonnx.core.datatype import DataType
+from qonnx.core.datatype import DataType, FixedPointType
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.fixedpt_quantize import (
     FixedPointQuantizeParams,
@@ -394,7 +394,7 @@ def test_fixedpt_quantize_from_dict(test_case):
         assert tdata is not None
 
         # Check if all values of the tensor are allowed with the target datatype
-        assert np.all(tdtype.allowed(tdata))
+        assert tdtype.allowed(tdata).all()
 
         # Check if the maximum error is within the LSB bound of the datatype
         allowed_max_error = tdtype.scale_factor()
@@ -452,16 +452,16 @@ fixedpt_details = {
 @pytest.mark.parametrize("test_case", fixedpt_details.keys())
 def test_fixedpt_quantize(test_case):
     test_details = fixedpt_details[test_case]
-    dl_file = download_model(test_model=test_details["test_model"])
+    dl_file : str = download_model(test_model=test_details["test_model"]) # type: ignore
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
 
-    tdtype = test_details["dtype"]
+    tdtype = test_details["dtype"] # type: ignore
     fxp_transform = FixedPointQuantizeParams(
-        tdtype, rounding_mode=test_details["rounding_mode"]
+        tdtype, rounding_mode=test_details["rounding_mode"] # type: ignore
     )
-    tdtype = DataType[tdtype]
+    tdtype : FixedPointType = DataType[tdtype] # type: ignore
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
 
@@ -477,7 +477,7 @@ def test_fixedpt_quantize(test_case):
         assert tdata is not None
 
         # Check if all values of the tensor are allowed with the target datatype
-        assert np.all(tdtype.allowed(tdata))
+        assert tdtype.allowed(tdata).all()
 
         # Check if the maximum error is within the LSB bound of the datatype
         assert fxp_transform.max_err[tname] <= allowed_max_error
