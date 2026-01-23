@@ -41,13 +41,33 @@ from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
-# depthwise or channelwise
-@pytest.mark.parametrize("dw", [True, False])
-# conv bias
-@pytest.mark.parametrize(
-    "bias", ["float", "int_quant_per_tensor", "int_quant_per_channel", "bp_quant_per_tensor", "bp_quant_per_channel", None]
-)
-def test_extract_conv_bias(dw, bias):
+# Helper function to generate valid parameter combinations, with an option to include 'dw'
+def generate_params(include_dw=True):
+    params = []
+    biases = ["float", None, "int_quant", "bp_quant"]
+    scales = ["per_tensor", "per_channel"]
+    zero_points = ["per_tensor", "per_channel"]
+
+    dw_options = [True, False] if include_dw else [None]
+
+    for dw in dw_options:
+        for bias in biases:
+            if bias in ["float", None]:
+                # Ignore scale and zero_point for this bias
+                params.append((dw, bias, None, None) if include_dw else (bias, None, None))
+            else:
+                # Include all combinations of scale and zero_point for other biases
+                for scale in scales:
+                    for zero_point in zero_points:
+                        if include_dw:
+                            params.append((dw, bias, scale, zero_point))
+                        else:
+                            params.append((bias, scale, zero_point))
+    return params
+
+
+@pytest.mark.parametrize("dw, bias, scale, zero_point", generate_params(include_dw=True))
+def test_extract_conv_bias(dw, bias, scale, zero_point):
     ishape = (1, 32, 111, 111)
     if dw is True:
         group = ishape[1]
@@ -75,10 +95,14 @@ def test_extract_conv_bias(dw, bias):
 
     if bias is not None:
         bias_shape = (out_channels,)
-        if "quant_per_channel" in bias:
+        if scale is not None and "per_channel" in scale:
             scale_shape = (out_channels,)
-        elif "quant_per_tensor" in bias:
+        elif scale is not None and "per_tensor" in scale:
             scale_shape = (1,)
+        if scale is not None and "per_channel" in zero_point:
+            zpt_shape = (out_channels,)
+        elif scale is not None and "per_tensor" in zero_point:
+            zpt_shape = (1,)
         B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
 
     cnv_node = oh.make_node(
@@ -94,7 +118,7 @@ def test_extract_conv_bias(dw, bias):
     value_info = [W] if not bias else [W, B]
     # if the bias isn't quantized, we can directly wire up the Conv layer
     # otherwise an additional Quant node needs to be inserted
-    if bias is not None and "quant" in bias:
+    if bias not in ["float", None]:
         if "bp" in bias:
             optype = "BipolarQuant"
         elif "int" in bias:
@@ -102,7 +126,7 @@ def test_extract_conv_bias(dw, bias):
         # inputs to Quant node
         param0 = oh.make_tensor_value_info("param0", TensorProto.FLOAT, bias_shape)
         param1 = oh.make_tensor_value_info("param1", TensorProto.FLOAT, scale_shape)
-        param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, [1])
+        param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, zpt_shape)
         value_info.append(param0)
         value_info.append(param1)
         value_info.append(param2)
@@ -138,11 +162,12 @@ def test_extract_conv_bias(dw, bias):
     if bias is not None:
         b_tensor = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
         # set B tensor directly or set first input of quant node
-        if "quant" in bias:
+        if bias != "float":
             model.set_initializer("param0", b_tensor)
-            scale = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
+            scale = gen_finn_dt_tensor(DataType["FLOAT32"], scale_shape)
             model.set_initializer("param1", scale)
-            model.set_initializer("param2", np.zeros(1))
+            zpt = gen_finn_dt_tensor(DataType["FLOAT32"], zpt_shape)
+            model.set_initializer("param2", zpt)
             if "int" in bias:
                 model.set_initializer("param3", 8 * np.ones(1))
         else:
@@ -167,11 +192,8 @@ def test_extract_conv_bias(dw, bias):
     assert np.isclose(produced, expected, atol=1e-3).all()
 
 
-# conv transpose bias
-@pytest.mark.parametrize(
-    "bias", ["float", "int_quant_per_tensor", "int_quant_per_channel", "bp_quant_per_tensor", "bp_quant_per_channel", None]
-)
-def test_extract_conv_transpose_bias(bias):
+@pytest.mark.parametrize("bias, scale, zero_point", generate_params(include_dw=False))
+def test_extract_conv_transpose_bias(bias, scale, zero_point):
     ishape = (1, 32, 111, 111)
     group = 1
     out_channels = 64
@@ -191,10 +213,15 @@ def test_extract_conv_transpose_bias(bias):
 
     if bias is not None:
         bias_shape = (out_channels,)
-        if "quant_per_channel" in bias:
+        if scale is not None and "per_channel" in scale:
             scale_shape = (out_channels,)
-        elif "quant_per_tensor" in bias:
+        elif scale is not None and "per_tensor" in scale:
             scale_shape = (1,)
+        if scale is not None and "per_channel" in zero_point:
+            zpt_shape = (out_channels,)
+        elif scale is not None and "per_tensor" in zero_point:
+            zpt_shape = (1,)
+
         B = oh.make_tensor_value_info("B", TensorProto.FLOAT, bias_shape)
 
     cnv_node = oh.make_node(
@@ -211,7 +238,7 @@ def test_extract_conv_transpose_bias(bias):
 
     # If the bias isn't quantized, we can directly wire up the ConvTranspose layer
     # Otherwise, an additional Quant node needs to be inserted
-    if bias is not None and "quant" in bias:
+    if bias not in ["float", None]:
         if "bp" in bias:
             optype = "BipolarQuant"
         elif "int" in bias:
@@ -219,7 +246,7 @@ def test_extract_conv_transpose_bias(bias):
         # Inputs to Quant node
         param0 = oh.make_tensor_value_info("param0", TensorProto.FLOAT, bias_shape)
         param1 = oh.make_tensor_value_info("param1", TensorProto.FLOAT, scale_shape)
-        param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, [1])
+        param2 = oh.make_tensor_value_info("param2", TensorProto.FLOAT, zpt_shape)
         value_info.append(param0)
         value_info.append(param1)
         value_info.append(param2)
@@ -256,11 +283,12 @@ def test_extract_conv_transpose_bias(bias):
     if bias is not None:
         b_tensor = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
         # Set B tensor directly or set first input of quant node
-        if "quant" in bias:
+        if bias != "float":
             model.set_initializer("param0", b_tensor)
-            scale = gen_finn_dt_tensor(DataType["FLOAT32"], bias_shape)
+            scale = gen_finn_dt_tensor(DataType["FLOAT32"], scale_shape)
             model.set_initializer("param1", scale)
-            model.set_initializer("param2", np.zeros(1))
+            zpt = gen_finn_dt_tensor(DataType["FLOAT32"], zpt_shape)
+            model.set_initializer("param2", zpt)
             if "int" in bias:
                 model.set_initializer("param3", 8 * np.ones(1))
         else:

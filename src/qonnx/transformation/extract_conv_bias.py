@@ -77,6 +77,9 @@ class ExtractBiasFromConv(Transformation):
                         quant_scale = model.get_initializer(producer.input[1])
                         if quant_scale.shape != (1,):
                             model.set_initializer(producer.input[1], quant_scale.reshape(add_shape))
+                        quant_zpt = model.get_initializer(producer.input[2])
+                        if quant_zpt.shape != (1,):
+                            model.set_initializer(producer.input[2], quant_zpt.reshape(add_shape))
                         model.set_tensor_shape(producer.output[0], add_shape)
 
                     act_add_tensor = helper.make_tensor_value_info(
