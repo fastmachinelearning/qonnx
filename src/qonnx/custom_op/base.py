@@ -26,6 +26,7 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
 import onnx.helper as helper
 import onnx.numpy_helper as np_helper
 from abc import ABC, abstractmethod
@@ -73,7 +74,9 @@ class CustomOp(ABC):
         elif len(attrdef) == 4:
             (dtype, req, def_val, allowed_values) = attrdef
         else:
-            raise Exception("Unexpected length %d n-tuple from get_nodeattr_types" % len(attrdef))
+            raise Exception(
+                "Unexpected length %d n-tuple from get_nodeattr_types" % len(attrdef)
+            )
         return (dtype, req, def_val, allowed_values)
 
     def get_nodeattr_allowed_values(self, name):
@@ -129,15 +132,57 @@ class CustomOp(ABC):
         try:
             (dtype, req, def_val, allowed_values) = self.get_nodeattr_def(name)
             if allowed_values is not None:
-                assert value in allowed_values, "%s = %s not in %s" % (
-                    str(name),
-                    str(value),
-                    str(allowed_values),
-                )
+                if value not in allowed_values:
+                    raise ValueError(
+                        "%s = %s not in %s"
+                        % (str(name), str(value), str(allowed_values))
+                    )
             attr = get_by_name(self.onnx_node.attribute, name)
-            if dtype == "t":
-                # convert numpy array to TensorProto
+            
+            # Verify value type matches dtype before setting/converting
+            if dtype == "i":
+                if not isinstance(value, int):
+                    raise TypeError(f"Attribute {name} expects int, got {type(value)}")
+            elif dtype == "f":
+                if not isinstance(value, float):
+                    raise TypeError(
+                        f"Attribute {name} expects float, got {type(value)}"
+                    )
+            elif dtype == "s":
+                if not isinstance(value, (str, bytes)):
+                    raise TypeError(f"Attribute {name} expects str, got {type(value)}")
+            elif dtype == "ints":
+                if not (
+                    isinstance(value, list) and all(isinstance(v, int) for v in value)
+                ):
+                    raise TypeError(
+                        f"Attribute {name} expects list of ints, got {type(value)}"
+                    )
+            elif dtype == "floats":
+                if not (
+                    isinstance(value, list)
+                    and all(isinstance(v, (int, float)) for v in value)
+                ):
+                    raise TypeError(
+                        f"Attribute {name} expects list of floats, got {type(value)}"
+                    )
+            elif dtype == "strings":
+                if not (
+                    isinstance(value, list)
+                    and all(isinstance(v, (str, bytes)) for v in value)
+                ):
+                    raise TypeError(
+                        f"Attribute {name} expects list of strings, got {type(value)}"
+                    )
+            elif dtype == "t":
+                # Validate that value is a numpy array
+                if not isinstance(value, (np.ndarray, np.generic)):
+                    raise TypeError(
+                        f"Attribute {name} expects numpy array, got {type(value)}"
+                    )
+                # Convert numpy array to TensorProto
                 value = np_helper.from_array(value)
+            
             if attr is not None:
                 # dtype indicates which ONNX Attribute member to use
                 # (such as i, f, s...)
