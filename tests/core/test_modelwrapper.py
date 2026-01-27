@@ -275,11 +275,11 @@ def test_modelwrapper_get_global_io():
     onnx_model = qonnx_make_model(graph, producer_name="global-io-test-model")
     model = ModelWrapper(onnx_model)
 
-    # Test get_global_in
-    assert model.get_global_in() == "global_in"
+    # Test get_first_global_in
+    assert model.get_first_global_in() == "global_in"
 
-    # Test get_global_out
-    assert model.get_global_out() == "global_out"
+    # Test get_first_global_out
+    assert model.get_first_global_out() == "global_out"
 
     # Test with multi-input model (should still return first input)
     in2 = onnx.helper.make_tensor_value_info("second_in", onnx.TensorProto.FLOAT, [1, 4])
@@ -294,5 +294,5 @@ def test_modelwrapper_get_global_io():
     model_multi = ModelWrapper(onnx_model_multi)
 
     # Should still return first input/output
-    assert model_multi.get_global_in() == "global_in"
-    assert model_multi.get_global_out() == "global_out"
+    assert model_multi.get_first_global_in() == "global_in"
+    assert model_multi.get_first_global_out() == "global_out"
