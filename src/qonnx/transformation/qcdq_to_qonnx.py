@@ -41,7 +41,10 @@ def extract_elem_type(elem_type: int, clip_range=None) -> Tuple[int, int, bool]:
     """
     Return Quant attribute specification based on element type and (optional)
     clipping range.
-    Returns: (bitwidth, signed, is_narrow_qnt)
+
+    Returns:
+        (bitwidth, signed, is_narrow_qnt)
+
     """
     is_narrow = False
     # pylint: disable=no-member
@@ -82,14 +85,17 @@ class QCDQToQuant(Transformation):
     during the quantization process into a QONNX Quant node. If a Clip node is
     found between the QuantizeLinear+DequantizeLinear, this will be taken into
     account for the Quant bitwidth calculation.
-    Input
-    -----
-    A model potentially quantized with QuantizeLinear, (optional) Clip and
-    DequantizeLinear nodes.
-    Output
-    ------
-    A model with QuantizeLinear, Clip and DequantizeLinear nodes re-fused back into QONNX
-    Quant nodes.
+    
+    Input:
+
+        A model potentially quantized with QuantizeLinear, (optional) Clip and
+        DequantizeLinear nodes.
+
+    Output:
+
+        A model with QuantizeLinear, Clip and DequantizeLinear nodes re-fused back into QONNX
+        Quant nodes.
+
     """
 
     def __init__(self) -> None:

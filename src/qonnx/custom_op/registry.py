@@ -469,9 +469,12 @@ def get_ops_in_domain(domain: str) -> List[Tuple[str, Type[CustomOp]]]:
         List of (op_type, op_class) tuples
 
     Example:
-        ops = get_ops_in_domain("qonnx.custom_op.general")
-        for op_name, op_class in ops:
-            print(f"{op_name}: {op_class}")
+        ::
+
+            ops = get_ops_in_domain("qonnx.custom_op.general")
+            for op_name, op_class in ops:
+                print(f"{op_name}: {op_class}")
+
     """
     module_path = resolve_domain(domain)
     ops_dict = {}

@@ -144,33 +144,45 @@ class QuantizeGraph(Transformation):
     as the parameters.
 
         1) Expectations:
+
             a) Onnx model in the modelwraper format.
             b) Model must be cleaned using qonnx.util.cleanup.cleanup_model()
             c) Batchsize to be set.
 
         2) Steps to transform are:
+
             Step1: Finding the input for the quant node.
+
             Step2: Finding the consumer of the quant node output.
+
             Step3: Finding the shape for the output tensor of quant node.
+
             Note: The output tensor of the quant node must have the same shape as the consumer of the input
-                    to the quant node.
+            to the quant node.
 
         3) Input:
+
             A dict "quantnode_map" specifying the criterion, positions, and input parameters like
             scale, bitwidth, zeropoint, and others for a specific quantnode.
 
             Criterion:
-                a) name: This will allow users to add quant nodes for specific node like "Conv_0" and "Gemm_0".
+
+                a) name:
+                        This will allow users to add quant nodes for specific node like "Conv_0" and "Gemm_0".
                         Note: using this users can have quant nodes with different parameters. Ex: quantizing
                         "Conv_0" and "Conv_1"  with bitwidth of 4 and 6, respectively.
-                b) op_type: This will allow users to add quant nodes for all nodes of a particular op_type such
+
+                b) op_type:
+                            This will allow users to add quant nodes for all nodes of a particular op_type such
                             as, "Conv", "Gemm", and others.
                             Note: All quant nodes created using op_type criterion will have the same input
                             parameters (scale, zeropoint, bitwidth, and others.)
-                c) name and op_type: In this case, quant nodes will be added with precedence to "Name"
-                                    in comparison to "op_type".
+
+                c) name and op_type:
+                    In this case, quant nodes will be added with precedence to "Name" in comparison to "op_type".
 
             Positions:  ("input", index) or  ("output", index)
+
                 a) "input":  indicates that the user want to quantize the input of the selected node.
                 b) "output": indicates that the user want to quantize the output of the selected node.
                 c) index: refers to the input/output index to quantize (a node can have multiple inputs and outputs)
@@ -188,7 +200,8 @@ class QuantizeGraph(Transformation):
         5) Return:
                 Returns a model with new quant nodes created at the positions specified using the "quantnode_map".
 
-        6) Example:
+        6) Example::
+
                 quantnode_map = {"name": {"Conv_0": [(("input", 0), (1, 0, 8, 0, 1, "ROUND")),
                                                 (("input", 1), (1, 0, 8, 0, 1, "ROUND")),
                                                 (("output", 0), (1, 0, 8, 0, 1, "ROUND"))],
@@ -200,6 +213,7 @@ class QuantizeGraph(Transformation):
                                                    (("input", 1), (1, 0, 8, 0, 1, "ROUND")),
                                                    (("input", 2), (1, 0, 8, 0, 1, "ROUND")),
                                                    (("output", 0), (1, 0, 8, 0, 1, "ROUND"))]}}
+
     """
 
     def __init__(self, quantnode_map):

@@ -7,7 +7,7 @@ It is manually updated, since QONNX custom operators are relatively few in numbe
 
 |**Operator**|**Since version**||
 |-|-|-|
-|<a href="bipolarquant_v1.md">BipolarQuant</a>|<a href="bipolarquant_v1.md">1</a>|
-|<a href="floatquant_v1.md">FloatQuant</a>|<a href="floatquant_v1.md">1</a>|
-|<a href="intquant_v1.md">IntQuant</a>|<a href="intquant_v1.md">1</a>|
-|<a href="trunc_v2.md">Trunc</a>|<a href="trunc_v2.md">2</a>, <a href="trunc_v1.md">1</a>|
+|[BipolarQuant](bipolarquant_v1.md) | [1](bipolarquant_v1.md)||
+|[FloatQuant](floatquant_v1.md)      | [1](floatquant_v1.md)||
+|[IntQuant](intquant_v1.md)          | [1](intquant_v1.md)||
+|[Trunc](trunc_v2.md)                | [2](trunc_v2.md), [1](trunc_v1.md)||
