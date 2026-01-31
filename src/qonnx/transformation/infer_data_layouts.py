@@ -51,6 +51,11 @@ def _dims_to_layout(model, node, ndims):
                     return DataLayout.NWC
                 elif layout == "NC" and ndims == 2:
                     return DataLayout.NC
+                # 5D
+                elif layout == "NCDHW" and ndims == 5:
+                    return DataLayout.NCDHW
+                elif layout == "NDHWC" and ndims == 5:
+                    return DataLayout.NDHWC
                 else:
                     return DataLayout.UNKNOWN
             else:
@@ -87,6 +92,9 @@ def _dims_to_layout(model, node, ndims):
                     return DataLayout.NWC
                 elif ndims == 2:
                     return DataLayout.NC
+                # 5D
+                elif ndims == 5:
+                    return DataLayout.NCDHW
                 else:
                     return DataLayout.UNKNOWN
 
@@ -159,6 +167,11 @@ class InferDataLayouts(Transformation):
                 graph_modified = True
                 warnings.warn("Assuming 2D input is NC")
                 model.set_tensor_layout(inp_name, DataLayout.NC)
+            # 5D
+            elif len(inp_shape) == 5:
+                graph_modified = True
+                warnings.warn("Assuming 5D input is NCDHW")
+                model.set_tensor_layout(inp_name, DataLayout.NCDHW)
             else:
                 raise Exception(
                     """Unknown number of dims for input, don't know
