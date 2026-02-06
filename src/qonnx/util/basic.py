@@ -31,7 +31,7 @@ import os
 import random
 import string
 import warnings
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Sequence, cast
 
 from onnx import GraphProto, ModelProto
 
@@ -247,12 +247,13 @@ def gen_finn_dt_tensor(finn_dt: BaseDataType, tensor_shape: tuple[int, ...] | li
     elif finn_dt == DataType["BINARY"]:
         tensor_values = np.random.randint(2, size=tensor_shape)
     elif "INT" in finn_dt.name or finn_dt == DataType["TERNARY"]:
-        tensor_values = np.random.randint(int(finn_dt.min()), high=int(finn_dt.max()) + 1, size=tensor_shape)
+        tensor_values = np.random.randint(
+            int(finn_dt.min()), high=int(finn_dt.max()) + 1, size=tensor_shape, dtype=finn_dt.to_numpy_dt()
+        )
     elif "FIXED" in finn_dt.name:
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
-        tensor_values = np.random.randint(int(int_dt.min()), high=int(int_dt.max()) + 1, size=tensor_shape)
-        assert isinstance(finn_dt, FixedPointType)
-        tensor_values = tensor_values * finn_dt.scale_factor()
+        tensor_values = np.random.randint(int(int_dt.min()), high=int(int_dt.max()) + 1, size=tensor_shape, dtype=int_dt.to_numpy_dt())
+        tensor_values = tensor_values * cast("FixedPointType",finn_dt).scale_factor()
     elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         tensor_values = np.random.randn(*tensor_shape)
     else:

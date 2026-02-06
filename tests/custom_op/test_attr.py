@@ -28,15 +28,20 @@
 
 import numpy as np
 import onnx.parser as oprs
+import pytest
 
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.base import CustomOp
 from qonnx.custom_op.registry import add_op_to_domain, getCustomOp
+from onnx import helper
 
 
 class AttrTestOp(CustomOp):
     def get_nodeattr_types(self):
-        my_attrs = {"tensor_attr": ("t", True, np.asarray([])), "strings_attr": ("strings", True, [""])}
+        my_attrs = {
+            "tensor_attr": ("t", True, np.asarray([])),
+            "strings_attr": ("strings", True, [""]),
+        }
         return my_attrs
 
     def make_shape_compatible_op(self, model):
@@ -101,3 +106,178 @@ def test_attr():
     strings_attr_prod[0] = "test"
     inst.set_nodeattr("strings_attr", strings_attr_prod)
     assert inst.get_nodeattr("strings_attr") == ["test"] + strings_attr[1:]
+
+
+class MyCustomOp(CustomOp):
+    def __init__(self, onnx_node, onnx_opset_version=10):
+        super().__init__(onnx_node, onnx_opset_version)
+
+    def get_nodeattr_types(self):
+        return {
+            "my_int_attr": ("i", False, -1),
+            "my_float_attr": ("f", False, 0.0),
+            "my_string_attr": ("s", False, "default"),
+            "my_ints_attr": ("ints", False, []),
+            "my_floats_attr": ("floats", False, []),
+            "my_strings_attr": ("strings", False, []),
+            "my_allowed_attr": ("i", False, 1, {1, 2, 3}),
+            "my_tensor_attr": ("t", False, np.array([])),
+        }
+
+    def execute_node(self, context, graph):
+        pass
+
+    def infer_node_datatype(self, model):
+        pass
+
+    def make_shape_compatible_op(self, model):
+        pass
+
+    def verify_node(self):
+        pass
+
+
+def test_set_get_nodeattr():
+    node = helper.make_node("myOpType", [], [])
+    myCustomOp = MyCustomOp(node, 13)
+
+    # Test integer attribute
+    assert myCustomOp.get_nodeattr("my_int_attr") == -1
+    myCustomOp.set_nodeattr("my_int_attr", 2)
+    assert myCustomOp.get_nodeattr("my_int_attr") == 2
+
+    # Test that setting wrong type raises TypeError
+    with pytest.raises(TypeError, match="expects int"):
+        myCustomOp.set_nodeattr("my_int_attr", 2.5)
+    with pytest.raises(TypeError, match="expects int"):
+        myCustomOp.set_nodeattr("my_int_attr", "string")
+
+    # Test float attribute
+    assert myCustomOp.get_nodeattr("my_float_attr") == 0.0
+    myCustomOp.set_nodeattr("my_float_attr", 3.14)
+    assert abs(myCustomOp.get_nodeattr("my_float_attr") - 3.14) < 1e-6
+
+    with pytest.raises(TypeError, match="expects float"):
+        myCustomOp.set_nodeattr("my_float_attr", 42)
+    with pytest.raises(TypeError, match="expects float"):
+        myCustomOp.set_nodeattr("my_float_attr", "string")
+
+    # Test string attribute
+    assert myCustomOp.get_nodeattr("my_string_attr") == "default"
+    myCustomOp.set_nodeattr("my_string_attr", "test_value")
+    assert myCustomOp.get_nodeattr("my_string_attr") == "test_value"
+
+    with pytest.raises(TypeError, match="expects str"):
+        myCustomOp.set_nodeattr("my_string_attr", 123)
+    with pytest.raises(TypeError, match="expects str"):
+        myCustomOp.set_nodeattr("my_string_attr", 3.14)
+
+    # Test ints attribute
+    assert myCustomOp.get_nodeattr("my_ints_attr") == []
+    myCustomOp.set_nodeattr("my_ints_attr", [1, 2, 3])
+    assert myCustomOp.get_nodeattr("my_ints_attr") == [1, 2, 3]
+
+    with pytest.raises(TypeError, match="expects list of ints"):
+        myCustomOp.set_nodeattr("my_ints_attr", [1, 2.5, 3])
+    with pytest.raises(TypeError, match="expects list of ints"):
+        myCustomOp.set_nodeattr("my_ints_attr", [1, "two", 3])
+    with pytest.raises(TypeError, match="expects list of ints"):
+        myCustomOp.set_nodeattr("my_ints_attr", 123)
+
+    # Test floats attribute
+    assert myCustomOp.get_nodeattr("my_floats_attr") == []
+    myCustomOp.set_nodeattr("my_floats_attr", [1.0, 2.5, 3.14])
+    result = myCustomOp.get_nodeattr("my_floats_attr")
+    assert len(result) == 3
+    assert abs(result[0] - 1.0) < 1e-6
+    assert abs(result[1] - 2.5) < 1e-6
+    assert abs(result[2] - 3.14) < 1e-6
+    # floats can accept ints
+    myCustomOp.set_nodeattr("my_floats_attr", [1, 2, 3])
+    assert myCustomOp.get_nodeattr("my_floats_attr") == [1, 2, 3]
+
+    with pytest.raises(TypeError, match="expects list of floats"):
+        myCustomOp.set_nodeattr("my_floats_attr", [1.0, "two", 3.0])
+    with pytest.raises(TypeError, match="expects list of floats"):
+        myCustomOp.set_nodeattr("my_floats_attr", 3.14)
+
+    # Test strings attribute
+    assert myCustomOp.get_nodeattr("my_strings_attr") == []
+    myCustomOp.set_nodeattr("my_strings_attr", ["a", "b", "c"])
+    assert myCustomOp.get_nodeattr("my_strings_attr") == ["a", "b", "c"]
+
+    with pytest.raises(TypeError, match="expects list of strings"):
+        myCustomOp.set_nodeattr("my_strings_attr", ["a", 2, "c"])
+    with pytest.raises(TypeError, match="expects list of strings"):
+        myCustomOp.set_nodeattr("my_strings_attr", "not a list")
+
+    # Test allowed_values validation
+    assert myCustomOp.get_nodeattr("my_allowed_attr") == 1
+    myCustomOp.set_nodeattr("my_allowed_attr", 2)
+    assert myCustomOp.get_nodeattr("my_allowed_attr") == 2
+    myCustomOp.set_nodeattr("my_allowed_attr", 3)
+    assert myCustomOp.get_nodeattr("my_allowed_attr") == 3
+
+    with pytest.raises(ValueError, match="not in"):
+        myCustomOp.set_nodeattr("my_allowed_attr", 5)
+
+    # Test tensor attribute (numpy arrays)
+    default_tensor = myCustomOp.get_nodeattr("my_tensor_attr")
+    assert default_tensor.shape == (0,)
+
+    # Set a 1D numpy array
+    tensor_1d = np.array([1, 2, 3, 4, 5], dtype=np.int32)
+    myCustomOp.set_nodeattr("my_tensor_attr", tensor_1d)
+    result_1d = myCustomOp.get_nodeattr("my_tensor_attr")
+    assert np.array_equal(result_1d, tensor_1d)
+    assert result_1d.dtype == tensor_1d.dtype
+
+    # Set a 2D numpy array
+    tensor_2d = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+    myCustomOp.set_nodeattr("my_tensor_attr", tensor_2d)
+    result_2d = myCustomOp.get_nodeattr("my_tensor_attr")
+    assert np.array_equal(result_2d, tensor_2d)
+    assert result_2d.shape == tensor_2d.shape
+
+    # Set a 3D numpy array with different dtype
+    tensor_3d = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.int8)
+    myCustomOp.set_nodeattr("my_tensor_attr", tensor_3d)
+    result_3d = myCustomOp.get_nodeattr("my_tensor_attr")
+    assert np.array_equal(result_3d, tensor_3d)
+    assert result_3d.shape == (2, 2, 2)
+    assert result_3d.dtype == np.int8
+
+    # Test assigning numpy arrays to non-tensor attributes (should fail)
+    numpy_arr = np.array([1, 2, 3])
+    with pytest.raises(TypeError, match="expects int"):
+        myCustomOp.set_nodeattr("my_int_attr", numpy_arr)
+    with pytest.raises(TypeError, match="expects float"):
+        myCustomOp.set_nodeattr("my_float_attr", numpy_arr)
+    with pytest.raises(TypeError, match="expects str"):
+        myCustomOp.set_nodeattr("my_string_attr", numpy_arr)
+    with pytest.raises(TypeError, match="expects list of ints"):
+        myCustomOp.set_nodeattr("my_ints_attr", numpy_arr)
+    with pytest.raises(TypeError, match="expects list of floats"):
+        myCustomOp.set_nodeattr("my_floats_attr", numpy_arr)
+    with pytest.raises(TypeError, match="expects list of strings"):
+        myCustomOp.set_nodeattr("my_strings_attr", numpy_arr)
+
+    # Test assigning non-numpy values to tensor attribute (should fail or convert)
+    # Scalars should fail
+    with pytest.raises((TypeError, AttributeError)):
+        myCustomOp.set_nodeattr("my_tensor_attr", 42)
+    with pytest.raises((TypeError, AttributeError)):
+        myCustomOp.set_nodeattr("my_tensor_attr", 3.14)
+    with pytest.raises((TypeError, AttributeError)):
+        myCustomOp.set_nodeattr("my_tensor_attr", "string")
+    
+    # Test assigning lists to tensor attribute (should fail with TypeError)
+    # Plain lists are not accepted - must be numpy arrays
+    with pytest.raises(TypeError, match="expects numpy array"):
+        myCustomOp.set_nodeattr("my_tensor_attr", [10, 20, 30, 40])
+    
+    with pytest.raises(TypeError, match="expects numpy array"):
+        myCustomOp.set_nodeattr("my_tensor_attr", [[1, 2, 3], [4, 5, 6]])
+    
+    with pytest.raises(TypeError, match="expects numpy array"):
+        myCustomOp.set_nodeattr("my_tensor_attr", [1.5, 2.5, 3.5])

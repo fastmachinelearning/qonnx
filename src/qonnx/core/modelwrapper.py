@@ -50,6 +50,7 @@ from qonnx.core.datatype import BaseDataType, DataType
 from qonnx.custom_op.registry import getCustomOp, is_custom_op
 from qonnx.transformation.double_to_single_float import DoubleToSingleFloat
 from qonnx.transformation.general import (
+    GiveUniqueParameterTensors,
     RemoveStaticGraphInputs,
     RemoveUnusedTensors,
     SortCommutativeInputsInitializerLast,
@@ -265,6 +266,7 @@ class ModelWrapper:
             RemoveStaticGraphInputs(),
             SortGraph(),
             SortCommutativeInputsInitializerLast(),
+            GiveUniqueParameterTensors(),
         ]
         for trn in cleanup_transforms:
             transformed_model = transformed_model.transform(
@@ -644,6 +646,14 @@ class ModelWrapper:
         names += [x.name for x in graph.input]
         names += [x.name for x in graph.output]
         return names
+
+    def get_first_global_in(self) -> str:
+        """Return the name of the first global input tensor."""
+        return self.graph.input[0].name
+
+    def get_first_global_out(self) -> str:
+        """Return the name of the first global output tensor."""
+        return self.graph.output[0].name
 
     def make_new_valueinfo_name(self) -> str:
         """Returns a name that can be used for a new value_info."""
