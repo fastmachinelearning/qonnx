@@ -28,11 +28,15 @@
 
 import pytest
 
+import numpy as np
 import os
 
-from qonnx.core.datatype import DataType
+from qonnx.core.datatype import DataType, FixedPointType
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.transformation.fixedpt_quantize import FixedPointQuantizeParams, FixedPointQuantizeParamsFromDict
+from qonnx.transformation.fixedpt_quantize import (
+    FixedPointQuantizeParams,
+    FixedPointQuantizeParamsFromDict,
+)
 from qonnx.util.cleanup import cleanup_model
 from qonnx.util.test import download_model
 
@@ -376,7 +380,9 @@ def test_fixedpt_quantize_from_dict(test_case):
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
     # test Fixedpt conversion
-    fxp_transform = FixedPointQuantizeParamsFromDict(test_details["quant_dict"], rounding_mode=test_details["rounding_mode"])
+    fxp_transform = FixedPointQuantizeParamsFromDict(
+        test_details["quant_dict"], rounding_mode=test_details["rounding_mode"]
+    )
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
 
@@ -446,14 +452,16 @@ fixedpt_details = {
 @pytest.mark.parametrize("test_case", fixedpt_details.keys())
 def test_fixedpt_quantize(test_case):
     test_details = fixedpt_details[test_case]
-    dl_file = download_model(test_model=test_details["test_model"])
+    dl_file : str = download_model(test_model=test_details["test_model"]) # type: ignore
     assert os.path.isfile(dl_file)
     model = ModelWrapper(dl_file)
     model = cleanup_model(model)
 
-    tdtype = test_details["dtype"]
-    fxp_transform = FixedPointQuantizeParams(tdtype, rounding_mode=test_details["rounding_mode"])
-    tdtype = DataType[tdtype]
+    tdtype = test_details["dtype"] # type: ignore
+    fxp_transform = FixedPointQuantizeParams(
+        tdtype, rounding_mode=test_details["rounding_mode"] # type: ignore
+    )
+    tdtype : FixedPointType = DataType[tdtype] # type: ignore
     model = model.transform(fxp_transform)
     model = cleanup_model(model)
 

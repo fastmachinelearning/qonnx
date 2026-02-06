@@ -47,9 +47,16 @@ Guide to writing QONNX transformations
   manually re-apply the transform.
 """
 
+from __future__ import annotations
+
 import copy
 import multiprocessing as mp
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from onnx import NodeProto
+    from qonnx.core.modelwrapper import ModelWrapper
 
 from qonnx.util.basic import get_num_default_workers
 
@@ -58,11 +65,11 @@ class Transformation(ABC):
     """Transformation class all transformations are based on. Contains only
     abstract method apply() every transformation has to fill."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     @abstractmethod
-    def apply(self, model):
+    def apply(self, model: ModelWrapper) -> tuple[ModelWrapper, bool]:
         pass
 
 
@@ -83,7 +90,7 @@ class NodeLocalTransformation(Transformation):
     * (any other int>0): set number of parallel workers
     """
 
-    def __init__(self, num_workers=None):
+    def __init__(self, num_workers: int | None = None) -> None:
         super().__init__()
         if num_workers is None:
             self._num_workers = get_num_default_workers()
@@ -94,15 +101,15 @@ class NodeLocalTransformation(Transformation):
             self._num_workers = mp.cpu_count()
 
     @abstractmethod
-    def applyNodeLocal(self, node):
+    def applyNodeLocal(self, node) -> tuple[NodeProto, bool]:
         pass
 
-    def apply(self, model):
+    def apply(self, model: ModelWrapper) -> tuple[ModelWrapper, bool]:
         # make a detached copy of the input model that applyNodeLocal
         # can use for read-only access
         self.ref_input_model = copy.deepcopy(model)
         # Remove old nodes from the current model
-        old_nodes = []
+        old_nodes: list[NodeProto] = []
         for i in range(len(model.graph.node)):
             old_nodes.append(model.graph.node.pop())
 

@@ -75,6 +75,8 @@ def test_datatypes():
     assert DataType["FLOAT32"].signed()
     assert DataType["BIPOLAR"].signed()
     assert DataType["TERNARY"].signed()
+    assert DataType["FLOAT32"].allowed(0.0625)
+    assert DataType["FLOAT16"].allowed(0.0625)
     assert str(DataType["TERNARY"]) == "TERNARY"
 
 
@@ -397,6 +399,8 @@ vectorize_details = {
         np.array([[True, True, True], [True, False, True]]),
     ],
     "FLOAT<4,0,5>": [np.array([0.0, 0.0625, 0.03125]), np.array([True, True, False])],
+    "FLOAT32": [np.array([0.0, 0.0625, 0.03125]), np.array([True, True, True])],
+    "FLOAT16": [np.array([0.0, 0.0625, 0.03125]), np.array([True, True, True])],
 }
 
 
@@ -404,4 +408,5 @@ vectorize_details = {
 def test_vectorized_allowed(datatype):
     input_values, golden_out = vectorize_details[datatype]
     produced_out = DataType[datatype].allowed(input_values)
+    assert isinstance(produced_out, np.ndarray)
     assert np.all(golden_out == produced_out)

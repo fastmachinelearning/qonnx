@@ -30,16 +30,17 @@
 import numpy as np
 from abc import ABC, abstractmethod
 from enum import Enum, EnumMeta
+from typing import Union
 
 
 class BaseDataType(ABC):
     "Base class for QONNX data types."
 
-    def signed(self):
+    def signed(self) -> bool:
         "Returns whether this DataType can represent negative numbers."
         return self.min() < 0
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, BaseDataType):
             return self.get_canonical_name() == other.get_canonical_name()
         elif isinstance(other, str):
@@ -47,108 +48,114 @@ class BaseDataType(ABC):
         else:
             return NotImplemented
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.get_canonical_name())
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self.get_canonical_name()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.get_canonical_name()
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.get_canonical_name()
 
     @abstractmethod
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         "Returns the number of bits required for this DataType."
         pass
 
     @abstractmethod
-    def min(self):
+    def min(self) -> Union[int, float]:
         "Returns the smallest possible value allowed by this DataType."
         pass
 
     @abstractmethod
-    def max(self):
+    def max(self) -> Union[int, float]:
         "Returns the largest possible value allowed by this DataType."
         pass
 
     @abstractmethod
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         """Check whether given value is allowed for this DataType.
 
-        * value (float32 | np.ndarray): value to be checked
-
-        Returns a boolean numpy array of the same shape as `value`"""
+        * value (float32): value to be checked
+        * returns: bool if input is scalar, ndarray of bools if input is ndarray"""
         pass
 
     @abstractmethod
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         """Returns the number of possible values this DataType can take. Only
         implemented for integer types for now."""
         pass
 
     @abstractmethod
-    def is_integer(self):
+    def is_integer(self) -> bool:
         "Returns whether this DataType represents integer values only."
         pass
 
     @abstractmethod
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         "Returns whether this DataType represent fixed-point values only."
         pass
 
     @abstractmethod
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         "Returns the corresponding Vivado HLS datatype name."
         pass
 
     @abstractmethod
-    def to_numpy_dt(self):
+    def to_numpy_dt(self) -> np.dtype:
         "Return an appropriate numpy datatype that can represent this QONNX DataType."
         pass
 
     @abstractmethod
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         "Return a canonical string representation of this QONNX DataType."
 
 
 class FloatType(BaseDataType):
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         return 32
 
-    def min(self):
-        return np.finfo(np.float32).min
+    def min(self) -> float:
+        return float(np.finfo(np.float32).min)
 
-    def max(self):
-        return np.finfo(np.float32).max
+    def max(self) -> float:
+        return float(np.finfo(np.float32).max)
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
+        if isinstance(value, np.ndarray):
+            return np.ones(value.shape, dtype=bool)
         return True
 
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         raise Exception("Undefined for FloatType")
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return False
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         return "float"
 
-    def to_numpy_dt(self):
-        return np.float32
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.float32)
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "FLOAT32"
 
 
 class ArbPrecFloatType(BaseDataType):
-    def __init__(self, exponent_bits, mantissa_bits, exponent_bias=None):
+    def __init__(
+        self,
+        exponent_bits: int,
+        mantissa_bits: int,
+        exponent_bias: Union[int, float, None] = None,
+    ) -> None:
         self._exponent_bits = exponent_bits
         self._mantissa_bits = mantissa_bits
 
@@ -157,37 +164,39 @@ class ArbPrecFloatType(BaseDataType):
             exponent_bias = (2.0 ** (exponent_bits - 1)) - 1
         self._exponent_bias = exponent_bias
 
-    def signed(self):
+    def signed(self) -> bool:
         "Returns whether this DataType can represent negative numbers."
         return True
 
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         # sign bit + exponent bits + mantissa bits
         return 1 + self.exponent_bits() + self.mantissa_bits()
 
-    def exponent_bits(self):
+    def exponent_bits(self) -> int:
         return self._exponent_bits
 
-    def mantissa_bits(self):
+    def mantissa_bits(self) -> int:
         return self._mantissa_bits
 
-    def exponent_bias(self):
+    def exponent_bias(self) -> Union[int, float]:
         return self._exponent_bias
 
-    def min(self):
+    def min(self) -> float:
         return -1 * self.max()
 
-    def max(self):
+    def max(self) -> float:
         # note: assumes no bits reserved for NaN/inf etc.
         exponent_bias = self.exponent_bias()
         exponent_bitwidth = self.exponent_bits()
         mantissa_bitwidth = self.mantissa_bits()
         max_exponent = (2.0**exponent_bitwidth) - 1.0 - exponent_bias
-        max_mantissa = np.sum((2.0 ** np.arange(0, -1.0 * mantissa_bitwidth - 1.0, -1.0)))
+        max_mantissa = np.sum(
+            (2.0 ** np.arange(0, -1.0 * mantissa_bitwidth - 1.0, -1.0))
+        )
         max_val = max_mantissa * (2**max_exponent)
-        return max_val
-
-    def allowed(self, value):
+        return float(max_val)
+    
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         # fp32 format parameters
         fp32_exponent_bias = 127
         fp32_mantissa_bitwidth = 23
@@ -215,111 +224,117 @@ class ArbPrecFloatType(BaseDataType):
         mantissa_ok = (mant_normalized & mantissa_mask) == 0
         return np.logical_and(mantissa_ok, range_ok)
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return False
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         assert False, "get_hls_datatype_str() not yet implemented for ArbPrecFloatType"
 
-    def to_numpy_dt(self):
-        return np.float32
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.float32)
 
-    def get_canonical_name(self):
-        return "FLOAT<%d,%d,%d>" % (self.exponent_bits(), self.mantissa_bits(), self.exponent_bias())
+    def get_canonical_name(self) -> str:
+        return "FLOAT<%d,%d,%d>" % (
+            self.exponent_bits(),
+            self.mantissa_bits(),
+            self.exponent_bias(),
+        )
 
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         # TODO: consider -0 and +0 as different values?
         # also assumes no special symbols like NaN, inf etc
         return 2 ** self.bitwidth()
 
 
 class Float16Type(BaseDataType):
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         return 16
 
-    def min(self):
-        return np.finfo(np.float16).min
+    def min(self) -> float:
+        return float(np.finfo(np.float16).min)
 
-    def max(self):
-        return np.finfo(np.float16).max
+    def max(self) -> float:
+        return float(np.finfo(np.float16).max)
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
+        if isinstance(value, np.ndarray):
+            return np.ones(value.shape, dtype=bool)
         return True
 
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         raise Exception("Undefined for Float16Type")
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return False
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         return "half"
 
-    def to_numpy_dt(self):
-        return np.float16
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.float16)
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "FLOAT16"
 
 
 class IntType(BaseDataType):
-    def __init__(self, bitwidth, signed):
+    def __init__(self, bitwidth: int, signed: bool) -> None:
         super().__init__()
         self._bitwidth = bitwidth
         self._signed = signed
 
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         return self._bitwidth
 
-    def min(self):
+    def min(self) -> Union[int, float]:
         unsigned_min = 0
         signed_min = -(2 ** (self.bitwidth() - 1))
         return signed_min if self._signed else unsigned_min
 
-    def max(self):
+    def max(self) -> Union[int, float]:
         unsigned_max = (2 ** (self.bitwidth())) - 1
         signed_max = (2 ** (self.bitwidth() - 1)) - 1
         return signed_max if self._signed else unsigned_max
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         value_is_integer = np.round(value) == value
         value_is_bounded = np.logical_and(self.min() <= value, value <= self.max())
         return np.logical_and(value_is_integer, value_is_bounded)
 
-    def get_num_possible_values(self):
-        return abs(self.min()) + abs(self.max()) + 1
+    def get_num_possible_values(self) -> int:
+        return int(abs(self.min()) + abs(self.max()) + 1)
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return True
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         if self.signed():
             return "ap_int<%d>" % self.bitwidth()
         else:
             return "ap_uint<%d>" % self.bitwidth()
 
-    def to_numpy_dt(self):
+    def to_numpy_dt(self) -> np.dtype:
         if self.bitwidth() <= 8:
-            return np.int8 if self.signed() else np.uint8
+            return np.dtype(np.int8 if self.signed() else np.uint8)
         elif self.bitwidth() <= 16:
-            return np.int16 if self.signed() else np.uint16
+            return np.dtype(np.int16 if self.signed() else np.uint16)
         elif self.bitwidth() <= 32:
-            return np.int32 if self.signed() else np.uint32
+            return np.dtype(np.int32 if self.signed() else np.uint32)
         elif self.bitwidth() <= 64:
-            return np.int64 if self.signed() else np.uint64
+            return np.dtype(np.int64 if self.signed() else np.uint64)
         else:
             raise Exception("Unknown numpy dtype for " + str(self))
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         if self.bitwidth() == 1 and (not self.signed()):
             return "BINARY"
         else:
@@ -328,107 +343,107 @@ class IntType(BaseDataType):
 
 
 class BipolarType(BaseDataType):
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         return 1
 
-    def min(self):
+    def min(self) -> int:
         return -1
 
-    def max(self):
+    def max(self) -> int:
         return +1
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         return np.isin(value, [-1, +1])
 
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         return 2
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return True
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         return "ap_int<1>"
 
-    def to_numpy_dt(self):
-        return np.int8
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.int8)
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "BIPOLAR"
 
 
 class TernaryType(BaseDataType):
-    def bitwidth(self):
+    def bitwidth(self) -> int:
         return 2
 
-    def min(self):
+    def min(self) -> int:
         return -1
 
-    def max(self):
+    def max(self) -> int:
         return +1
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         return np.isin(value, [-1, 0, +1])
 
-    def get_num_possible_values(self):
+    def get_num_possible_values(self) -> int:
         return 3
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return True
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         return "ap_int<2>"
 
-    def to_numpy_dt(self):
-        return np.int8
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.int8)
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "TERNARY"
 
 
 class FixedPointType(IntType):
-    def __init__(self, bitwidth, intwidth):
+    def __init__(self, bitwidth: int, intwidth: int) -> None:
         super().__init__(bitwidth=bitwidth, signed=True)
         assert intwidth < bitwidth, "FixedPointType violates intwidth < bitwidth"
         self._intwidth = intwidth
 
-    def int_bits(self):
+    def int_bits(self) -> int:
         return self._intwidth
 
-    def frac_bits(self):
+    def frac_bits(self) -> int:
         return self.bitwidth() - self.int_bits()
 
-    def scale_factor(self):
+    def scale_factor(self) -> float:
         return 2 ** -(self.frac_bits())
 
-    def min(self):
+    def min(self) -> float:
         return super().min() * self.scale_factor()
 
-    def max(self):
+    def max(self) -> float:
         return super().max() * self.scale_factor()
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         int_value = value / self.scale_factor()
         return IntType(self._bitwidth, True).allowed(int_value)
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return False
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return True
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         return "ap_fixed<%d, %d>" % (self.bitwidth(), self.int_bits())
 
-    def to_numpy_dt(self):
-        return np.float32
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.float32)
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "FIXED<%d,%d>" % (self.bitwidth(), self.int_bits())
 
 
@@ -436,41 +451,43 @@ class ScaledIntType(IntType):
     # scaled integer datatype, only intended for
     # inference cost calculations, many of the
     # member methods are not implemented
-    def __init__(self, bitwidth):
+    def __init__(self, bitwidth: int) -> None:
         super().__init__(bitwidth=bitwidth, signed=True)
 
-    def min(self):
+    def min(self) -> int:
         raise Exception("Undefined for ScaledIntType")
 
-    def max(self):
+    def max(self) -> int:
         raise Exception("Undefined for ScaledIntType")
 
-    def allowed(self, value):
+    def allowed(self, value: Union[int, float, np.ndarray]) -> Union[bool, np.ndarray]:
         raise Exception("Undefined for ScaledIntType")
 
-    def is_integer(self):
+    def is_integer(self) -> bool:
         return False
 
-    def is_fixed_point(self):
+    def is_fixed_point(self) -> bool:
         return False
 
-    def get_hls_datatype_str(self):
+    def get_hls_datatype_str(self) -> str:
         raise Exception("Undefined for ScaledIntType")
 
-    def to_numpy_dt(self):
-        return np.float32
+    def to_numpy_dt(self) -> np.dtype:
+        return np.dtype(np.float32)
 
-    def signed(self):
+    def signed(self) -> bool:
         "Returns whether this DataType can represent negative numbers."
         return True
 
-    def get_canonical_name(self):
+    def get_canonical_name(self) -> str:
         return "SCALEDINT<%d>" % (self.bitwidth())
 
 
-def resolve_datatype(name):
+def resolve_datatype(name: str) -> BaseDataType:
     if not isinstance(name, str):
-        raise TypeError(f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'")
+        raise TypeError(
+            f"Input 'name' must be of type 'str', but got type '{type(name).__name__}'"
+        )
 
     _special_types = {
         "BINARY": IntType(1, False),
@@ -520,7 +537,7 @@ def resolve_datatype(name):
 
 
 class DataTypeMeta(EnumMeta):
-    def __getitem__(self, name):
+    def __getitem__(self, name: str) -> BaseDataType:
         return resolve_datatype(name)
 
 
@@ -530,7 +547,7 @@ class DataType(Enum, metaclass=DataTypeMeta):
     interested in smaller integers down to ternary and bipolar."""
 
     @staticmethod
-    def get_accumulator_dt_cands():
+    def get_accumulator_dt_cands() -> list[str]:
         cands = ["BINARY"]
         cands += ["UINT%d" % (x + 1) for x in range(64)]
         cands += ["BIPOLAR", "TERNARY"]
@@ -538,7 +555,7 @@ class DataType(Enum, metaclass=DataTypeMeta):
         return cands
 
     @staticmethod
-    def get_smallest_possible(value):
+    def get_smallest_possible(value: Union[int, float]) -> BaseDataType:
         """Returns smallest (fewest bits) possible DataType that can represent
         value. Prefers unsigned integers where possible."""
         if not int(value) == value:

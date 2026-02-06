@@ -31,33 +31,30 @@ import os
 import random
 import string
 import warnings
+from typing import TYPE_CHECKING, Sequence, cast
 
-from qonnx.core.datatype import DataType
+from onnx import GraphProto, ModelProto
 
-# TODO solve by moving onnx-dependent fxns to onnx.py
-# finn-examples uses parts of qonnx without having
-# onnx installed and doesn't use this functionality
-# workaround to avoid import errors when onnx isn't
-# installed:
-try:
-    from onnx.helper import make_model, make_opsetid
-except ModuleNotFoundError:
-    make_model = None
-    make_opsetid = None
+from qonnx.core.datatype import BaseDataType, DataType, FixedPointType
+if TYPE_CHECKING:
+    from qonnx.core.modelwrapper import ModelWrapper
 
 
-def get_preferred_onnx_opset():
+
+def get_preferred_onnx_opset() -> int:
     "Return preferred ONNX opset version for QONNX"
     return 11
 
 
-def get_preferred_qonnx_opset():
+
+def get_preferred_qonnx_opset() -> int:
     "Return preferred ONNX opset version for QONNX"
     return 1
 
 
-def qonnx_make_model(graph_proto, **kwargs):
+def qonnx_make_model(graph_proto: GraphProto, **kwargs: object) -> ModelProto:
     "Wrapper around ONNX make_model with preferred qonnx opset version"
+    from onnx.helper import make_model, make_opsetid
     opset_imports = kwargs.pop("opset_imports", None)
     if opset_imports is None:
         opset_imports = [
@@ -70,7 +67,7 @@ def qonnx_make_model(graph_proto, **kwargs):
     return make_model(graph_proto, **kwargs)
 
 
-def is_finn_op(op_type):
+def is_finn_op(op_type: str) -> bool:
     """Deprecated: Use is_custom_op from qonnx.custom_op.registry instead.
 
     Return whether given op_type string is a QONNX or FINN custom op.
@@ -90,7 +87,7 @@ def is_finn_op(op_type):
     return is_custom_op(op_type)
 
 
-def get_num_default_workers():
+def get_num_default_workers() -> int:
     """Return the number of workers for parallel transformations. Controllable
     via the NUM_DEFAULT_WORKERS environment variable. If the env.var. is
     undefined, the default value of 1 is returned.
@@ -102,7 +99,7 @@ def get_num_default_workers():
         return 1
 
 
-def get_execution_error_thresh():
+def get_execution_error_thresh() -> float:
     "Return the max error that is allowed for rounding in QONNX execution."
     try:
         return float(os.environ["ERROR_THRESH"])
@@ -110,7 +107,7 @@ def get_execution_error_thresh():
         return 1e-2
 
 
-def get_sanitize_quant_tensors():
+def get_sanitize_quant_tensors() -> int:
     """Return whether tensors with quantization annotations should be sanitized.
     Enabled by default, disabling will yield faster ONNX execution but may give
     incorrect results. Use with caution."""
@@ -120,8 +117,7 @@ def get_sanitize_quant_tensors():
         # enabled by default
         return 1
 
-
-def get_by_name(container, name, name_field="name"):
+def get_by_name(container, name: str, name_field: str = "name"):
     """Return item from protobuf container by .name field if it exists, None otherwise.
     Will throw an Exception if multiple items are found, since this violates the
     ONNX standard."""
@@ -137,23 +133,23 @@ def get_by_name(container, name, name_field="name"):
         return container[ind]
 
 
-def remove_by_name(container, name, name_field="name"):
+def remove_by_name(container, name: str, name_field: str = "name") -> None:
     """Remove item from protobuf container by .name field if it exists."""
     item = get_by_name(container, name, name_field)
     if item is not None:
         container.remove(item)
 
 
-def random_string(stringLength=6):
+def random_string(stringLength: int = 6) -> str:
     """Randomly generate a string of letters and digits."""
     lettersAndDigits = string.ascii_letters + string.digits
     return "".join(random.choice(lettersAndDigits) for i in range(stringLength))
 
 
-def interleave_matrix_outer_dim_from_partitions(matrix, n_partitions):
+def interleave_matrix_outer_dim_from_partitions(matrix: np.ndarray, n_partitions: int) -> np.ndarray:
     """Interleave the outermost dimension of a matrix from given
     partitions (n_partitions)."""
-    if type(matrix) != np.ndarray or matrix.dtype not in [np.float32, np.float16]:
+    if type(matrix) is not np.ndarray or matrix.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         matrix = np.asarray(matrix, dtype=np.float32)
     shp = matrix.shape
@@ -174,7 +170,7 @@ def interleave_matrix_outer_dim_from_partitions(matrix, n_partitions):
     return matrix_r
 
 
-def roundup_to_integer_multiple(x, factor):
+def roundup_to_integer_multiple(x: int, factor: int) -> int:
     """Round up integer x to the nearest integer multiple of integer factor.
     Returns x if factor is set to -1. Both x and factor must otherwise be
     positive."""
@@ -195,14 +191,14 @@ def roundup_to_integer_multiple(x, factor):
             return x + (factor - (x % factor))
 
 
-def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
+def pad_tensor_to_multiple_of(ndarray: np.ndarray, pad_to_dims: Sequence[int], val: float = 0, distr_pad: bool = False) -> np.ndarray:
     """Pad each dimension of given NumPy ndarray using val, so that each
     dimension is a multiple of the respective value in pad_to_dims. -1 means
     do not pad that particular dimension. If distr_pad is False, all padding
     will be inserted after the existing values; otherwise it will be split
     evenly between before and after the existing values, with one extra value
     inserted after if the padding amount is not divisible by two."""
-    if type(ndarray) != np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
+    if type(ndarray) is not np.ndarray or ndarray.dtype not in [np.float32, np.float16]:
         # try to convert to a float numpy array (container dtype is float)
         ndarray = np.asarray(ndarray, dtype=np.float32)
     assert ndarray.ndim == len(
@@ -231,7 +227,7 @@ def pad_tensor_to_multiple_of(ndarray, pad_to_dims, val=0, distr_pad=False):
     return ret
 
 
-def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
+def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: BaseDataType) -> tuple[float, float]:
     """Calculate the minimum and maximum possible result (accumulator) values for a dot product x * A,
     given matrix A of dims (MW, MH), and vector (1, MW) with datatype vec_dt. Returns (acc_min, acc_max)."""
     max_vectors = np.where(matrix > 0, vec_dt.max(), vec_dt.min())
@@ -241,9 +237,9 @@ def calculate_matvec_accumulator_range(matrix: np.ndarray, vec_dt: DataType):
     return (min_value, max_value)
 
 
-def gen_finn_dt_tensor(finn_dt, tensor_shape):
+def gen_finn_dt_tensor(finn_dt: BaseDataType, tensor_shape: tuple[int, ...] | list[int]) -> np.ndarray:
     """Generates random tensor in given shape and with given QONNX DataType."""
-    if type(tensor_shape) == list:
+    if type(tensor_shape) is list:
         tensor_shape = tuple(tensor_shape)
     if finn_dt == DataType["BIPOLAR"]:
         tensor_values = np.random.randint(2, size=tensor_shape)
@@ -252,12 +248,12 @@ def gen_finn_dt_tensor(finn_dt, tensor_shape):
         tensor_values = np.random.randint(2, size=tensor_shape)
     elif "INT" in finn_dt.name or finn_dt == DataType["TERNARY"]:
         tensor_values = np.random.randint(
-            finn_dt.min(), high=finn_dt.max() + 1, size=tensor_shape, dtype=finn_dt.to_numpy_dt()
+            int(finn_dt.min()), high=int(finn_dt.max()) + 1, size=tensor_shape, dtype=finn_dt.to_numpy_dt()
         )
     elif "FIXED" in finn_dt.name:
         int_dt = DataType["INT" + str(finn_dt.bitwidth())]
-        tensor_values = np.random.randint(int_dt.min(), high=int_dt.max() + 1, size=tensor_shape, dtype=int_dt.to_numpy_dt())
-        tensor_values = tensor_values * finn_dt.scale_factor()
+        tensor_values = np.random.randint(int(int_dt.min()), high=int(int_dt.max()) + 1, size=tensor_shape, dtype=int_dt.to_numpy_dt())
+        tensor_values = tensor_values * cast("FixedPointType",finn_dt).scale_factor()
     elif finn_dt in [DataType["FLOAT32"], DataType["FLOAT16"]]:
         tensor_values = np.random.randn(*tensor_shape)
     else:
@@ -269,7 +265,7 @@ def gen_finn_dt_tensor(finn_dt, tensor_shape):
         return tensor_values.astype(np.float32)
 
 
-def calculate_signed_dot_prod_range(dt_a, dt_b, len):
+def calculate_signed_dot_prod_range(dt_a: BaseDataType, dt_b: BaseDataType, len: int) -> tuple[int | float, int | float]:
     """Returns the (min,max) values a dot product between two signed vectors of
     types dt_a and dt_b of len elements can take."""
     assert (
@@ -288,7 +284,7 @@ def calculate_signed_dot_prod_range(dt_a, dt_b, len):
     return (min_prod, max_prod)
 
 
-def sanitize_quant_values(model, node_tensors, execution_context, check_values=False):
+def sanitize_quant_values(model: "ModelWrapper", node_tensors: list[str], execution_context: dict[str, np.ndarray], check_values: bool = False) -> dict[str, np.ndarray]:
     """Sanitize given list of tensors in execution_context by rounding values
     that are supposed to be integers (as indicated by their quantization
     annotation). Will raise an assertion if the amount of rounding is too large.
@@ -306,7 +302,7 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
     """
 
     for tensor_name in node_tensors:
-        dtype = model.get_tensor_datatype(tensor_name)
+        dtype: BaseDataType = model.get_tensor_datatype(tensor_name)  # type: ignore[assignment]
         # non-integers don't need sanitization, skip to next
         # introduces less overhead and quicker runtime
         if not dtype.is_integer():
@@ -347,7 +343,7 @@ def sanitize_quant_values(model, node_tensors, execution_context, check_values=F
     return execution_context
 
 
-def auto_pad_to_explicit_padding(autopad_str, idim_h, idim_w, k_h, k_w, stride_h, stride_w, n_dims):
+def auto_pad_to_explicit_padding(autopad_str: str, idim_h: int, idim_w: int, k_h: int, k_w: int, stride_h: int, stride_w: int, n_dims: int) -> list[int]:
     pad_total_h = (stride_h - 1) * idim_h - stride_h + k_h
     pad_total_w = (stride_w - 1) * idim_w - stride_w + k_w
     pad_half_small_h = int((pad_total_h / 2))
