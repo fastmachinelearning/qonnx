@@ -31,7 +31,7 @@ import warnings
 from onnx import helper
 
 from qonnx.transformation.base import Transformation
-from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
+from qonnx.util.basic import auto_pad_to_explicit_padding, copy_metadata_props, get_by_name
 
 
 def _weight_shuffle(cnv_weights: np.ndarray, block_size: int) -> np.ndarray:
@@ -197,6 +197,7 @@ class SubPixelToDeconvolution(Transformation):
                         group=group,
                         dilations=dilation,
                     )
+                    copy_metadata_props(n, deconv_node)
                     W_deconv_init = weight_name
                     if weight_prod is not None:
                         W_deconv_init = q_w_name
