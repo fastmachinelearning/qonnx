@@ -54,7 +54,7 @@ class Conv_v1(ChannelsLastWrappedOp):
             "dilations": ("ints", True, []),
             # amount of padding to be inserted before/after each non-dummy spatial dim
             # i.e. [H_begin, W_begin, H_end, W_end]
-            "pads": ("ints", True, [0, 0, 0, 0]),  # default: no padding
+            "pads": ("ints", False, [0, 0, 0, 0]),  # default: no padding
             "group": ("i", True, 1),
         }
 
