@@ -1,4 +1,3 @@
-# Copies (deep-copies) python objects
 import copy
 
 # QONNX wrapper of ONNX model graphs
@@ -29,12 +28,10 @@ from qonnx.transformation.general import (  # isort: skip
 class ComposedTransformation(Transformation):
     # Initializes the transformation given a list of transformations
     def __init__(self, transformations: list[Transformation]):
-        # Initialize the transformation base class
         super().__init__()
         # Register the list of transformations to be applied in apply()
         self.transformations = transformations
 
-    # Applies the transform to a whole model graph
     def apply(self, model: ModelWrapper):  # noqa
         # Keep track of whether the graph has been modified
         graph_modified = False
@@ -54,7 +51,7 @@ class ComposedTransformation(Transformation):
                 # Break the loop if this transformation did not change anything
                 if not _graph_modified:
                     break
-            # Apply the cleanup transformations of the ModelWrapper
+            # Apply the default cleanup transformations of the ModelWrapper
             model.cleanup()
             # Apply some further cleanup transformations to the model graph
             # removing some clutter and keeping all names readable and ordered
