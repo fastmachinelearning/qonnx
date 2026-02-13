@@ -91,6 +91,8 @@ def test_attr():
     """
     model = oprs.parse_model(input)
     model = ModelWrapper(model)
+
+    # Now getCustomOp should find it through the manual registry
     inst = getCustomOp(model.graph.node[0])
 
     w_prod = inst.get_nodeattr("tensor_attr")

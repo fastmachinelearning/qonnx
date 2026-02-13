@@ -358,3 +358,124 @@ def auto_pad_to_explicit_padding(autopad_str: str, idim_h: int, idim_w: int, k_h
         return [pad_half_large_h, pad_half_large_w, pad_half_small_h, pad_half_small_w]
     else:
         raise Exception("Unsupported auto_pad: " + autopad_str)
+
+
+def copy_metadata_props(source_node, target_node, mode="overwrite"):
+    """Copy metadata properties from source node(s) to target node.
+
+    Parameters
+    ----------
+    source_node : onnx.NodeProto or list of onnx.NodeProto
+        Source node(s) from which to copy metadata_props. If a list is provided,
+        metadata from all nodes will be merged into the target node.
+    target_node : onnx.NodeProto
+        Target node to which metadata_props will be copied.
+    mode : str, optional
+        Mode for handling existing metadata properties in the target node.
+        Options are:
+        - "overwrite": Existing properties in the target node will be overwritten
+          by those from the source node(s) if they share the same key.
+        - "keep_existing": Existing properties in the target node will be kept,
+          and only new properties from the source node(s) will be added.
+        Default is "overwrite".
+
+    Returns
+    -------
+    None
+        Modifies target_node in place by extending its metadata_props.
+
+    Examples
+    --------
+    >>> # Copy from single node
+    >>> copy_metadata_props(old_node, new_node)
+    >>>
+    >>> # Copy from multiple nodes (e.g., when fusing)
+    >>> copy_metadata_props([quant_node, dequant_node], fused_node)
+    """
+    assert mode in ["overwrite", "keep_existing"], "Copy Metadata Mode must be either 'overwrite' or 'keep_existing'."
+
+    # Handle both single node and list of nodes
+    source_nodes = source_node if isinstance(source_node, list) else [source_node]
+
+    for node in source_nodes:
+        if hasattr(node, "metadata_props"):
+            # check for existing keys in target_node to avoid duplicates
+            if hasattr(target_node, "metadata_props"):
+                existing_keys = {prop.key for prop in target_node.metadata_props}
+            else:
+                existing_keys = set()
+
+            for prop in node.metadata_props:
+                if prop.key in existing_keys:
+                    if mode == "overwrite":
+                        # Overwrite existing metadata property
+                        for existing_prop in target_node.metadata_props:
+                            if existing_prop.key == prop.key:
+                                existing_prop.value = prop.value
+                                break
+                else:
+                    target_node.metadata_props.append(prop)
+
+
+def get_tensor_metadata_prop(model, tensor_name, key):
+    """Get metadata property from a tensor (input/output/initializer/value_info).
+
+    Args:
+        model: ModelWrapper instance
+        tensor_name: Name of the tensor
+        key: Metadata key to retrieve
+
+    Returns:
+        str: Metadata value if found, None otherwise
+    """
+    # Search all possible tensor locations
+    tensor = get_by_name(model.graph.input, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.output, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.initializer, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.value_info, tensor_name)
+
+    if tensor is not None:
+        meta = get_by_name(tensor.metadata_props, key, "key")
+        return meta.value if meta is not None else None
+    return None
+
+
+def set_tensor_metadata_prop(model, tensor_name, key, value):
+    """Set metadata property on a tensor (input/output/initializer/value_info).
+
+    Args:
+        model: ModelWrapper instance
+        tensor_name: Name of the tensor
+        key: Metadata key to set
+        value: Metadata value (will be converted to string)
+
+    Returns:
+        bool: True if successful, False if tensor not found
+    """
+    import onnx
+
+    # Search all possible tensor locations
+    tensor = get_by_name(model.graph.input, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.output, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.initializer, tensor_name)
+    if tensor is None:
+        tensor = get_by_name(model.graph.value_info, tensor_name)
+
+    if tensor is not None:
+        meta = get_by_name(tensor.metadata_props, key, "key")
+        if meta is None:
+            # Create new metadata entry
+            meta = onnx.StringStringEntryProto()
+            meta.key = key
+            meta.value = str(value)
+            tensor.metadata_props.append(meta)
+        else:
+            # Update existing entry
+            meta.value = str(value)
+        return True
+    return False
