@@ -139,13 +139,16 @@ class MultiThreshold(CustomOp):
         # tensor
         if not data_layout and len(v.shape) < 5:
             # Maps tensor rank to layout annotation
-            rank_to_layout = {0: None, 1: "C", 2: "NC", 3: "NWC", 4: "NCHW"}
+            rank_to_layout = {0: None, 1: None, 2: "NC", 3: "NWC", 4: "NCHW"}
             # Lookup the layout required by this input shape
             data_layout = rank_to_layout[len(v.shape)]
         # Lookup the index of the channel dimension in the data layout
         # Note: Assumes there is at most one "C" which denotes the channel
         # dimension
-        cdim = data_layout.index("C") if "C" in data_layout else 1
+        if data_layout is not None:
+            cdim = data_layout.index("C") if "C" in data_layout else 1
+        else:
+            cdim = 1
         # Rearrange the input to the expected (N, C, ...) layout
         orig_shape = v.shape
         v = v.swapaxes(cdim, 1)
