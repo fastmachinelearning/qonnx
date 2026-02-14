@@ -28,13 +28,13 @@
 
 import numpy as np
 import onnx.helper as helper
-
-# Protobuf onnx graph node type
-from onnx import NodeProto  # noqa
 from toposort import toposort_flatten
 
 import qonnx.util.basic as util
 from qonnx.transformation.base import Transformation
+
+# Protobuf onnx graph node type
+from onnx import NodeProto  # noqa
 
 
 class MovePadAttributeToTensor(Transformation):
@@ -64,6 +64,23 @@ class MovePadAttributeToTensor(Transformation):
                 pad_node.attribute.remove(padval)
 
         return (model, run_again)
+
+
+class FillEmptyRoI(Transformation):
+    """Fill empty RoI input tensor of Resize node to avoid issues during shape inference."""
+
+    def apply(self, model):
+        graph_modified = False
+        for i, node in enumerate(model.graph.node):
+            if node.op_type == "Resize":
+                if len(node.input) > 1 and node.input[1] == "":
+                    roi_name = model.make_new_valueinfo_name()
+                    roi_tensor = np.empty([0], dtype=np.float32)
+                    model.set_initializer(roi_name, roi_tensor)
+                    node.input[1] = roi_name
+                    graph_modified = True
+
+        return (model, graph_modified)
 
 
 class RemoveUnusedTensors(Transformation):
