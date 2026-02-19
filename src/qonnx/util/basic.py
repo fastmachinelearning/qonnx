@@ -43,7 +43,7 @@ if TYPE_CHECKING:
 
 def get_preferred_onnx_opset() -> int:
     "Return preferred ONNX opset version for QONNX"
-    return 11
+    return 13
 
 
 
