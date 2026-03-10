@@ -43,6 +43,7 @@ class FixedPointQuantizeParamsFromDict(Transformation):
     """
     Quantize model parameters to a given fixed-point representation.
     The self.max_err dictionary stores the maximum error for each quantized input after calling.
+
     Parameters:
         fixedpt_dict: Dictionary containing tensor names and their corresponding target fixed-point
                        data type or its canonical name
@@ -91,6 +92,7 @@ class FixedPointQuantizeParams(Transformation):
     Identifies specific operations in a model (e.g., "Add", "Mul") using a filter function,
     and quantizes any non-quantized input initializers to the given fixed-point representation.
     The self.max_err dictionary stores the maximum error for each quantized input after calling.
+
     Parameters:
         fixedpt_dtype: The fixed-point data type or its canonical name to use for quantization.
         op_filter: A lambda function to filter operations in the model graph

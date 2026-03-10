@@ -120,12 +120,14 @@ def qcdq_pattern(op, x, scale, zero_point, bitwidth, signed, narrow, rounding_mo
 def is_valid_qcdq_transformation(context, x, scale, zero_point, bitwidth, signed, narrow, rounding_mode, **_) -> bool:
     """Condition to check if the Quant node can be replaced.
     The following conditions must be satisfied:
+    
     - the scale, zero-point and bitwidth inputs for Quant must be statically specified
       by an initializer
     - the bitwidth must be an integer in the range [2, 8] # TODO: Change max bitwidth to 16 for opset >= 21
     - the zero-point tensor must be zero
     - the scale must be a scalar value or 1D tensor
     - the rounding_mode attribute must be ROUND
+
     """
 
     # Check scale
@@ -158,12 +160,14 @@ class QuantToQCDQ(Transformation):
     """Replace QONNX Quant-style quantization nodes with QuantizeLinear
     -> Clip -> DequantizeLinear (QCDQ)-style quantization nodes. The following
     restictions apply on the Quant:
+
     - the scale, zero-point and bitwidth inputs for Quant must be statically specified
       by an initializer
     - the bitwidth must be an integer in the range [2, 8]
     - the zero-point tensor must be zero
     - the scale must be a scalar value or 1D tensor
     - the rounding_mode attribute must be ROUND
+
     BipolarQuant is not (yet) supported.
     """
 

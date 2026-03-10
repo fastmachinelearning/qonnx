@@ -4,4 +4,4 @@
 License
 ========
 
-.. include:: ../LICENSE
+.. literalinclude:: ../LICENSE

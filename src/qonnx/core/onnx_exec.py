@@ -87,11 +87,14 @@ def execute_node(node, context, graph, opset_version, return_full_exec_context=F
             outp = node.output[output_ind]
 
             # retrieve the index of that name in node_outputs
+            list_ind = None
             for i in range(len(node_outputs)):
                 if outp == node_outputs[i].name:
                     list_ind = i
 
             # use that index to index output_list
+            if list_ind is None:
+                raise Exception("Output %s not found in node outputs." % outp)
             if output_list[list_ind].shape != context[outp].shape:
                 warnings.warn(
                     """Output shapes disagree after node %s execution:
