@@ -32,6 +32,7 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.change_batchsize import ChangeBatchSize
 from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
 from qonnx.transformation.fold_constants import FoldConstants
+from qonnx.transformation.gemm_to_matmul import GemmToMatMul
 from qonnx.transformation.general import (
     GiveReadableTensorNames,
     GiveUniqueNodeNames,
@@ -42,8 +43,9 @@ from qonnx.transformation.general import (
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 
-
-def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_conv_bias=False):
+def cleanup_model(
+    model, preserve_qnt_ops=True, override_inpsize=None, extract_conv_bias=False, gemm_to_matmul=False
+):
     """Execute the transformations for the cleanup function on a model level.
     This allows the reuse of the cleanup transformations, without needing to read/write the model from/to disk.
 
@@ -93,10 +95,25 @@ def cleanup_model(model, preserve_qnt_ops=True, override_inpsize=None, extract_c
         model = model.transform(GiveUniqueNodeNames())
         model = model.transform(GiveReadableTensorNames())
 
+    if gemm_to_matmul:
+        model = model.transform(GemmToMatMul())
+        model = model.transform(FoldTransposeIntoQuantInit())
+        model = model.transform(InferShapes())
+        model = model.transform(GiveUniqueNodeNames())
+        model = model.transform(GiveReadableTensorNames())
+
     return model
 
 
-def cleanup(in_file, *, out_file=None, preserve_qnt_ops=True, override_inpsize: str = None, extract_conv_bias=False):
+def cleanup(
+    in_file,
+    *,
+    out_file=None,
+    preserve_qnt_ops=True,
+    override_inpsize: str = None,
+    extract_conv_bias=False,
+    gemm_to_matmul=False,
+):
     """Execute a set of graph transformations to clean-up the given ONNX file.
 
     :param in_file: Filename for the input ONNX model
@@ -106,11 +123,16 @@ def cleanup(in_file, *, out_file=None, preserve_qnt_ops=True, override_inpsize: 
     :param override_inpsize: If specified, override the input size (e.g. "(1,3,224,224)" to set all or
         just 1 to set batchsize to 1) for the ONNX graph
     :param extract_conv_bias: If specified, separate Conv bias into its own Add node
+    :param gemm_to_matmul: If specified, convert GEMM nodes to MatMul + Add nodes
     """
 
     model = ModelWrapper(in_file)
     model = cleanup_model(
-        model, preserve_qnt_ops=preserve_qnt_ops, override_inpsize=override_inpsize, extract_conv_bias=extract_conv_bias
+        model,
+        preserve_qnt_ops=preserve_qnt_ops,
+        override_inpsize=override_inpsize,
+        extract_conv_bias=extract_conv_bias,
+        gemm_to_matmul=gemm_to_matmul,
     )
     if out_file is None:
         out_file = in_file.replace(".onnx", "_clean.onnx")
