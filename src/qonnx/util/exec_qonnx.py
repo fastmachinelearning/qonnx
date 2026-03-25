@@ -62,6 +62,7 @@ def exec_qonnx(
     output_mode: output_mode_options = OUTPUT_MODE_NAME,
     verify_npy: str = None,
     verify_argmax=False,
+    auto_reshape=True,
     save_modified_model: str = None,
     input_to_nchw=False,
     input_to_nhwc=False,
@@ -78,7 +79,9 @@ def exec_qonnx(
     The input model have been previously cleaned by the cleanup transformation or commandline tool.
 
     :param qonnx_model_file: Filename for the input ONNX model
-    :param in_npy: List of .npy files to supply as inputs. If not specified, inputs will be set to zero.
+    :param in_npy: List of .npy files (or single .npz file) to supply as inputs.
+        If .npz is used, it must contain a 'data' entry for inputs and 'target' for labels.
+        If not specified, inputs will be set to zero.
     :param override_batchsize: If specified, override the batch size for the ONNX graph
     :param override_opset: If specified, override the imported ONNX opset to this version.
     :param expose_intermediates: Comma-separated list of tensor name patterns.
@@ -87,6 +90,7 @@ def exec_qonnx(
     :param output_mode: Naming mode for generated output files.
     :param verify_npy: If specified, compare output to this file for top-1 accuracy measurement
     :param verify_argmax: If specified, take argmax of output before comparing to verify_npy
+    :param auto_reshape: If specified, automatically reshape the input data to the model's input shape.
     :param save_modified_model: If specified, save the modified model
         (after batchsize changes or exposed intermediate tensors) with this filename
     :param input_to_nchw: If specified, convert input tensors to NCHW format
@@ -134,8 +138,26 @@ def exec_qonnx(
     inp_data = []
     labels = None
     if len(in_npy) > 0:
-        # load provided npy files and arrange in batches
-        inp_data = [np.load(x) for x in in_npy]
+        if len(in_npy) == 1 and in_npy[0].endswith(".npz"):
+            npz = np.load(in_npy[0])
+            inp_data = [npz["data"]]
+            if "target" in npz:
+                labels = npz["target"]
+                verify_npy = in_npy[0] + ":target"
+        else:
+            # load provided npy files and arrange in batches
+            inp_data = [np.load(x) for x in in_npy]
+            if verify_npy is not None:
+                labels = np.load(verify_npy)
+
+        if auto_reshape:
+            for i in range(len(inp_data)):
+                target_shape = model.get_tensor_shape(model.graph.input[i].name)
+                dset_size = inp_data[i].shape[0]
+                new_shape = (dset_size, *target_shape[1:])
+                if inp_data[i].shape != new_shape:
+                    inp_data[i] = inp_data[i].reshape(new_shape)
+
         inp_data_reshaped = []
         for inp in inp_data:
             dset_size = inp.shape[0]
@@ -145,7 +167,6 @@ def exec_qonnx(
             inp_data_reshaped.append(inp)
         inp_data = inp_data_reshaped
         if verify_npy is not None:
-            labels = np.load(verify_npy)
             assert labels.shape[0] == dset_size, "Label size must match dataset size"
             labels = labels.reshape(n_dset_iters, bsize, *labels.shape[1:])
     else:
