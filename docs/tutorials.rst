@@ -10,17 +10,13 @@ All Jupyter notebooks can be found under the `notebook folder <https://github.co
 
 
 * 0_how_to_work_with_onnx
-
-  * This notebook can help you to learn how to create and manipulate a simple ONNX model, also by using QONNX
+    This notebook can help you to learn how to create and manipulate a simple ONNX model, also by using QONNX
 
 * 1_custom_analysis_pass
-
-  * Explains what an analysis pass is and how to write one for QONNX.
+    Explains what an analysis pass is and how to write one for QONNX.
 
 * 2_custom_transformation_pass
-
-  * Explains what a transformation pass is and how to write one for QONNX.
+    Explains what a transformation pass is and how to write one for QONNX.
 
 * 3_custom_op
-
-  * Explains the basics of QONNX custom ops and how to define a new one.
+    Explains the basics of QONNX custom ops and how to define a new one.

@@ -32,9 +32,8 @@ import numpy as np
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op import channels_last
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_last_args
-from qonnx.custom_op.registry import getCustomOp
+from qonnx.custom_op.registry import get_ops_in_domain, getCustomOp, is_custom_op
 from qonnx.transformation.channels_last import (
     AbsorbChanFirstIntoMatMul,
     InsertChannelsLastDomainsAndTrafos,
@@ -47,7 +46,6 @@ from qonnx.transformation.general import GiveUniqueNodeNames
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
-from qonnx.util.basic import is_finn_op
 from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 from qonnx.util.to_channels_last import to_channels_last
 
@@ -92,7 +90,7 @@ def analysis_testing_for_chanlast_domain(model):
         "BatchNormalization": 3,
     }
     # Check that all wrapped_ops in the registry have a definition here
-    chanlast_op_types = list(channels_last.custom_op.keys())
+    chanlast_op_types = list([x[0] for x in get_ops_in_domain("qonnx.custom_op.channels_last")])
     testable_op_types = list(ChanLast_node_types_and_min_dim_input.keys())
     for op_name in chanlast_op_types:
         assert (
@@ -126,7 +124,7 @@ def analysis_test_for_left_transposes(model, test_model, make_input_channels_las
 def verify_all_nodes(model):
     result = dict()
     for n in model.graph.node:
-        if is_finn_op(n.domain):
+        if is_custom_op(n.domain):
             n_instance = getCustomOp(n)
             verify_result = n_instance.verify_node()
             result[n.name] = verify_result

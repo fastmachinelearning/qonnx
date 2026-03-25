@@ -6,7 +6,7 @@ The attribute rounding_mode defines how truncated values are rounded.
 
 #### Version
 
-This operator is not part of the ONNX standard and is not currently versioned.
+The description of this operator in this document corresponds to `qonnx.custom_ops.general` opset version 1.
 
 #### Attributes
 

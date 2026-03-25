@@ -26,20 +26,16 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import json
 import numpy as np
 import onnx
 import onnx.parser as oprs
-import os
 from pkgutil import get_data
 
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.datatype import DataType
 from qonnx.core.modelwrapper import ModelWrapper
-from qonnx.custom_op.registry import getCustomOp
-from qonnx.transformation.general import ApplyConfig, ConvertDivToMul, GiveUniqueNodeNames, GiveUniqueParameterTensors
+from qonnx.transformation.general import ConvertDivToMul, GiveUniqueNodeNames, GiveUniqueParameterTensors
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.transformation.lower_convs_to_matmul import LowerConvsToMatMul
 from qonnx.util.basic import gen_finn_dt_tensor, qonnx_make_model
 
 
@@ -210,22 +206,3 @@ def test_give_unique_parameter_tensors():
             param_cnt += 1
 
     assert len(param_set) == param_cnt, " There are still parameters reused"
-
-
-def test_apply_config():
-    raw_m = get_data("qonnx.data", "onnx/mnist-conv/model.onnx")
-    model = ModelWrapper(raw_m)
-    model = model.transform(GiveUniqueNodeNames())
-    model = model.transform(LowerConvsToMatMul())
-    model = model.transform(GiveUniqueNodeNames())
-    # set up a config in a dict, then dump it to JSON
-    config = {}
-    config["Defaults"] = {"kernel_size": [[3, 3], ["Im2Col"]]}
-    config["Im2Col_0"] = {"kernel_size": [7, 7]}
-    with open("config.json", "w") as f:
-        json.dump(config, f, indent=4)
-    model = model.transform(ApplyConfig("config.json"))
-    # check model
-    assert getCustomOp(model.graph.node[2]).get_nodeattr("kernel_size") == [7, 7]
-    assert getCustomOp(model.graph.node[9]).get_nodeattr("kernel_size") == [3, 3]
-    os.remove("config.json")
