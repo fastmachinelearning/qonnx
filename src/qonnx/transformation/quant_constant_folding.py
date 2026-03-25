@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # Protobuf onnx graph node type
-from onnx import NodeProto
+from onnx import NodeProto, helper as oh
 
 # QONNX wrapper of ONNX model graphs
 from qonnx.core.modelwrapper import ModelWrapper
@@ -42,8 +42,8 @@ from qonnx.util.basic import get_by_name
 # Tests whether a node is a quant-init, i.e., a quantizer with only initializer
 # inputs
 def is_quant_init(node: NodeProto, model: ModelWrapper):
-    # Only handle existing Quant or BipolarQuant type nodes
-    if node is not None and node.op_type in {"Quant", "BipolarQuant"}:
+    # Only handle existing Quant, BipolarQuant or DequantizeLinear type nodes
+    if node is not None and node.op_type in {"Quant", "BipolarQuant", "DequantizeLinear"}:
         # All inputs must have initializers, otherwise this is just a normal
         # quant, but not a quant-init
         return all(model.get_initializer(i) is not None for i in node.input)
@@ -87,6 +87,25 @@ class FoldTransposeIntoQuantInit(Transformation):
                     # Convert permutation indices to list of integers if it is
                     # given
                     perm = perm.ints if perm is not None else None
+
+                    # If this is a DequantizeLinear node, we might need to update
+                    # the axis attribute
+                    if quant_init.op_type == "DequantizeLinear":
+                        axis_attr = get_by_name(quant_init.attribute, "axis")
+                        axis = axis_attr.i if axis_attr is not None else 1
+                        # Update the axis attribute according to the permutation
+                        if perm is None:
+                            # Default transpose reverses all axes
+                            ndim = len(model.get_tensor_shape(quant_init.input[0]))
+                            new_axis = (ndim - 1) - axis
+                        else:
+                            new_axis = list(perm).index(axis)
+                        # Re-assign the axis attribute
+                        new_axis_attr = oh.make_attribute("axis", new_axis)
+                        if axis_attr is not None:
+                            quant_init.attribute.remove(axis_attr)
+                        quant_init.attribute.append(new_axis_attr)
+
                     # Transpose all(!) initializer inputs of the quant node
                     for i in quant_init.input:
                         # Get the initializer tensor
