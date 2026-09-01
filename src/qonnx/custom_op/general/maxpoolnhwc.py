@@ -39,7 +39,15 @@ from qonnx.util.basic import qonnx_make_model
 def compute_pool_output_dim(ifm_dim, k, stride, pad=0, ceil_mode=0):
     "Return spatial output dimension size for pooling with given params."
     if ceil_mode:
-        return int(np.ceil(((ifm_dim + 2 * pad - k) / stride) + 1))
+        out_dim = int(np.ceil(((ifm_dim + 2 * pad - k) / stride) + 1))
+        # per the ONNX spec (Operators.md, MaxPool since opset 22) and to match
+        # PyTorch's pooling behavior, the last pooling window must not start
+        # inside the right/bottom padding region. If the naive ceil-based
+        # formula produces such a window, drop it.
+        # See: https://github.com/onnx/onnx/pull/5741
+        if (out_dim - 1) * stride >= ifm_dim + pad:
+            out_dim -= 1
+        return out_dim
     else:
         return int(np.floor(((ifm_dim + 2 * pad - k) / stride) + 1))
 
