@@ -281,3 +281,48 @@ def test_analysis_fxn_without_apply_to_subgraphs_fails():
     # Check that an analysis function fails when apply_to_subgraphs is False
     model = make_subgraph_model(("top", [("sub1", []), ("sub2", [])]))
     model.analysis(dummy_analysis_fxn, apply_to_subgraphs=True)
+
+
+class SelfHandlingTransform(Transformation):
+    """A transformation that manages its own subgraph traversal (e.g. because it
+    needs hierarchical context the generic descent cannot provide). It therefore
+    sets handles_subgraphs_internally = True and must not be driven via the
+    generic apply_to_subgraphs=True path."""
+
+    handles_subgraphs_internally = True
+
+    def __init__(self):
+        self.visited = list()
+
+    def apply(self, model_wrapper):
+        self.visited.append(model_wrapper.model.graph.name)
+        return model_wrapper, False
+
+
+@pytest.mark.parametrize("cleanup", [False, True])
+@pytest.mark.parametrize("make_deepcopy", [False, True])
+@pytest.mark.parametrize(
+    "tree",
+    [
+        ("top", []),
+        ("top", [("sub1", []), ("sub2", [])]),
+    ],
+)
+def test_self_handling_transform_rejects_apply_to_subgraphs(tree, cleanup, make_deepcopy):
+    # A transform that sets handles_subgraphs_internally = True must raise when
+    # driven via the generic apply_to_subgraphs=True path, regardless of the
+    # cleanup / make_deepcopy flags. The guard fires before any apply() runs.
+    model = make_subgraph_model(tree)
+    transform = SelfHandlingTransform()
+    with pytest.raises(ValueError, match="manages subgraph traversal itself"):
+        model.transform(transform, cleanup, make_deepcopy, apply_to_subgraphs=True)
+    assert transform.visited == []
+
+
+def test_self_handling_transform_allows_top_level():
+    # Without apply_to_subgraphs the same transform runs normally (top-level only)
+    # and does not descend into subgraphs.
+    model = make_subgraph_model(("top", [("sub1", []), ("sub2", [])]))
+    transform = SelfHandlingTransform()
+    model.transform(transform, apply_to_subgraphs=False)
+    assert transform.visited == ["top"]
