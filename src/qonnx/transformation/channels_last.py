@@ -40,7 +40,7 @@ from qonnx.transformation.general import SortGraph
 from qonnx.transformation.infer_shapes import InferShapes
 from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name
 from qonnx.util.onnx import is_eltwise_optype
 
 # Standard ONNX nodes which require a ChannelsLast data format to function properly
@@ -96,6 +96,7 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             new_t_inp = model.make_new_valueinfo_name()
             inv_perm = np.argsort(perm)
             new_transpose_node = helper.make_node("Transpose", [eltwise_inp], [new_t_inp], perm=inv_perm)
+            copy_metadata_props(transpose_node, new_transpose_node)
             t_shape = np.transpose(np.empty(inp_shape), axes=inv_perm).shape
             model.set_tensor_shape(new_t_inp, t_shape)
             eltwise_node.input[ind] = new_t_inp
@@ -107,6 +108,7 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             model.set_initializer(unsqueeze_param_name, np.asarray(list(range(ndim_inp - ndim)), dtype=np.int64))
             unsqueeze_out_name = model.make_new_valueinfo_name()
             new_unsqueeze_node = helper.make_node("Unsqueeze", [eltwise_inp, unsqueeze_param_name], [unsqueeze_out_name])
+            copy_metadata_props(eltwise_inp, new_unsqueeze_node)
             unsqueeze_out_shape = np.expand_dims(np.empty(inp_shape), axis=tuple(range(ndim_inp - ndim))).shape
             model.set_tensor_shape(unsqueeze_out_name, unsqueeze_out_shape)
             model.graph.node.append(new_unsqueeze_node)
@@ -114,6 +116,7 @@ def move_transpose_past_eltwise(transpose_node, eltwise_node, model: ModelWrappe
             new_t_inp = model.make_new_valueinfo_name()
             inv_perm = np.argsort(perm)
             new_transpose_node = helper.make_node("Transpose", [unsqueeze_out_name], [new_t_inp], perm=inv_perm)
+            copy_metadata_props(transpose_node, new_transpose_node)
             t_shape = np.transpose(np.empty(unsqueeze_out_shape), axes=inv_perm).shape
             model.set_tensor_shape(new_t_inp, t_shape)
             eltwise_node.input[ind] = new_t_inp
@@ -239,6 +242,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                     # channels last transpose
                     inp_trans_node = helper.make_node("Transpose", [inp], [inp_trans_out], perm=to_channels_last_args(ndim))
                     graph.node.insert(running_node_index, inp_trans_node)
+                    copy_metadata_props(n, inp_trans_node)
                     running_node_index += 1
 
                     # Attach to original node
@@ -265,6 +269,7 @@ class InsertChannelsLastDomainsAndTrafos(Transformation):
                         "Transpose", [outp_trans_in], [outp], perm=to_channels_first_args(ndim)
                     )
                     graph.node.insert(running_node_index, outp_trans_node)
+                    copy_metadata_props(n, outp_trans_node)
                     running_node_index += 1
 
                     # Attach to original node
@@ -567,7 +572,8 @@ class AbsorbChanFirstIntoMatMul(Transformation):
                                     axis=1,
                                 )
                                 graph.node.insert(node_ind, flat_node)
-
+                                copy_metadata_props(n, flat_node)
+                                
                                 graph_modified = True
                             else:
                                 warnings.warn(

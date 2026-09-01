@@ -36,7 +36,7 @@ from qonnx.custom_op.registry import getCustomOp
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_datatypes import InferDataTypes
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name
 
 
 class ConvertBipolarMatMulToXnorPopcount(Transformation):
@@ -132,6 +132,9 @@ class ConvertBipolarMatMulToXnorPopcount(Transformation):
                     # create Mul and Add nodes to replace the batchnorm
                     mul_node = oh.make_node("Mul", [xnorpcout.name, mul_const.name], [mul_output.name])
                     add_node = oh.make_node("Add", [mul_output.name, add_const.name], [mm_output])
+                    # preserve metadata from original MatMul node
+                    copy_metadata_props(n, mul_node)
+                    copy_metadata_props(n, add_node)
                     # insert where the batchnorm is to preserve topological ordering
                     graph.node.insert(node_ind, mul_node)
                     graph.node.insert(node_ind + 1, add_node)

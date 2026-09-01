@@ -45,6 +45,19 @@ Custom Operations/Nodes
 
 QONNX uses many custom operations (op_type in ONNX NodeProto) that are not defined in the ONNX operator schema. These custom nodes are marked with domain="qonnx.*" in the protobuf to identify them as such. These nodes can represent specific operations that we need for low-bit networks, or operations that are specific to a particular hardware backend. To get more familiar with custom operations and how they are created, please take a look in the Jupyter notebook about CustomOps (see chapter :ref:`tutorials` for details) or directly in the module :py:mod:`qonnx.custom_op`.
 
+Custom ops are automatically discovered through Python module namespaces.
+Simply import your CustomOp subclass in the appropriate domain module
+(e.g., ``qonnx.custom_op.general`` for general ops) and it will be automatically
+available through ``getCustomOp``.
+
+For dynamic registration and querying, use the registry functions:
+
+* ``getCustomOp(node)`` - Get a custom op instance from an ONNX node
+* ``is_custom_op(domain, op_type=None)`` - Check if a specific op or domain has custom ops
+* ``add_op_to_domain(domain, op_class)`` - Register an op at runtime (for testing)
+* ``get_ops_in_domain(domain)`` - List all ops available in a domain
+* ``add_domain_alias(domain, module_path)`` - Map a domain to a different module path
+
 
 Custom ONNX Execution Flow
 ==========================

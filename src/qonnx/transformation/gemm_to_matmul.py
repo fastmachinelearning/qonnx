@@ -32,7 +32,7 @@ from onnx import TensorProto, helper
 from qonnx.core.datatype import DataType
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.remove import RemoveIdentityOps
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name
 
 
 class GemmToMatMul(Transformation):
@@ -76,6 +76,7 @@ class GemmToMatMul(Transformation):
                     )
                     graph.value_info.append(inp_trans_out)
                     inp_trans_node = helper.make_node("Transpose", [n.input[0]], [inp_trans_out.name])
+                    copy_metadata_props(n, inp_trans_node)
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
                     dt = model.get_tensor_datatype(n.input[0])
@@ -98,6 +99,7 @@ class GemmToMatMul(Transformation):
                     )
                     graph.value_info.append(inp_trans_out)
                     inp_trans_node = helper.make_node("Transpose", [n.input[1]], [inp_trans_out.name])
+                    copy_metadata_props(n, inp_trans_node)
                     graph.node.insert(running_node_index, inp_trans_node)
                     running_node_index += 1
                     # Copy over the datatype
@@ -109,6 +111,7 @@ class GemmToMatMul(Transformation):
 
                 # Insert MatMul: A * B
                 matMul_node = helper.make_node("MatMul", [n.input[0], n.input[1]], [n.output[0]])
+                copy_metadata_props(n, matMul_node)
                 graph.node.insert(running_node_index, matMul_node)
                 matMul_node = graph.node[running_node_index]
                 running_node_index += 1
@@ -144,6 +147,7 @@ class GemmToMatMul(Transformation):
                     [act_mul_tensor.name, mul_tensor.name],
                     [n.output[0]],
                 )
+                copy_metadata_props(n, mul_node)
                 graph.node.insert(running_node_index, mul_node)
                 mul_node_main_branch = graph.node[running_node_index]
                 running_node_index += 1
@@ -175,6 +179,7 @@ class GemmToMatMul(Transformation):
                     [n.input[2], mul_tensor.name],
                     [act_mul_tensor.name],
                 )
+                copy_metadata_props(n, mul_node)
                 graph.node.insert(running_node_index, mul_node)
                 running_node_index += 1
                 dt = model.get_tensor_datatype(n.input[2])
@@ -196,7 +201,7 @@ class GemmToMatMul(Transformation):
                     [act_add_tensor.name, n.input[2]],
                     [n.output[0]],
                 )
-
+                copy_metadata_props(n, add_node)
                 graph.node.insert(running_node_index, add_node)
                 running_node_index += 1
 

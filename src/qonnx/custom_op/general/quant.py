@@ -26,12 +26,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-from qonnx.custom_op.general.intquant import IntQuant as Quant
+# Import IntQuant to create alias
+from qonnx.custom_op.general.intquant import IntQuant
+
+# Re-export functions from intquant for backward compatibility
 from qonnx.custom_op.general.intquant import int_quant as quant
 from qonnx.custom_op.general.intquant import max_int, min_int, resolve_rounding_mode
 
-Quant = Quant
-quant = quant
-max_int = max_int
-min_int = min_int
-resolve_rounding_mode = resolve_rounding_mode
+# Create alias for backward compatibility - Quant is just IntQuant
+Quant = IntQuant

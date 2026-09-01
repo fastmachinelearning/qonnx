@@ -30,7 +30,7 @@ from onnx import TensorProto, helper
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
-from qonnx.util.basic import get_by_name
+from qonnx.util.basic import copy_metadata_props, get_by_name
 
 
 class ChangeDataLayoutQuantAvgPool2d(Transformation):
@@ -78,6 +78,7 @@ class ChangeDataLayoutQuantAvgPool2d(Transformation):
                 graph.value_info.append(quantavg_out)
                 quantavg_out = quantavg_out.name
                 inp_trans_node = helper.make_node("Transpose", [node_input], [inp_trans_out], perm=[0, 2, 3, 1])
+                copy_metadata_props(n, inp_trans_node)
                 quantavg_node = helper.make_node(
                     "QuantAvgPool2d",
                     [inp_trans_out],
@@ -90,8 +91,10 @@ class ChangeDataLayoutQuantAvgPool2d(Transformation):
                     signed=signed,
                     data_layout="NHWC",
                 )
+                copy_metadata_props(n, quantavg_node)
                 # NHWC -> NCHW
                 out_trans_node = helper.make_node("Transpose", [quantavg_out], [node_output], perm=[0, 3, 1, 2])
+                copy_metadata_props(n, out_trans_node)
                 # insert nodes
                 graph.node.insert(node_ind, inp_trans_node)
                 graph.node.insert(node_ind + 1, quantavg_node)

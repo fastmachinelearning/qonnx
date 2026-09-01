@@ -32,7 +32,7 @@ from onnx import TensorProto, helper
 
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.extract_conv_bias import ExtractBiasFromConv
-from qonnx.util.basic import auto_pad_to_explicit_padding, get_by_name
+from qonnx.util.basic import auto_pad_to_explicit_padding, copy_metadata_props, get_by_name
 
 
 class LowerConvsToMatMul(Transformation):
@@ -152,6 +152,7 @@ class LowerConvsToMatMul(Transformation):
             # create new nodes
             # NCHW -> NHWC
             inp_trans_node = helper.make_node("Transpose", [cnv_input], [inp_trans_out], perm=[0, 2, 3, 1])
+            copy_metadata_props(node, inp_trans_node)
             nodes_to_insert = [inp_trans_node]
 
             if need_im2col:
@@ -174,12 +175,15 @@ class LowerConvsToMatMul(Transformation):
                     dilations=dilation,
                 )
                 nodes_to_insert.append(im2col_node)
+                copy_metadata_props(node, im2col_node)
 
             matmul_input = im2col_out if need_im2col else inp_trans_out
             # do matmul
             matmul_node = helper.make_node("MatMul", [matmul_input, conv_weight_inp_name], [matmul_out])
+            copy_metadata_props(node, matmul_node)
             # NHWC -> NCHW
             out_trans_node = helper.make_node("Transpose", [matmul_out], [cnv_output], perm=[0, 3, 1, 2])
+            copy_metadata_props(node, out_trans_node)
 
             nodes_to_insert.extend([matmul_node, out_trans_node])
 
