@@ -32,6 +32,31 @@ How to write an analysis pass for QONNX
 ----------------------------------------
 
 An analysis pass traverses the graph structure and produces information about
-certain properties. The convention is to take in a ModelWrapper, and return
-a dictionary of named properties that the analysis extracts.
+certain properties.
+Such a pass can be created in two ways:
+1) Inherit from AnalysisPass and overwrite the `analyze` method
+2) Write a function that takes a ModelWrapper and returns a dictionary with the analysis results.
 """
+
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+if TYPE_CHECKING:
+    from qonnx.core.modelwrapper import ModelWrapper
+
+T = TypeVar("T")
+
+
+class AnalysisPass(Generic[T]):
+    """Base class for analysis passes. Apply using `ModelWrapper.analysis`.
+    Returns an object of type `T` as the result of analysis."""
+
+    def __init__(self) -> None:
+        pass
+
+    @abstractmethod
+    def analyze(self, model: "ModelWrapper", apply_to_subgraphs: bool) -> T:
+        """Analysis method. Receives the model and returns the passes results.
+        Can optionally consider `apply_to_subgraphs`.
+        """
+        pass
