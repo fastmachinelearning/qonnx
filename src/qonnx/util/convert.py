@@ -31,16 +31,20 @@ import clize
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.qcdq_to_qonnx import QCDQToQuant
 from qonnx.transformation.qonnx_to_qcdq import QuantToQCDQ
+from qonnx.custom_op.qop import *
+from qonnx.transformation.qcdq_to_qop import *
 
 CONVERT_MODE_QCDQ = "qcdq"
 CONVERT_MODE_QUANT = "quant"
+CONVERT_MODE_QOP = "qop"
 
-convert_modes = {CONVERT_MODE_QCDQ, CONVERT_MODE_QUANT}
+convert_modes = {CONVERT_MODE_QCDQ, CONVERT_MODE_QUANT, CONVERT_MODE_QOP}
 
 convert_mode_options = clize.parameters.mapped(
     [
         (CONVERT_MODE_QCDQ, [CONVERT_MODE_QCDQ], "Convert from Quant to QCDQ"),
         (CONVERT_MODE_QUANT, [CONVERT_MODE_QUANT], "Convert from QCDQ to Quant"),
+        (CONVERT_MODE_QOP, [CONVERT_MODE_QOP], "Convert from QCDQ to QOp"),
     ]
 )
 
@@ -55,11 +59,14 @@ def convert(input_model_file, *, output_style: convert_mode_options, output_file
     :param output_file: If specified, write the output ONNX model to this filename.
         Otherwise, will default to the input file with an _output_style suffix.
     """
+    print(input_model_file)
     model = ModelWrapper(input_model_file)
     if output_style == CONVERT_MODE_QCDQ:
         model = model.transform(QuantToQCDQ())
     elif output_style == CONVERT_MODE_QUANT:
         model = model.transform(QCDQToQuant())
+    elif output_style == CONVERT_MODE_QOP:
+        model = model.transform(QCDQToQOp(), False, False)
     else:
         print("Unknown output_style for conversion: %s" % output_style)
         exit(-1)
@@ -67,10 +74,8 @@ def convert(input_model_file, *, output_style: convert_mode_options, output_file
         output_file = input_model_file.replace(".onnx", "_%s.onnx" % output_style)
     model.save(output_file)
 
-
 def main():
     clize.run(convert)
-
 
 if __name__ == "__main__":
     main()
