@@ -69,8 +69,8 @@ from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.core.onnx_exec import execute_onnx
 
 model = ModelWrapper("my-qonnx-model.onnx")
-idict = {"in0" : np.load("in0.npy), "in1" : np.load("in1.npy")}
-odict = execute_onnx(idict)
+idict = {"in0" : np.load("in0.npy"), "in1" : np.load("in1.npy")}
+odict = execute_onnx(model, idict)
 ```
 
 ### Calculate inference cost for QONNX model
@@ -79,7 +79,7 @@ Using the `qonnx-inference-cost` command line utility for the [CNV_2W2A example]
 
 `qonnx-inference-cost CNV_2W2A.onnx`
 
-Which will print a inference cost dictionary like the following:
+Which will print an inference cost dictionary like the following:
 
 ```
 Inference cost for CNV_2W2A.onnx
@@ -87,7 +87,7 @@ Inference cost for CNV_2W2A.onnx
   "discount_sparsity": true,    # discount MAC counts by layer sparsity (disregard zero-valued MACs and params)
   # mem_o_X: number of layer outputs with datatype X
   "mem_o_INT32": 142602.0,       # number of INT32 output elements
-  # mem_o_X: number of layer parameters (weights) with datatype X
+  # mem_w_X: number of layer parameters (weights) with datatype X
   "mem_w_INT2": 908033.0,      # number of INT2 parameters (weights)
   # op_mac_X_Y: number of MAC operations, datatype X by datatype Y
   # scaled integer datatypes have a tensor- or channelwise scale factor

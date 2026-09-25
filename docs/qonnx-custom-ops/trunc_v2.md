@@ -1,7 +1,7 @@
 ### <a name="Trunc"></a><a name="abs">**Trunc**</a>
 
 Truncates the values of one input data (Tensor<T>) at a specified bitwidth and produces one output data (Tensor<T>).
-Additionally, takes four float tensors as input, which define the scale, zero-point, input bit-width and output bit-width of the quantization.
+Additionally, takes four float tensors as input, which defines the scale, zero-point, input bit-width and output bit-width of the quantization.
 The attribute rounding_mode defines how truncated values are rounded.
 
 #### Version

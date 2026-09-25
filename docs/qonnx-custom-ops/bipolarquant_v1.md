@@ -1,7 +1,7 @@
 ### <a name="BipolarQuant"></a><a name="abs">**BipolarQuant**</a>
 
 Calculates the binary quantized values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
-Additionally, takes one float as input, which define the scaling.
+Additionally, takes one float as input, which defines the scaling.
 
 #### Version
 

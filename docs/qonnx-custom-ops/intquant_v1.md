@@ -1,7 +1,7 @@
 ### <a name="Quant"></a><a name="abs">**IntQuant**</a>
 
 Calculates the integer-quantized values of one input data (Tensor<T>) and produces one output data (Tensor<T>).
-Additionally, takes three floats as input, which define the scale, zero-point and bit-width of the quantization,
+Additionally, takes three floats as input, which defines the scale, zero-point and bit-width of the quantization,
 which may be scalars or tensors with number of dimensions equal to the input data tensor, for e.g. tensor-wise
 or channel-wise quantization.
 The attributes narrow and signed define how the bits of the quantization are interpreted, while the attribute
@@ -23,7 +23,7 @@ The description of this operator in this document corresponds to `qonnx.custom_o
 <dt><tt>narrow</tt> : int (default is 0)</dt>
 <dd>Defines if the value range should be interpreted as narrow, when signed=1. E.g. at 8b regular=[-128, 127] vs narrow=[-127, 127].</dd>
 <dt><tt>rounding_mode</tt> : string (default is "ROUND")</dt>
-<dd>Defines how rounding should be applied during quantization. Avaiable options are ROUND, CEIL, FLOOR, UP, DOWN, HALF_UP, HALF_DOWN. The rounding modes are described in the table bellow. The names of rounding modes can be upper case or lower case.</dd>
+<dd>Defines how rounding should be applied during quantization. Available options are ROUND, CEIL, FLOOR, UP, DOWN, HALF_UP, HALF_DOWN. The rounding modes are described in the table below. The names of rounding modes can be upper case or lower case.</dd>
 </dl>
 
 #### Inputs
@@ -36,7 +36,7 @@ The description of this operator in this document corresponds to `qonnx.custom_o
 <dt><tt>zeropt</tt> : float32, tensor(float32) </dt>
 <dd>The zero-point, either as a global scalar or with a shape matching the number of dimensions of the X tensor</dd>
 <dt><tt>bitwidth</tt> : int32, float32</dt>
-<dd>The number of bits used by the quantization, must be a positive integer. If float32 dtype is used for convenience, it must still represent an positive integer number of bits.</dd>
+<dd>The number of bits used by the quantization, must be a positive integer. If float32 dtype is used for convenience, it must still represent a positive integer number of bits.</dd>
 </dl>
 
 
