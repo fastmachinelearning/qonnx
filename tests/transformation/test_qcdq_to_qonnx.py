@@ -32,9 +32,12 @@ import numpy as np
 import os
 import urllib.request
 
+from onnx import TensorProto, helper, numpy_helper
+
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.transformation.qcdq_to_qonnx import QCDQToQuant
+from qonnx.util.basic import qonnx_make_model
 from qonnx.util.cleanup import cleanup_model
 
 model_details = {
@@ -99,3 +102,39 @@ def test_qcdq_to_qonnx(test_model):
     produced_output_dict = oxe.execute_onnx(model, input_dict)
     produced_result = produced_output_dict[model.graph.output[0].name]
     assert np.isclose(golden_result, produced_result).all()
+
+
+@pytest.mark.parametrize(
+    "weights,zeropt",
+    [
+        (np.arange(256, dtype=np.uint8), np.uint8(128)),
+        (np.asarray([-128, -1, 0, 127], dtype=np.int8), np.int8(127)),
+        (np.asarray([-128, -1, 0, 127], dtype=np.int8), np.int8(-128)),
+    ],
+)
+def test_qcdq_to_qonnx_standalone_dq_zeropt(weights, zeropt):
+    # standalone DequantizeLinear on an initializer with a nonzero zero point,
+    # (weights - zeropt) must not wrap around in the integer dtype
+    scale = np.asarray(0.5, dtype=np.float32)
+    dq_node = helper.make_node("DequantizeLinear", ["weights", "scale", "zeropt"], ["out"])
+    out_vi = helper.make_tensor_value_info("out", TensorProto.FLOAT, weights.shape)
+    graph = helper.make_graph(
+        [dq_node],
+        "standalone_dq",
+        [],
+        [out_vi],
+        initializer=[
+            numpy_helper.from_array(weights, "weights"),
+            numpy_helper.from_array(scale, "scale"),
+            numpy_helper.from_array(np.asarray(zeropt), "zeropt"),
+        ],
+    )
+    model = ModelWrapper(qonnx_make_model(graph))
+    expected = ((weights.astype(np.int64) - np.int64(zeropt)) * 0.5).astype(np.float32)
+    golden = oxe.execute_onnx(model, {})["out"]
+    assert (golden == expected).all()
+    model = model.transform(QCDQToQuant())
+    assert len(model.get_nodes_by_op_type("Quant")) == 1
+    assert len(model.get_nodes_by_op_type("DequantizeLinear")) == 0
+    produced = oxe.execute_onnx(model, {})["out"]
+    assert (produced == expected).all()

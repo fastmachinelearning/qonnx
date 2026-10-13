@@ -85,7 +85,7 @@ class QCDQToQuant(Transformation):
     during the quantization process into a QONNX Quant node. If a Clip node is
     found between the QuantizeLinear+DequantizeLinear, this will be taken into
     account for the Quant bitwidth calculation.
-    
+
     Input:
 
         A model potentially quantized with QuantizeLinear, (optional) Clip and
@@ -130,7 +130,9 @@ class QCDQToQuant(Transformation):
                     q_vi = model.get_tensor_valueinfo(dq_inp)
                     (bitwidth, signed, narrow) = extract_elem_type(q_vi.type.tensor_type.elem_type)
                     # overwrite DQ initializer with scaled version
-                    scaled_qnt_t = (dq_init - dq_zeropt_v) * dq_scale_v
+                    # (cast to float before subtracting the zero point to
+                    # avoid wraparound in the narrow integer dtype)
+                    scaled_qnt_t = (dq_init.astype(np.float32) - dq_zeropt_v.astype(np.float32)) * dq_scale_v
                     scaled_qnt_t = scaled_qnt_t.astype(np.float32)
                     model.set_initializer(dq_inp, scaled_qnt_t)
                     q_inp = dq_inp
