@@ -30,6 +30,9 @@ import pytest
 
 import numpy as np
 
+import onnxruntime as rt
+from onnx import TensorProto, helper, numpy_helper
+
 import qonnx.core.onnx_exec as oxe
 from qonnx.core.modelwrapper import ModelWrapper
 from qonnx.custom_op.channels_last.base_wrapped_op import to_channels_last_args
@@ -48,6 +51,7 @@ from qonnx.transformation.make_input_chanlast import MakeInputChannelsLast
 from qonnx.transformation.quant_constant_folding import FoldTransposeIntoQuantInit
 from qonnx.util.test import download_model, get_golden_in_and_output, test_model_details
 from qonnx.util.to_channels_last import to_channels_last
+from qonnx.util.basic import qonnx_make_model
 
 model_details_chanlast = {
     "FINN-CNV_W2A2": {
@@ -286,3 +290,56 @@ def test_channelslast_conversion_step_by_step(test_model):
     assert model.check_all_tensor_shapes_specified(), "All tensor shapes should be specified."
 
     model.save(qonnx_all_trafos)
+
+def _run_chanlast_vs_reference(op_type, attrs, inputs, initializers, out_shape_cf, onnx_opset, import_chanlast_domain):
+    """Execute a single channels-last wrapped op with execute_onnx and compare against the
+    equivalent standard (channels-first) op executed directly with onnxruntime."""
+    x_cf = inputs.transpose(0, 3, 1, 2)
+    out_shape_cl = [out_shape_cf[0]] + list(out_shape_cf[2:]) + [out_shape_cf[1]]
+    init_protos = [numpy_helper.from_array(v, k) for k, v in initializers.items()]
+    node_inputs = ["x"] + list(initializers.keys())
+
+    inp = helper.make_tensor_value_info("x", TensorProto.FLOAT, list(inputs.shape))
+    outp = helper.make_tensor_value_info("y", TensorProto.FLOAT, out_shape_cl)
+    node = helper.make_node(op_type, node_inputs, ["y"], domain="qonnx.custom_op.channels_last", **attrs)
+    opset_imports = [helper.make_opsetid("", onnx_opset)]
+    if import_chanlast_domain:
+        # convention used by InsertChannelsLastDomainsAndTrafos: domain version == ai.onnx opset
+        opset_imports.append(helper.make_opsetid("qonnx.custom_op.channels_last", onnx_opset))
+    graph = helper.make_graph([node], "chanlast", [inp], [outp], initializer=init_protos)
+    model = ModelWrapper(qonnx_make_model(graph, opset_imports=opset_imports))
+
+    ref_inp = helper.make_tensor_value_info("x", TensorProto.FLOAT, list(x_cf.shape))
+    ref_outp = helper.make_tensor_value_info("y", TensorProto.FLOAT, list(out_shape_cf))
+    ref_node = helper.make_node(op_type, node_inputs, ["y"], **attrs)
+    ref_graph = helper.make_graph([ref_node], "ref", [ref_inp], [ref_outp], initializer=init_protos)
+    ref_model = qonnx_make_model(ref_graph, opset_imports=[helper.make_opsetid("", onnx_opset)])
+    sess = rt.InferenceSession(ref_model.SerializeToString())
+
+    y = oxe.execute_onnx(model, {"x": inputs})["y"]
+    y_ref = sess.run(None, {"x": x_cf})[0].transpose(0, 2, 3, 1)
+    assert y.shape == tuple(out_shape_cl)
+    assert np.allclose(y, y_ref)
+
+
+@pytest.mark.parametrize("ceil_mode", [0, 1])
+@pytest.mark.parametrize("import_chanlast_domain", [True, False])
+def test_channelslast_maxpool_execution_opset(ceil_mode, import_chanlast_domain):
+    """If the qonnx.custom_op.channels_last domain is missing from opset_import, wrapped ops must be
+    executed with the model's ai.onnx opset, not the qonnx custom op default (1). With opset 1,
+    onnxruntime rejects the ceil_mode attribute of MaxPool (added in opset 10)."""
+    ofm_dim = 3 if ceil_mode else 2
+    attrs = dict(kernel_shape=[2, 2], strides=[2, 2], pads=[0, 0, 0, 0], ceil_mode=ceil_mode)
+    x = np.random.rand(1, 5, 5, 2).astype(np.float32)
+    _run_chanlast_vs_reference("MaxPool", attrs, x, {}, [1, 2, ofm_dim, ofm_dim], 13, import_chanlast_domain)
+
+
+@pytest.mark.parametrize("import_chanlast_domain", [True, False])
+def test_channelslast_batchnorm_execution_opset(import_chanlast_domain):
+    """Wrapped ops must be executed with the model's ai.onnx opset, both when the channels-last domain
+    is imported and when it is not. BatchNormalization's training_mode attribute requires opset >= 14."""
+    ch = 3
+    attrs = dict(epsilon=1e-5, training_mode=0)
+    inits = {n: (np.random.rand(ch) + 0.5).astype(np.float32) for n in ["scale", "bias", "mean", "var"]}
+    x = np.random.rand(1, 4, 4, ch).astype(np.float32)
+    _run_chanlast_vs_reference("BatchNormalization", attrs, x, inits, [1, ch, 4, 4], 15, import_chanlast_domain)
