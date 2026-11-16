@@ -483,12 +483,15 @@ class ModelWrapper:
         )
         if quant_annotation is not None:
             quant_annotation.tensor_name = new_name
-        # sweep over node i/o
+        # sweep over node i/o; a tensor may appear more than once among the
+        # inputs of a node (e.g. Add(x, x)), so rename every occurrence
         for n in graph.node:
-            if old_name in n.input:
-                n.input[list(n.input).index(old_name)] = new_name
-            if old_name in n.output:
-                n.output[list(n.output).index(old_name)] = new_name
+            for i, name in enumerate(n.input):
+                if name == old_name:
+                    n.input[i] = new_name
+            for i, name in enumerate(n.output):
+                if name == old_name:
+                    n.output[i] = new_name
 
     def get_initializer(
         self, tensor_name: str, return_dtype: bool = False
