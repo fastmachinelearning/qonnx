@@ -296,3 +296,24 @@ def test_modelwrapper_get_global_io():
     # Should still return first input/output
     assert model_multi.get_first_global_in() == "global_in"
     assert model_multi.get_first_global_out() == "global_out"
+
+
+def test_modelwrapper_rename_tensor_repeated_input():
+    # a node may consume the same tensor more than once (Add(x, x)); renaming
+    # the tensor must rename every occurrence, otherwise an input is left dangling
+    inp = onnx.helper.make_tensor_value_info("inp", onnx.TensorProto.FLOAT, [1, 4])
+    out = onnx.helper.make_tensor_value_info("out", onnx.TensorProto.FLOAT, [1, 4])
+    nodes = [
+        onnx.helper.make_node("Mul", ["inp", "scale"], ["mid"]),
+        onnx.helper.make_node("Add", ["mid", "mid"], ["out"]),
+    ]
+    graph = onnx.helper.make_graph(nodes, "repeated_input", [inp], [out])
+    model = ModelWrapper(qonnx_make_model(graph, producer_name="test"))
+    model.set_initializer("scale", np.array(2.0, dtype=np.float32))
+    model.rename_tensor("mid", "renamed")
+    assert list(model.graph.node[0].output) == ["renamed"]
+    assert list(model.graph.node[1].input) == ["renamed", "renamed"]
+    assert model.find_producer("renamed") == model.graph.node[0]
+    model.rename_tensor("inp", "global_in")
+    assert model.graph.input[0].name == "global_in"
+    assert list(model.graph.node[0].input) == ["global_in", "scale"]
