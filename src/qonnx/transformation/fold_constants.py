@@ -26,9 +26,12 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import numpy as np
+
 import qonnx.core.onnx_exec as oxe
 from qonnx.transformation.base import Transformation
 from qonnx.transformation.infer_shapes import InferShapes
+from qonnx.util.onnx import valueinfo_to_tensor
 
 
 class FoldConstantsFiltered(Transformation):
@@ -74,11 +77,14 @@ class FoldConstantsFiltered(Transformation):
 
 class FoldConstants(Transformation):
     """Replace the output of a node with const-only inputs with a precomputed
-    result. Skip any op types given in exclude_op_types."""
+    result. Skip any op types given in exclude_op_types. When fold_mul_by_zero
+    is True (default), Mul nodes where at least one input is an all-zero
+    initializer are also folded to a zero initializer of the output shape."""
 
-    def __init__(self, exclude_op_types=["Quant", "BipolarQuant"]):
+    def __init__(self, exclude_op_types=["Quant", "BipolarQuant"], fold_mul_by_zero=True):
         super().__init__()
         self.exclude_op_types = exclude_op_types
+        self.fold_mul_by_zero = fold_mul_by_zero
 
     def apply(self, model):
         opset_version = model.model.opset_import[0].version
@@ -116,6 +122,22 @@ class FoldConstants(Transformation):
                 # there are suitable nodes available.
                 # See https://github.com/fastmachinelearning/qonnx/issues/104
                 break
+            elif (
+                self.fold_mul_by_zero
+                and n.op_type == "Mul"
+                and not exclude
+                and any(init is not None and np.all(init == 0) for init in node_inp_inits)
+            ):
+                vi = model.get_tensor_valueinfo(node_out)
+                if (
+                    vi is not None
+                    and vi.type.tensor_type.elem_type != 0
+                    and all(d.HasField("dim_value") and d.dim_value > 0 for d in vi.type.tensor_type.shape.dim)
+                ):
+                    model.set_initializer(node_out, valueinfo_to_tensor(vi))
+                    nodes_to_remove.append(n)
+                    graph_modified = True
+                    break
         for node in nodes_to_remove:
             model.graph.node.remove(node)
         if graph_modified:
