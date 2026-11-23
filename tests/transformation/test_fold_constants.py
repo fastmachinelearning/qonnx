@@ -62,3 +62,43 @@ def test_const_folding_shapes():
     model = model.transform(FoldConstants())
     assert model.find_producer(mm_node_w_in) is None
     assert model.get_initializer(mm_node_w_in) is not None
+
+
+def _make_mul_by_zero_model(zero_first=False, mul_val=0.0):
+    inp = onnx.helper.make_tensor_value_info("inp", onnx.TensorProto.FLOAT, [1, 4])
+    bias = onnx.helper.make_tensor_value_info("bias", onnx.TensorProto.FLOAT, [1, 4])
+    out = onnx.helper.make_tensor_value_info("out", onnx.TensorProto.FLOAT, [1, 4])
+    zero_init = np_helper.from_array(np.array(mul_val, dtype=np.float32), name="zero_scale")
+    mul_inputs = ["zero_scale", "inp"] if zero_first else ["inp", "zero_scale"]
+    mul_node = onnx.helper.make_node("Mul", mul_inputs, ["mul_out"])
+    add_node = onnx.helper.make_node("Add", ["mul_out", "bias"], ["out"])
+    graph = onnx.helper.make_graph([mul_node, add_node], "mul_zero_test", [inp, bias], [out], [zero_init])
+    model_proto = onnx.helper.make_model(graph, opset_imports=[onnx.helper.make_opsetid("", 13)])
+    model = ModelWrapper(model_proto)
+    return model.transform(InferShapes())
+
+
+def test_const_folding_mul_by_zero():
+    for zero_first in (False, True):
+        model = _make_mul_by_zero_model(zero_first=zero_first, mul_val=0.0)
+        model = model.transform(FoldConstants())
+        assert len(model.get_nodes_by_op_type("Mul")) == 0
+        mul_out_init = model.get_initializer("mul_out")
+        assert mul_out_init is not None
+        assert mul_out_init.shape == (1, 4)
+        assert mul_out_init.dtype == np.float32
+        assert np.all(mul_out_init == 0)
+
+
+def test_const_folding_mul_by_zero_opt_out():
+    model = _make_mul_by_zero_model(zero_first=False, mul_val=0.0)
+    model = model.transform(FoldConstants(fold_mul_by_zero=False))
+    assert len(model.get_nodes_by_op_type("Mul")) == 1
+    assert model.get_initializer("mul_out") is None
+
+
+def test_const_folding_mul_nonzero_not_folded():
+    model = _make_mul_by_zero_model(zero_first=False, mul_val=1e-6)
+    model = model.transform(FoldConstants())
+    assert len(model.get_nodes_by_op_type("Mul")) == 1
+    assert model.get_initializer("mul_out") is None
